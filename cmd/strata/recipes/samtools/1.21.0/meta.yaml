@@ -1,0 +1,15 @@
+name: samtools
+version: "1.21.0"
+description: "SAMtools read alignment processing tools version 1.21."
+family: rhel
+provides:
+  - name: samtools
+    version: "1.21.0"
+  - name: htslib
+    version: "1.21.0"
+build_requires:
+  - name: gcc
+    min_version: "13"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

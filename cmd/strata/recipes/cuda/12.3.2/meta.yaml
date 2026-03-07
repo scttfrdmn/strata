@@ -1,0 +1,12 @@
+name: cuda
+version: "12.3.2"
+description: "NVIDIA CUDA Toolkit 12.3.2 for GPU-accelerated computing."
+family: rhel
+provides:
+  - name: cuda
+    version: "12.3.2"
+  - name: nvcc
+    version: "12.3.2"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

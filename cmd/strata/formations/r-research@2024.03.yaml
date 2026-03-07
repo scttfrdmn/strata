@@ -1,0 +1,20 @@
+name: r-research
+version: "2024.03"
+description: "R + Quarto — reproducible research and scientific publishing."
+layers:
+  - name: R
+    version: "4.3"
+  - name: quarto
+    version: "1.4"
+provides:
+  - name: R
+    version: "4.3.3"
+  - name: quarto
+    version: "1.4.555"
+validated_on:
+  - al2023/x86_64
+  - al2023/arm64
+rekor_entry: "pending-initial-build"
+bundle: "pending-initial-build"
+signed_by: "strata-maintainer@strata.dev"
+built_at: 2024-03-01T00:00:00Z

@@ -1,0 +1,26 @@
+name: genomics-python
+version: "2024.03"
+description: "Python + Miniforge + SAMtools — genomics and bioinformatics baseline."
+layers:
+  - name: python
+    version: "3.11"
+  - name: miniforge
+    version: "24.3"
+  - name: samtools
+    version: "1.21"
+provides:
+  - name: python
+    version: "3.11.9"
+  - name: conda
+    version: "24.3.0"
+  - name: samtools
+    version: "1.21.0"
+  - name: htslib
+    version: "1.21.0"
+validated_on:
+  - al2023/x86_64
+  - al2023/arm64
+rekor_entry: "pending-initial-build"
+bundle: "pending-initial-build"
+signed_by: "strata-maintainer@strata.dev"
+built_at: 2024-03-01T00:00:00Z

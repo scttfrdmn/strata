@@ -1,0 +1,13 @@
+name: python
+version: "3.11.9"
+description: "CPython interpreter version 3.11.9."
+family: rhel
+provides:
+  - name: python
+    version: "3.11.9"
+build_requires:
+  - name: gcc
+    min_version: "13"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

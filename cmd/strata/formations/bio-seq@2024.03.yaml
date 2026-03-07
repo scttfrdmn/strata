@@ -1,0 +1,22 @@
+name: bio-seq
+version: "2024.03"
+description: "SAMtools + Python — sequence alignment and analysis."
+layers:
+  - name: samtools
+    version: "1.21"
+  - name: python
+    version: "3.11"
+provides:
+  - name: samtools
+    version: "1.21.0"
+  - name: htslib
+    version: "1.21.0"
+  - name: python
+    version: "3.11.9"
+validated_on:
+  - al2023/x86_64
+  - al2023/arm64
+rekor_entry: "pending-initial-build"
+bundle: "pending-initial-build"
+signed_by: "strata-maintainer@strata.dev"
+built_at: 2024-03-01T00:00:00Z

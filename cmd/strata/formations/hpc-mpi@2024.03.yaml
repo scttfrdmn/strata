@@ -1,0 +1,24 @@
+name: hpc-mpi
+version: "2024.03"
+description: "GCC + Open MPI — HPC parallel computing baseline."
+layers:
+  - name: gcc
+    version: "13.2"
+  - name: openmpi
+    version: "4.1"
+provides:
+  - name: gcc
+    version: "13.2.0"
+  - name: gfortran
+    version: "13.2.0"
+  - name: openmpi
+    version: "4.1.6"
+  - name: mpi
+    version: "3.1"
+validated_on:
+  - al2023/x86_64
+  - al2023/arm64
+rekor_entry: "pending-initial-build"
+bundle: "pending-initial-build"
+signed_by: "strata-maintainer@strata.dev"
+built_at: 2024-03-01T00:00:00Z
