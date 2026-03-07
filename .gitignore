@@ -1,0 +1,15 @@
+# Build output
+bin/
+*.test
+
+# Coverage
+coverage.out
+coverage.html
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
