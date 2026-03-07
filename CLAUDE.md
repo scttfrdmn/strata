@@ -15,7 +15,7 @@ with labels and milestones. No standalone tracking files.
 - Idiomatic Go: exported types with godoc, no unnecessary abstractions
 - A+ Go Report Card: `gofmt`, `go vet`, and `golangci-lint` must pass clean
 - Tests: race detector always on (`-race`); meaningful coverage for all non-trivial logic
-- No `init()` functions; no globals except the `environmentID` hook in `spec`
+- No `init()` functions; no package-level globals
 
 ## Key Commands
 

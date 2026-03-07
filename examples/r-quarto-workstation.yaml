@@ -1,0 +1,27 @@
+name: r-quarto-workstation
+description: R + Quarto + LaTeX workstation with RStudio Server in the browser
+version: "1.0"
+
+base:
+  os: al2023
+  arch: arm64
+
+software:
+  - formation: r-research@2024.03
+  - name: quarto
+    version: "1.4"
+  - name: texlive
+    version: "2024"
+  - name: git
+    version: "2.43"
+
+instance:
+  type: r7g.2xlarge
+
+storage:
+  - type: efs
+    id: fs-0123456789abcdef0
+    mount: /home/researcher/projects
+
+env:
+  QUARTO_LOG_LEVEL: WARNING

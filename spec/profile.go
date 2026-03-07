@@ -116,8 +116,8 @@ func (s SoftwareRef) IsFormation() bool {
 	return s.Formation != ""
 }
 
-// String returns the canonical string representation.
-// "cuda@12.3", "cuda" (no version), "formation:cuda-python-ml@2024.03"
+// String returns the canonical string representation:
+// "cuda@12.3", "cuda" (no version), "formation:cuda-python-ml@2024.03".
 func (s SoftwareRef) String() string {
 	if s.IsFormation() {
 		return "formation:" + s.Formation

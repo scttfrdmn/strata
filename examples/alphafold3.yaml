@@ -1,0 +1,34 @@
+name: alphafold3
+description: AlphaFold 3 protein structure prediction on GPU
+version: "1.0"
+
+base:
+  os: al2023
+  arch: x86_64
+
+software:
+  - formation: cuda-python-ml@2024.03
+  - name: alphafold
+    version: "3.0"
+
+instance:
+  type: p4d.24xlarge
+  spot: true
+  spot_fallback: p3.16xlarge
+  placement: cluster
+
+storage:
+  - type: s3
+    bucket: my-af3-databases
+    mount: /data/alphafold
+    read_only: true
+  - type: s3
+    bucket: my-af3-outputs
+    mount: /outputs
+
+env:
+  AF3_DB_DIR: /data/alphafold
+  AF3_OUTPUT_DIR: /outputs
+
+on_ready:
+  - echo "AlphaFold 3 environment ready"

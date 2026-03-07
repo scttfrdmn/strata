@@ -103,13 +103,16 @@ func (l *LockFile) LayerCount() int {
 }
 
 // EnvironmentID returns a stable identifier for this environment.
-// It is the SHA256 of the lockfile content, excluding the RekorEntry
-// and Bundle fields (which are populated after the fact).
-// Two lockfiles with the same EnvironmentID describe identical environments.
+// It is the SHA256 of the canonical content: base AMI SHA256, layer SHA256s
+// in mount order, env vars, and on-ready commands. Fields that are populated
+// after resolution (RekorEntry, Bundle, ResolvedAt, StrataVersion) are
+// excluded so that signing an already-resolved lockfile does not change its ID.
 //
-// See environmentID in lockfile_hash.go for the implementation.
+// Two lockfiles with the same EnvironmentID describe identical environments.
+// Only frozen lockfiles (all SHA256s present) produce a stable ID; a lockfile
+// without content hashes returns an empty string.
 func (l *LockFile) EnvironmentID() string {
-	return environmentID(l)
+	return computeEnvironmentID(l)
 }
 
 // ProvenanceRecord returns a human-readable summary of the lockfile's
@@ -140,14 +143,14 @@ func (l *LockFile) ProvenanceRecord() ProvenanceRecord {
 // ProvenanceRecord is a structured summary of a lockfile's attestation chain.
 // Designed for inclusion in supplementary materials and DOI metadata.
 type ProvenanceRecord struct {
-	Profile       string           `yaml:"profile" json:"profile"`
-	ProfileSHA256 string           `yaml:"profile_sha256" json:"profile_sha256"`
-	ResolvedAt    time.Time        `yaml:"resolved_at" json:"resolved_at"`
-	AMIID         string           `yaml:"ami_id" json:"ami_id"`
-	AMISHA256     string           `yaml:"ami_sha256" json:"ami_sha256"`
+	Profile       string            `yaml:"profile" json:"profile"`
+	ProfileSHA256 string            `yaml:"profile_sha256" json:"profile_sha256"`
+	ResolvedAt    time.Time         `yaml:"resolved_at" json:"resolved_at"`
+	AMIID         string            `yaml:"ami_id" json:"ami_id"`
+	AMISHA256     string            `yaml:"ami_sha256" json:"ami_sha256"`
 	Layers        []LayerProvenance `yaml:"layers" json:"layers"`
-	LockfileRekor string           `yaml:"lockfile_rekor_entry" json:"lockfile_rekor_entry"`
-	StrataVersion string           `yaml:"strata_version" json:"strata_version"`
+	LockfileRekor string            `yaml:"lockfile_rekor_entry" json:"lockfile_rekor_entry"`
+	StrataVersion string            `yaml:"strata_version" json:"strata_version"`
 }
 
 // LayerProvenance is the attestation summary for a single layer.
@@ -156,13 +159,4 @@ type LayerProvenance struct {
 	Version    string `yaml:"version" json:"version"`
 	SHA256     string `yaml:"sha256" json:"sha256"`
 	RekorEntry string `yaml:"rekor_entry" json:"rekor_entry"`
-}
-
-// environmentID is the implementation hook for EnvironmentID.
-// Defined as a variable so it can be replaced in tests.
-// Implemented in lockfile_hash.go.
-//
-// TODO(#1): implement SHA256-based environment identity.
-var environmentID = func(l *LockFile) string {
-	return ""
 }

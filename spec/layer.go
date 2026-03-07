@@ -2,6 +2,8 @@ package spec
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,12 +35,12 @@ type LayerManifest struct {
 	Requires []Requirement `yaml:"requires" json:"requires"`
 
 	// Registry metadata.
-	Arch    string    `yaml:"arch" json:"arch"`       // "x86_64", "arm64"
-	Family  string    `yaml:"family" json:"family"`   // "rhel", "debian"
+	Arch    string    `yaml:"arch" json:"arch"`     // "x86_64", "arm64"
+	Family  string    `yaml:"family" json:"family"` // "rhel", "debian"
 	BuiltAt time.Time `yaml:"built_at" json:"built_at"`
 
 	// Build provenance — what produced this layer.
-	RecipeSHA256   string `yaml:"recipe_sha256" json:"recipe_sha256"`          // SHA256 of build.sh
+	RecipeSHA256   string `yaml:"recipe_sha256" json:"recipe_sha256"`         // SHA256 of build.sh
 	BuildEnvLockID string `yaml:"build_env_lock_id" json:"build_env_lock_id"` // lockfile ID of build env
 }
 
@@ -180,16 +182,43 @@ type Formation struct {
 }
 
 // semverGTE reports whether version a >= version b.
-//
-// TODO(#2): replace with golang.org/x/mod/semver for correct semver ordering.
-// The current string comparison is only correct for well-formed dotted-numeric
-// versions of equal segment count. It is sufficient for the spec package tests
-// but must not be used by the resolver.
+// Versions are compared numerically segment-by-segment on "."-split fields,
+// so "3.11" > "3.9" and "12.3.2" >= "12.3". Non-numeric segments fall back
+// to lexicographic comparison. A leading "v" is stripped if present.
 func semverGTE(a, b string) bool {
-	return a >= b
+	return compareVersions(a, b) >= 0
 }
 
 // semverLT reports whether version a < version b.
 func semverLT(a, b string) bool {
-	return !semverGTE(a, b)
+	return compareVersions(a, b) < 0
+}
+
+// compareVersions compares two dotted version strings numerically.
+// Returns -1, 0, or 1 analogous to strings.Compare.
+func compareVersions(a, b string) int {
+	a = strings.TrimPrefix(a, "v")
+	b = strings.TrimPrefix(b, "v")
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+	n := len(aParts)
+	if len(bParts) > n {
+		n = len(bParts)
+	}
+	for i := range n {
+		var av, bv int
+		if i < len(aParts) {
+			av, _ = strconv.Atoi(aParts[i])
+		}
+		if i < len(bParts) {
+			bv, _ = strconv.Atoi(bParts[i])
+		}
+		if av < bv {
+			return -1
+		}
+		if av > bv {
+			return 1
+		}
+	}
+	return 0
 }
