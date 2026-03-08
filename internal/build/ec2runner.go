@@ -43,8 +43,14 @@ type EC2Config struct {
 	// BinaryArch is the strata binary architecture suffix: "amd64" or "arm64".
 	BinaryArch string
 
-	// KeyRef is the cosign key reference (empty = keyless OIDC).
+	// KeyRef is the cosign key reference. If it begins with "s3://", the
+	// user-data script downloads it to /root/.strata-keys/cosign.key and
+	// passes that local path to --key. Empty = keyless OIDC.
 	KeyRef string
+
+	// CosignVersion is the cosign release tag to install on the build instance,
+	// e.g. "v3.0.5". Defaults to "v3.0.5".
+	CosignVersion string
 
 	// PollInterval is how often to poll for build completion. Default 30s.
 	PollInterval time.Duration
@@ -188,8 +194,21 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 		return "", fmt.Errorf("invalid bucket URL %q", r.cfg.BucketURL)
 	}
 
+	cosignVersion := r.cfg.CosignVersion
+	if cosignVersion == "" {
+		cosignVersion = "v3.0.5"
+	}
+
+	// If the key is an S3 URI, the user-data downloads it to a local path.
+	// Otherwise pass the key ref directly (KMS URI or local path baked in AMI).
+	const localKeyPath = "/root/.strata-keys/cosign.key"
+	keyS3URI := ""
 	keyFlag := ""
-	if r.cfg.KeyRef != "" {
+	switch {
+	case strings.HasPrefix(r.cfg.KeyRef, "s3://"):
+		keyS3URI = r.cfg.KeyRef
+		keyFlag = " --key " + localKeyPath
+	case r.cfg.KeyRef != "":
 		keyFlag = " --key " + r.cfg.KeyRef
 	}
 
@@ -202,6 +221,9 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 		Arch          string
 		RegistryURL   string
 		KeyFlag       string
+		KeyS3URI      string
+		LocalKeyPath  string
+		CosignVersion string
 		RecipeName    string
 		RecipeVersion string
 	}{
@@ -213,6 +235,9 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 		Arch:          job.Base.NormalizedArch(),
 		RegistryURL:   r.cfg.BucketURL,
 		KeyFlag:       keyFlag,
+		KeyS3URI:      keyS3URI,
+		LocalKeyPath:  localKeyPath,
+		CosignVersion: cosignVersion,
 		RecipeName:    recipe.Meta.Name,
 		RecipeVersion: recipe.Meta.Version,
 	}
@@ -372,21 +397,37 @@ tag() {
 }
 tag "running"
 
+fail() { tag "failed"; aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"; exit 1; }
+
 # Install build tools (curl-minimal is pre-installed on AL2023; do not add curl)
-dnf install -y squashfs-tools || { tag "failed"; aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"; exit 1; }
+dnf install -y squashfs-tools || fail
 
 # Download strata binary
-aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata \
-  || { tag "failed"; aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"; exit 1; }
+aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail
 chmod +x /usr/local/bin/strata
+
+# Download cosign (required for signing layers)
+COSIGN_ARCH="{{.BinaryArch}}"
+curl -fsSL \
+  "https://github.com/sigstore/cosign/releases/download/{{.CosignVersion}}/cosign-linux-${COSIGN_ARCH}" \
+  -o /usr/local/bin/cosign || fail
+chmod +x /usr/local/bin/cosign
+
+{{- if .KeyS3URI}}
+# Download signing key
+mkdir -p "$(dirname "{{.LocalKeyPath}}")"
+aws s3 cp "{{.KeyS3URI}}" "{{.LocalKeyPath}}" || fail
+chmod 600 "{{.LocalKeyPath}}"
+{{- end}}
 
 # Download recipe
 RECIPE_DIR="/opt/strata-recipe/{{.RecipeName}}/{{.RecipeVersion}}"
 mkdir -p "$RECIPE_DIR"
-aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" \
-  || { tag "failed"; aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"; exit 1; }
+aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || fail
 
 # Run build
+export COSIGN_PASSWORD=""
+export AWS_DEFAULT_REGION="$REGION"
 set -e
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
     --registry {{.RegistryURL}}{{.KeyFlag}}; then

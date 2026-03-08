@@ -204,6 +204,9 @@ func TestEC2UserDataTemplate(t *testing.T) {
 		Arch          string
 		RegistryURL   string
 		KeyFlag       string
+		KeyS3URI      string
+		LocalKeyPath  string
+		CosignVersion string
 		RecipeName    string
 		RecipeVersion string
 	}{
@@ -214,7 +217,10 @@ func TestEC2UserDataTemplate(t *testing.T) {
 		OS:            "al2023",
 		Arch:          "x86_64",
 		RegistryURL:   "s3://strata-registry",
-		KeyFlag:       "",
+		KeyFlag:       " --key /root/.strata-keys/cosign.key",
+		KeyS3URI:      "s3://strata-registry/build/keys/cosign.key",
+		LocalKeyPath:  "/root/.strata-keys/cosign.key",
+		CosignVersion: "v3.0.5",
 		RecipeName:    "gcc",
 		RecipeVersion: "13.2.0",
 	})
