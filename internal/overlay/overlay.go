@@ -39,8 +39,13 @@ type LayerPath struct {
 // strata-agent process exits).
 type Overlay struct {
 	MergedPath string // /strata/env — what processes see
-	UpperDir   string // /strata/upper — tmpfs, ephemeral writes
-	WorkDir    string // /strata/work — OverlayFS internal
+	UpperDir   string // tmpfs subdir for ephemeral writes
+	WorkDir    string // tmpfs subdir for OverlayFS internal use
+
+	// rwMount is the single tmpfs mount point that contains both UpperDir
+	// and WorkDir as subdirectories. OverlayFS requires upper and work to
+	// be on the same filesystem; a single tmpfs satisfies this constraint.
+	rwMount string //nolint:unused // used in mount_linux.go
 
 	// squashMountPoints holds the squashfs mount points in MountOrder
 	// (ascending). Cleanup unmounts them in reverse order.

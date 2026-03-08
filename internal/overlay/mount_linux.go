@@ -15,8 +15,9 @@ import (
 
 const (
 	strataLayersDir = "/strata/layers"
-	strataUpperDir  = "/strata/upper"
-	strataWorkDir   = "/strata/work"
+	strataRWDir     = "/strata/rw"       // single tmpfs; upper and work live inside
+	strataUpperDir  = "/strata/rw/upper" // OverlayFS upper (ephemeral writes)
+	strataWorkDir   = "/strata/rw/work"  // OverlayFS work (kernel-internal)
 	strataMergedDir = "/strata/env"
 )
 
@@ -53,25 +54,26 @@ func Mount(layers []LayerPath) (*Overlay, error) {
 		squashPoints = append(squashPoints, mp)
 	}
 
-	// tmpfs for upper (ephemeral writes) and work (OverlayFS internal).
+	// Single tmpfs for both upper and work. OverlayFS requires upper and work
+	// to be on the same filesystem; mounting them as two separate tmpfs instances
+	// causes EINVAL. One tmpfs with two subdirs satisfies the constraint.
+	if err := os.MkdirAll(strataRWDir, 0755); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: creating rw dir: %w", err)
+	}
+	if err := syscall.Mount("tmpfs", strataRWDir, "tmpfs", 0, "size=1g,mode=755"); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: mounting rw tmpfs: %w", err)
+	}
 	if err := os.MkdirAll(strataUpperDir, 0755); err != nil {
+		_ = syscall.Unmount(strataRWDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating upper dir: %w", err)
 	}
-	if err := syscall.Mount("tmpfs", strataUpperDir, "tmpfs", 0, "size=1g,mode=755"); err != nil {
-		cleanupSquash(squashPoints)
-		return nil, fmt.Errorf("overlay: mounting upper tmpfs: %w", err)
-	}
-
 	if err := os.MkdirAll(strataWorkDir, 0755); err != nil {
-		_ = syscall.Unmount(strataUpperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(strataRWDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating work dir: %w", err)
-	}
-	if err := syscall.Mount("tmpfs", strataWorkDir, "tmpfs", 0, "size=100m,mode=755"); err != nil {
-		_ = syscall.Unmount(strataUpperDir, syscall.MNT_DETACH)
-		cleanupSquash(squashPoints)
-		return nil, fmt.Errorf("overlay: mounting work tmpfs: %w", err)
 	}
 
 	// Assemble the OverlayFS. OverlayFS searches lower dirs left-to-right,
@@ -85,14 +87,12 @@ func Mount(layers []LayerPath) (*Overlay, error) {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, strataUpperDir, strataWorkDir)
 
 	if err := os.MkdirAll(strataMergedDir, 0755); err != nil {
-		_ = syscall.Unmount(strataWorkDir, syscall.MNT_DETACH)
-		_ = syscall.Unmount(strataUpperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(strataRWDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating merged dir: %w", err)
 	}
 	if err := syscall.Mount("overlay", strataMergedDir, "overlay", 0, opts); err != nil {
-		_ = syscall.Unmount(strataWorkDir, syscall.MNT_DETACH)
-		_ = syscall.Unmount(strataUpperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(strataRWDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: mounting OverlayFS: %w", err)
 	}
@@ -101,6 +101,7 @@ func Mount(layers []LayerPath) (*Overlay, error) {
 		MergedPath:        strataMergedDir,
 		UpperDir:          strataUpperDir,
 		WorkDir:           strataWorkDir,
+		rwMount:           strataRWDir,
 		squashMountPoints: squashPoints,
 	}, nil
 }
@@ -120,8 +121,14 @@ func (o *Overlay) Cleanup() error {
 	}
 
 	record(syscall.Unmount(o.MergedPath, syscall.MNT_DETACH))
-	record(syscall.Unmount(o.UpperDir, syscall.MNT_DETACH))
-	record(syscall.Unmount(o.WorkDir, syscall.MNT_DETACH))
+	// Unmount the single rw tmpfs that contains both upper and work subdirs.
+	// If rwMount is unset (legacy), fall back to unmounting each separately.
+	if o.rwMount != "" {
+		record(syscall.Unmount(o.rwMount, syscall.MNT_DETACH))
+	} else {
+		record(syscall.Unmount(o.UpperDir, syscall.MNT_DETACH))
+		record(syscall.Unmount(o.WorkDir, syscall.MNT_DETACH))
+	}
 	for i := len(o.squashMountPoints) - 1; i >= 0; i-- {
 		record(syscall.Unmount(o.squashMountPoints[i], syscall.MNT_DETACH))
 	}
@@ -169,8 +176,9 @@ func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
 	})
 
 	layersDir := filepath.Join(baseDir, "layers")
-	upperDir := filepath.Join(baseDir, "upper")
-	workDir := filepath.Join(baseDir, "work")
+	rwDir := filepath.Join(baseDir, "rw")
+	upperDir := filepath.Join(rwDir, "upper")
+	workDir := filepath.Join(rwDir, "work")
 	mergedDir := filepath.Join(baseDir, "merged")
 
 	var squashPoints []string
@@ -187,24 +195,24 @@ func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
 		squashPoints = append(squashPoints, mp)
 	}
 
+	// Single tmpfs for both upper and work — same filesystem required by OverlayFS.
+	if err := os.MkdirAll(rwDir, 0755); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: creating build env rw dir: %w", err)
+	}
+	if err := syscall.Mount("tmpfs", rwDir, "tmpfs", 0, "size=512m,mode=755"); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: mounting build env rw tmpfs: %w", err)
+	}
 	if err := os.MkdirAll(upperDir, 0755); err != nil {
+		_ = syscall.Unmount(rwDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating build env upper dir: %w", err)
 	}
-	if err := syscall.Mount("tmpfs", upperDir, "tmpfs", 0, "size=512m,mode=755"); err != nil {
-		cleanupSquash(squashPoints)
-		return nil, fmt.Errorf("overlay: mounting build env upper tmpfs: %w", err)
-	}
-
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(rwDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating build env work dir: %w", err)
-	}
-	if err := syscall.Mount("tmpfs", workDir, "tmpfs", 0, "size=100m,mode=755"); err != nil {
-		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
-		cleanupSquash(squashPoints)
-		return nil, fmt.Errorf("overlay: mounting build env work tmpfs: %w", err)
 	}
 
 	// OverlayFS searches lowerdir left-to-right; highest MountOrder must appear first.
@@ -216,14 +224,12 @@ func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
 
 	if err := os.MkdirAll(mergedDir, 0755); err != nil {
-		_ = syscall.Unmount(workDir, syscall.MNT_DETACH)
-		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(rwDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: creating build env merged dir: %w", err)
 	}
 	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, opts); err != nil {
-		_ = syscall.Unmount(workDir, syscall.MNT_DETACH)
-		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(rwDir, syscall.MNT_DETACH)
 		cleanupSquash(squashPoints)
 		return nil, fmt.Errorf("overlay: mounting build env OverlayFS: %w", err)
 	}
@@ -232,6 +238,7 @@ func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
 		MergedPath:        mergedDir,
 		UpperDir:          upperDir,
 		WorkDir:           workDir,
+		rwMount:           rwDir,
 		squashMountPoints: squashPoints,
 	}, nil
 }
