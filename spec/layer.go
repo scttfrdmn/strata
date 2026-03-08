@@ -40,8 +40,20 @@ type LayerManifest struct {
 	BuiltAt time.Time `yaml:"built_at" json:"built_at"`
 
 	// Build provenance — what produced this layer.
-	RecipeSHA256   string `yaml:"recipe_sha256" json:"recipe_sha256"`         // SHA256 of build.sh
-	BuildEnvLockID string `yaml:"build_env_lock_id" json:"build_env_lock_id"` // lockfile ID of build env
+	RecipeSHA256      string     `yaml:"recipe_sha256" json:"recipe_sha256"`                               // SHA256 of build.sh
+	BuildEnvLockID    string     `yaml:"build_env_lock_id" json:"build_env_lock_id"`                       // SHA256 of BaseCapabilities probe (bootstrap) or resolved layer lockfile
+	BuiltWith         []LayerRef `yaml:"built_with,omitempty" json:"built_with,omitempty"`                 // Strata layers that formed the build env (Tier 0.5+)
+	BootstrapBuild    bool       `yaml:"bootstrap_build,omitempty" json:"bootstrap_build,omitempty"`       // true = Tier 0, built with OS system compiler
+	BootstrapCompiler string     `yaml:"bootstrap_compiler,omitempty" json:"bootstrap_compiler,omitempty"` // exact system compiler package, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
+}
+
+// LayerRef is a compact reference to a specific layer used in a build environment.
+// It records enough information to independently verify the build provenance via Rekor.
+type LayerRef struct {
+	Name    string `yaml:"name" json:"name"`
+	Version string `yaml:"version" json:"version"`
+	SHA256  string `yaml:"sha256" json:"sha256"`
+	Rekor   string `yaml:"rekor_entry" json:"rekor_entry"`
 }
 
 // Capability is a named, versioned capability that a layer provides or requires.
@@ -115,6 +127,14 @@ type BaseCapabilities struct {
 
 	// ProbedAt is when this capability set was generated.
 	ProbedAt time.Time `yaml:"probed_at" json:"probed_at"`
+
+	// SystemCompiler is the exact package identifier of the system C compiler.
+	// Populated by the probe script; format is family-specific but always
+	// uniquely identifies the compiler version and build:
+	//   rhel family:   rpm NVR, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
+	//   debian family: dpkg NVR, e.g. "gcc-11-11.4.0-1ubuntu1~22.04-amd64"
+	// Used as LayerManifest.BootstrapCompiler for Tier 0 bootstrap builds.
+	SystemCompiler string `yaml:"system_compiler" json:"system_compiler"`
 
 	// Provides is the list of capabilities the base OS provides.
 	// Populated by the probe script running on the actual AMI.

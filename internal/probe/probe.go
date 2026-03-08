@@ -219,6 +219,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 	}
 
 	var provides []spec.Capability
+	var systemCompiler string
 	switch os {
 	case "al2023":
 		provides = []spec.Capability{
@@ -228,6 +229,8 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "rpm", Version: "4.16"},
 			{Name: "family", Version: family},
 		}
+		// AL2023 ships gcc 11 as the system compiler, locked for the lifetime of the distro.
+		systemCompiler = "gcc-11.4.1-2.amzn2023.0.1." + arch
 	case "rocky9":
 		provides = []spec.Capability{
 			{Name: "glibc", Version: "2.34"},
@@ -236,6 +239,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "rpm", Version: "4.16"},
 			{Name: "family", Version: family},
 		}
+		systemCompiler = "gcc-11.4.1-3.el9." + arch
 	case "rocky10":
 		provides = []spec.Capability{
 			{Name: "glibc", Version: "2.39"},
@@ -244,6 +248,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "rpm", Version: "4.19"},
 			{Name: "family", Version: family},
 		}
+		systemCompiler = "gcc-14.2.1-6.el10." + arch
 	case "ubuntu24":
 		provides = []spec.Capability{
 			{Name: "glibc", Version: "2.39"},
@@ -252,16 +257,19 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "dpkg", Version: "1.22"},
 			{Name: "family", Version: family},
 		}
+		// Ubuntu 24.04 ships gcc-13 as the default system compiler.
+		systemCompiler = "gcc-13-13.2.0-23ubuntu4-" + arch
 	default:
 		return nil, fmt.Errorf("no known capabilities for OS %q", os)
 	}
 
 	return &spec.BaseCapabilities{
-		AMIID:    amiID,
-		OS:       os,
-		Arch:     arch,
-		Family:   family,
-		ProbedAt: time.Now(),
-		Provides: provides,
+		AMIID:          amiID,
+		OS:             os,
+		Arch:           arch,
+		Family:         family,
+		ProbedAt:       time.Now(),
+		SystemCompiler: systemCompiler,
+		Provides:       provides,
 	}, nil
 }

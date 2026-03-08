@@ -26,6 +26,26 @@ make lint    # golangci-lint
 make check   # vet + lint + test
 ```
 
+## AWS Infrastructure
+
+All EC2 build instances, S3 buckets, and IAM roles live in the **Strata Infrastructure**
+account (400563159792), which is a sub-account under scttfrdmn's management account.
+
+**Always use `--profile strata` for AWS CLI commands in this project.**
+
+The `strata` profile (in `~/.aws/config`) assumes `OrganizationAccountAccessRole` in account
+400563159792 using `scttfrdmn` as the source profile. Region: `us-east-1`.
+
+```sh
+aws --profile strata ec2 describe-instances   # correct
+aws ec2 describe-instances                    # wrong — hits management account, finds nothing
+```
+
+Key resources:
+- S3 registry bucket: `strata-registry`
+- IAM instance profile: `strata-builder`
+- Builder instances use SSM Session Manager (not SSH — 1Password agent causes hangs)
+
 ## Versioning
 
 Semantic Versioning 2.0.0. [CHANGELOG.md](CHANGELOG.md) follows

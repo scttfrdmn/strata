@@ -260,30 +260,57 @@ in the registry — it never silently builds one.
 ### Recipe contract
 
 A recipe is a shell script and a metadata file. The script installs software into
-`$STRATA_PREFIX`. The metadata declares what the layer provides and what it requires at
-runtime.
+`$STRATA_INSTALL_PREFIX` (versioned path: `$STRATA_PREFIX/<name>/<version>`). The metadata
+declares what the layer provides and what it requires at runtime.
 
 ```bash
-# recipes/openmpi/4.1.6/build.sh
+# recipes/openmpi/5.0.6/build.sh
+# NOTE: Must run inside a Strata environment with gcc mounted.
 set -euo pipefail
-./configure --prefix=$STRATA_PREFIX --with-cuda=$STRATA_PREFIX
-make -j${STRATA_NCPUS} && make install
+./configure --prefix="${STRATA_INSTALL_PREFIX}" --enable-mpi-fortran --with-pic
+make -j"${STRATA_NCPUS}" && make install
 ```
 
 ```yaml
-# recipes/openmpi/4.1.6/meta.yaml
+# recipes/openmpi/5.0.6/meta.yaml
 name: openmpi
-version: 4.1.6
-provides:
-  - openmpi@4.1.6
-  - mpi@3.1
-build_requires:   # available during build, NOT in the layer
-  - gcc@>=13
-  - cuda@>=12.0
-runtime_requires: # must exist on target at runtime
-  - glibc@>=2.34
+version: "5.0.6"
+description: "Open MPI 5.0.6 — MPI-4.0 compliant message passing library."
 family: rhel
+
+build_requires:           # layers mounted via OverlayFS before build.sh runs
+  - name: gcc
+    min_version: "13.0.0"
+
+provides:
+  - name: openmpi
+    version: "5.0.6"
+  - name: mpi
+    version: "4.0"        # MPI standard version, not implementation version
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+  - name: gcc
+    min_version: "13.0.0" # links against libstdc++, libgfortran from same gcc
+
+install_layout: versioned # installs to <name>/<version>/ — multi-version coexistence
 ```
+
+The `install_layout: versioned` field enables multiple versions of the same layer to coexist
+in the same OverlayFS merged view. Without it, `gcc/13.2.0/bin/gcc` and `gcc/14.2.0/bin/gcc`
+would conflict at the same path. With it, each resides under its own name/version prefix and
+LMod modulefiles manage PATH selection.
+
+Build environment variables provided to every recipe:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `STRATA_PREFIX` | `/strata/out` | Root of squashfs output |
+| `STRATA_INSTALL_PREFIX` | `$STRATA_PREFIX/<name>/<version>` | Versioned install destination |
+| `STRATA_NCPUS` | `nproc` result | Parallelism for `make -j` |
+| `STRATA_ARCH` | `x86_64` or `arm64` | Target architecture |
+| `STRATA_OUT` | same as `STRATA_PREFIX` | Alias for legacy compat |
 
 ### Build environment
 
@@ -300,9 +327,9 @@ content-addressing meaningful.
 ```
 1.  Resolve build environment from registry (build_requires)
 2.  Launch clean EC2 instance matching target base
-3.  Mount build environment via Strata overlay
-4.  Execute recipe with STRATA_PREFIX=/strata/out
-5.  Capture /strata/out → squashfs (reproducible options)
+3.  Mount build environment via Strata overlay (OverlayFS)
+4.  Execute recipe with STRATA_INSTALL_PREFIX=<name>/<version>
+5.  Capture output → squashfs (reproducible: -mkfs-time 0, deterministic ordering)
 6.  Probe squashfs: what does it actually provide?
 7.  Validate: declared provides ⊆ probed provides
 8.  Generate content manifest (every file path + SHA256)
@@ -310,6 +337,125 @@ content-addressing meaningful.
 10. Push squashfs + manifest + bundle to S3 registry
 11. Terminate build instance
 ```
+
+Stages 2, 3, and 11 are skipped in the v0.9.0 local build path. The full EC2-orchestrated
+pipeline ships in v0.10.0.
+
+---
+
+### Build provenance and layer tiers
+
+Every layer in the registry carries a complete, independently verifiable record of what built
+it. This is not optional metadata — it is how the registry validates that OpenMPI and the
+application linking against it were compiled with the same compiler generation.
+
+#### Bootstrap constraint
+
+Build chains must start somewhere. Strata's bootstrap boundary is the base AMI.
+**Tier 0 layers** (gcc, LLVM, CUDA) are built with the OS system compiler. This is declared
+explicitly in the layer manifest via `bootstrap_build: true`. It is an honest declaration,
+not a weakness — the system compiler's identity is independently verifiable via the AMI ID.
+
+```yaml
+# LayerManifest for a Tier 0 layer (gcc)
+name: gcc
+version: "13.2.0"
+bootstrap_build: true                                    # Tier 0: chain root
+bootstrap_compiler: "gcc-11.4.1-2.amzn2023.0.1.x86_64" # exact RPM NVR — independently verifiable
+build_env_lock_id: sha256:abc123...                      # SHA256 of BaseCapabilities probe record
+built_with: []                                           # empty: no Strata layers in build env
+rekor_entry: "12345"                                     # independently verifiable via rekor.sigstore.dev
+sha256: d4e5f6...
+```
+
+**Tier 1+ layers** must be built inside a mounted Strata environment. The `built_with` field
+records the exact layers that formed the build environment, each with name, version, SHA256,
+and Rekor entry:
+
+```yaml
+# LayerManifest for a Tier 1 layer (openmpi)
+name: openmpi
+version: "5.0.6"
+bootstrap_build: false
+built_with:
+  - name: gcc
+    version: "13.2.0"
+    sha256: d4e5f6...
+    rekor_entry: "12345"
+rekor_entry: "23456"
+sha256: a7b8c9...
+```
+
+A layer with `bootstrap_build: false` **and** empty `built_with` is an error. The registry
+rejects it. `strata verify` flags it. The chain must be complete.
+
+#### Layer tier hierarchy
+
+```
+Tier 0    Compiler toolchains + language runtimes
+          gcc@13.2.0, gcc@14.2.0, llvm@17, cuda@12.3, python@3.11, R@4.3
+          bootstrap_build: true — chain root, built with OS system compiler
+
+Tier 0.5  Parallel communication infrastructure
+          ucx, libfabric, pmix, hwloc   ← MPI dependencies, build first
+          openmpi@5.0.6, mpich@4.1      ← MPI implementations
+          built_with: [gcc@N]
+
+Tier 1.0  Math and I/O foundations
+          openblas@0.3.26, fftw@3.3.10  ← serial math (gcc only)
+          hdf5@1.14.3, netcdf@4.9       ← I/O (gcc + optional MPI)
+          scalapack@2.2, mumps@5.6      ← parallel math (gcc + MPI + BLAS)
+          built_with: [gcc@N, mpi@M, ...]
+
+Tier 1.5  Scientific frameworks
+          petsc@3.21, trilinos@16, magma@2.7
+          built_with: full Tier 1.0 stack
+
+Tier 2    Domain applications
+          gromacs, wrf, pytorch, alphafold, numpy, scipy, ...
+          built_with: full toolchain
+
+Toolchain Formations
+          foss-2024a = {gcc@13.2.0, openmpi@5.0.6, openblas@0.3.26, fftw@3.3.10}
+          Named, versioned groupings; Tier 1.0+ recipes declare formation: foss-2024a
+
+Runtime Formations
+          Named environments for direct user consumption
+          cuda-python-ml, r-research, bioinformatics-core
+```
+
+**Build sequencing constraint**: A layer at tier N can only be built after all layers it
+`build_requires` exist in the registry and have been verified. Strata builds are a DAG, not
+a flat list. Independent chains (openmpi and openblas both depend only on gcc) can build in
+parallel. Dependent chains (scalapack depends on openmpi and openblas) must wait.
+
+Full tier structure including Tier 1a (MPI infrastructure: UCX, libfabric, PMIx, hwloc),
+Tier 1b (math and I/O: OpenBLAS, FFTW, HDF5, NetCDF), Tier 1c (scientific frameworks:
+PETSc, Trilinos), and the boundary with application-level software: see
+[docs/layer-tier-structure.md](docs/layer-tier-structure.md).
+
+#### MPI implementations
+
+All major MPI implementations are first-class Strata layers. They all declare `provides:
+mpi@4.0`, enabling capability-based resolution — applications declare `requires: mpi@>=3.1`
+and the resolver picks whichever implementation the profile specifies.
+
+| Layer | Provides | Note |
+|---|---|---|
+| `openmpi@5.0.6` | `mpi@4.0` | Most widely used in research |
+| `mpich@4.1` | `mpi@4.0` | Reference implementation |
+| `intel-mpi@2021.12` | `mpi@4.0` | Intel clusters |
+| `mvapich2@3.0` | `mpi@3.1` | InfiniBand optimized |
+
+The conflict detector prevents two MPI implementations from loading simultaneously. The
+lockfile records *which* implementation was resolved, making the difference visible and
+reproducible.
+
+Because MPI links against `libgcc`, `libstdc++`, and `libgfortran`, the `built_with` field
+in an MPI layer manifest is the mechanism that proves the MPI library and the application
+using it were compiled with the same compiler generation. An MPI library built with the OS
+system compiler while the environment provides a Strata gcc layer is a broken chain — and
+Strata makes this visible rather than silently allowing it.
 
 ---
 
@@ -445,24 +591,59 @@ strata:
 
 ---
 
-## Initial Layer Catalog (AL2023, x86_64 + arm64)
+## Layer Catalog (AL2023, x86_64 + arm64)
+
+### Tier 0 — Compilers and language runtimes (bootstrap builds)
 
 ```
-Infrastructure    gcc@13, python@3.11, python@3.12, R@4.3, R@4.4
-GPU               cuda@12.3, cuda@12.4, cudnn@8.9
-MPI               openmpi@4.1, openmpi@5.0
+gcc@13.2.0, gcc@14.2.0, llvm@17, llvm@18
+cuda@12.3, cuda@12.4, cudnn@8.9
+python@3.11, python@3.12, R@4.3, R@4.4
+```
+
+### Tier 0.5 — Parallel communication infrastructure
+
+```
+ucx@1.16, libfabric@1.21, pmix@5.0, hwloc@2.10   (built_with: gcc@N)
+openmpi@5.0.6, mpich@4.1, mvapich2@3.0            (built_with: gcc@N + ucx/pmix/hwloc)
+```
+
+### Tier 1.0 — Math and I/O foundations
+
+```
+openblas@0.3.26, fftw@3.3.10      (built_with: gcc@N)
+hdf5@1.14.3, netcdf@4.9           (built_with: gcc@N [+ mpi@M])
+scalapack@2.2, mumps@5.6          (built_with: gcc@N + mpi@M + blas@3)
+```
+
+### Tier 1.5 — Scientific frameworks
+
+```
+petsc@3.21, trilinos@16, magma@2.7   (built_with: full Tier 1.0 stack)
+```
+
+### Tier 2 — Applications
+
+```
 Bioinformatics    blast@2.15, samtools@1.21, bwa@0.7, gatk@4.5
 ML                pytorch@2.2, tensorflow@2.15
 Tools             miniforge@24.3, jupyterlab@4.1, rstudio-server@2024.09
 Publishing        quarto@1.4, pandoc@3.1, texlive@2024, git@2.43
 ```
 
-Initial formations:
+### Toolchain formations
 
 ```
-cuda-python-ml     cuda + python + miniforge
+foss-2024a    gcc@13.2.0 + openmpi@5.0.6 + openblas@0.3.26 + fftw@3.3.10
+foss-2025a    gcc@14.2.0 + openmpi@5.0.6 + openblas@0.3.26 + fftw@3.3.10
+cuda-2024a    cuda@12.3 + gcc@13.2.0
+```
+
+### Runtime formations
+
+```
+cuda-python-ml     cuda-2024a + python + miniforge
 r-research         R + RStudio Server + pandoc + quarto + texlive
-hpc-mpi            gcc + openmpi + ucx
 bio-seq            samtools + bwa + blast
 genomics-python    python + miniforge + bio-seq
 jupyter-gpu        cuda-python-ml + jupyterlab
@@ -474,7 +655,9 @@ jupyter-gpu        cuda-python-ml + jupyterlab
 
 - Not a package manager (conda/pip/R handle user packages on top of Strata layers)
 - Not a container runtime (no namespacing, no cgroups — just filesystem composition)
-- Not a replacement for Spack or Lmod (composable with both; operates at a different level)
+- Not a replacement for Spack or Lmod — composable with both; operates at a different level.
+  Spack builds source → Strata distributes signed binaries. Lmod manages user PATH in an
+  environment Strata assembled. They address different parts of the problem.
 - Not an on-premises HPC tool (designed for cloud ephemerality; Warewulf adaptation is future work)
 - Not a template system (you declare intent; the system composes — there are no templates to inherit or debug)
 
