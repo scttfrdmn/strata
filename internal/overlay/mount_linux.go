@@ -180,7 +180,7 @@ func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
 			cleanupSquash(squashPoints)
 			return nil, fmt.Errorf("overlay: creating build env mount point for %q: %w", layer.ID, err)
 		}
-		if err := syscall.Mount(layer.Path, mp, "squashfs", syscall.MS_RDONLY, "loop"); err != nil {
+		if err := mountSquashfs(layer.Path, mp); err != nil {
 			cleanupSquash(squashPoints)
 			return nil, fmt.Errorf("overlay: mounting build env squashfs %q: %w", layer.ID, err)
 		}
