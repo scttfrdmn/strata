@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/strata/internal/probe"
@@ -16,64 +16,94 @@ import (
 	"github.com/scttfrdmn/strata/spec"
 )
 
-// runResolve implements "strata resolve <profile.yaml>".
-//
-// It resolves a profile through the full 8-stage pipeline and writes the
-// resulting lockfile to disk. If STRATA_REGISTRY_URL is set the S3-backed
-// registry is used; otherwise the embedded Tier 0 catalog is used as a
-// fallback (resolution will fail at stage 7 until layers are built and signed).
-func runResolve(args []string) {
-	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
-	output := fs.String("o", "", "output lockfile path (default: <profile-basename>.lock.yaml)")
-	strataVer := fs.String("strata-version", version, "strata version recorded in the lockfile")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: strata resolve <profile.yaml> [-o output.lock.yaml] [--strata-version v]\n")
-		fs.PrintDefaults()
-	}
-	if err := fs.Parse(args); err != nil {
-		fatal("resolve: %v", err)
-	}
-	if fs.NArg() != 1 {
-		fs.Usage()
-		os.Exit(1)
+func newResolveCmd() *cobra.Command {
+	var output, strataVer string
+
+	cmd := &cobra.Command{
+		Use:   "resolve <profile.yaml>",
+		Short: "Resolve a profile to a lockfile",
+		Long: `Resolve a profile through the full 8-stage pipeline and write the
+resulting lockfile to disk. Set STRATA_REGISTRY_URL to use the S3-backed
+registry; otherwise the embedded Tier 0 catalog is used.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			profile := loadProfile(args[0])
+			reg := buildRegistryClient()
+			probeClient := buildProbeClient()
+
+			r, err := resolver.New(resolver.Config{
+				Registry:      reg,
+				Probe:         probeClient,
+				StrataVersion: strataVer,
+			})
+			if err != nil {
+				return fmt.Errorf("resolve: %w", err)
+			}
+
+			lf, err := r.Resolve(context.Background(), profile)
+			if err != nil {
+				return fmt.Errorf("resolve: %w", err)
+			}
+
+			outPath := resolveOutputPath(args[0], output, ".lock.yaml")
+			if err := writeYAML(outPath, lf); err != nil {
+				return err
+			}
+			fmt.Printf("resolved: %s\n", outPath)
+			return nil
+		},
 	}
 
-	profile := loadProfile(fs.Arg(0))
-	reg := buildRegistryClient()
-	probeClient := buildProbeClient()
-
-	r, err := resolver.New(resolver.Config{
-		Registry:      reg,
-		Probe:         probeClient,
-		StrataVersion: *strataVer,
-	})
-	if err != nil {
-		fatal("resolve: %v", err)
-	}
-
-	lf, err := r.Resolve(context.Background(), profile)
-	if err != nil {
-		fatal("resolve: %v", err)
-	}
-
-	outPath := resolveOutputPath(fs.Arg(0), *output, ".lock.yaml")
-	writeYAML(outPath, lf)
-	fmt.Printf("resolved: %s\n", outPath)
+	cmd.Flags().StringVarP(&output, "o", "o", "", "output lockfile path (default: <profile-basename>.lock.yaml)")
+	cmd.Flags().StringVar(&strataVer, "strata-version", version, "strata version recorded in the lockfile")
+	return cmd
 }
 
 // buildRegistryClient returns an S3Client if STRATA_REGISTRY_URL is set,
 // falling back to the embedded Tier 0 catalog as a MemoryStore.
+// If STRATA_REGISTRY_URL is set but the S3 client cannot be initialised
+// (e.g. bad URL, missing credentials) an error is printed to stderr and the
+// embedded catalog is used instead — offline fallback is intentional.
 func buildRegistryClient() registry.Client {
 	if url := os.Getenv("STRATA_REGISTRY_URL"); url != "" {
-		return registry.NewS3Client(url)
+		client, err := registry.NewS3Client(url)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: S3 registry unavailable (%v); falling back to embedded catalog\n", err) //nolint:errcheck
+			return buildCatalog()
+		}
+		return client
 	}
 	return buildCatalog()
 }
 
-// buildProbeClient returns a probe.Client wired with placeholder AMI IDs and
-// KnownBaseCapabilities for all supported OS images. Suitable for offline use
-// and for wiring resolve/freeze when no live AWS credentials are present.
+// buildProbeClient returns a probe.Client for use by resolve/freeze.
+//
+// When STRATA_REGISTRY_URL is set and AWS credentials are available, it wires
+// a real SSMResolver with an S3-backed cache so that lockfiles contain real
+// AMI IDs. On any initialisation failure it falls back to the static offline
+// client. Pre-seed the S3 probe cache with "strata probe <os> <arch>" before
+// running strata resolve against a live registry.
 func buildProbeClient() *probe.Client {
+	if url := os.Getenv("STRATA_REGISTRY_URL"); url != "" {
+		reg, err := registry.NewS3Client(url)
+		if err == nil {
+			r, err := probe.NewSSMResolver(context.Background())
+			if err == nil {
+				return &probe.Client{
+					Resolver: r,
+					Runner:   buildKnownFakeRunner(),
+					Cache:    probe.NewS3Cache(reg),
+				}
+			}
+		}
+	}
+	return buildStaticProbeClient()
+}
+
+// buildStaticProbeClient returns an offline-safe probe.Client using placeholder
+// AMI IDs and KnownBaseCapabilities. Used when no registry or AWS credentials
+// are available.
+func buildStaticProbeClient() *probe.Client {
 	amis := map[string]string{
 		"al2023/x86_64":   "ami-al2023-x86_64",
 		"al2023/arm64":    "ami-al2023-arm64",
@@ -102,24 +132,55 @@ func buildProbeClient() *probe.Client {
 	}
 }
 
-// loadProfile reads and validates a profile from path, exiting on error.
+// buildKnownFakeRunner returns a FakeRunner pre-loaded with KnownBaseCapabilities
+// keyed by the static placeholder AMI IDs.
+func buildKnownFakeRunner() *probe.FakeRunner {
+	amis := map[string]string{
+		"al2023/x86_64":   "ami-al2023-x86_64",
+		"al2023/arm64":    "ami-al2023-arm64",
+		"rocky9/x86_64":   "ami-rocky9-x86_64",
+		"rocky9/arm64":    "ami-rocky9-arm64",
+		"rocky10/x86_64":  "ami-rocky10-x86_64",
+		"rocky10/arm64":   "ami-rocky10-arm64",
+		"ubuntu24/x86_64": "ami-ubuntu24-x86_64",
+		"ubuntu24/arm64":  "ami-ubuntu24-arm64",
+	}
+
+	caps := make(map[string]*spec.BaseCapabilities)
+	for osArch, amiID := range amis {
+		parts := strings.SplitN(osArch, "/", 2)
+		c, err := probe.KnownBaseCapabilities(parts[0], parts[1], amiID)
+		if err != nil {
+			continue
+		}
+		caps[amiID] = c
+	}
+	return &probe.FakeRunner{Capabilities: caps}
+}
+
+// loadProfile reads and validates a profile from path.
 func loadProfile(path string) *spec.Profile {
 	p, err := spec.ParseProfile(path)
 	if err != nil {
-		fatal("%v", err)
+		// This is called from RunE so we can't return the error directly here;
+		// the caller should check. In practice ParseProfile validates fully so
+		// we panic on internal error and return a descriptive error for user errors.
+		fmt.Fprintf(os.Stderr, "strata: %v\n", err) //nolint:errcheck
+		os.Exit(1)
 	}
 	return p
 }
 
-// writeYAML marshals v to YAML and writes it to path, exiting on error.
-func writeYAML(path string, v any) {
+// writeYAML marshals v to YAML and writes it to path.
+func writeYAML(path string, v any) error {
 	data, err := yaml.Marshal(v)
 	if err != nil {
-		fatal("marshaling YAML: %v", err)
+		return fmt.Errorf("marshaling YAML: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		fatal("writing %s: %v", path, err)
+		return fmt.Errorf("writing %s: %w", path, err)
 	}
+	return nil
 }
 
 // resolveOutputPath returns the output path for a lockfile.

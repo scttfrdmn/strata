@@ -2,59 +2,58 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"sync"
 
+	"github.com/spf13/cobra"
+
 	"github.com/scttfrdmn/strata/internal/trust"
 	"github.com/scttfrdmn/strata/spec"
 )
 
-// runVerify implements "strata verify <lock.yaml> [--rekor]".
-//
-// Without --rekor it performs field-presence checks: every layer must have
-// non-empty Bundle and RekorEntry fields, and the lockfile itself must be
-// signed (IsSigned()). All failures are collected and reported together.
-//
-// With --rekor each layer's RekorEntry is verified against the Rekor
-// transparency log via the public Rekor API.
-func runVerify(args []string) {
-	fset := flag.NewFlagSet("verify", flag.ExitOnError)
-	rekorFlag := fset.Bool("rekor", false, "verify each layer's Rekor entry against the live transparency log")
-	fset.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: strata verify <lock.yaml> [--rekor]\n")
-		fset.PrintDefaults()
-	}
-	if err := fset.Parse(args); err != nil {
-		fatal("verify: %v", err)
-	}
-	if fset.NArg() != 1 {
-		fset.Usage()
-		os.Exit(1)
+func newVerifyCmd() *cobra.Command {
+	var rekorFlag bool
+
+	cmd := &cobra.Command{
+		Use:   "verify <lock.yaml>",
+		Short: "Verify all layer signatures in a lockfile",
+		Long: `Without --rekor, performs field-presence checks: every layer must have
+non-empty Bundle and RekorEntry fields and the lockfile itself must be signed.
+All failures are collected and reported together.
+
+With --rekor, each layer's RekorEntry is verified against the live Rekor
+transparency log. Requires network access to rekor.sigstore.dev.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			lf, err := spec.ParseLockFile(args[0])
+			if err != nil {
+				return fmt.Errorf("verify: %w", err)
+			}
+
+			failures := collectPresenceFailures(lf)
+
+			if rekorFlag && len(failures) == 0 {
+				failures = append(failures, verifyRekorEntries(context.Background(), lf)...)
+			}
+
+			if len(failures) > 0 {
+				fmt.Fprintf(os.Stderr, "strata verify: %d failure(s):\n", len(failures)) //nolint:errcheck
+				for _, f := range failures {
+					fmt.Fprintf(os.Stderr, "  - %s\n", f) //nolint:errcheck
+				}
+				return errors.New("") // already printed; suppress double-print in main
+			}
+
+			fmt.Printf("ok: %s (%d layer(s) verified)\n", args[0], len(lf.Layers))
+			return nil
+		},
 	}
 
-	lf, err := spec.ParseLockFile(fset.Arg(0))
-	if err != nil {
-		fatal("verify: %v", err)
-	}
-
-	failures := collectPresenceFailures(lf)
-
-	if *rekorFlag && len(failures) == 0 {
-		failures = append(failures, verifyRekorEntries(context.Background(), lf)...)
-	}
-
-	if len(failures) > 0 {
-		fmt.Fprintf(os.Stderr, "strata verify: %d failure(s):\n", len(failures))
-		for _, f := range failures {
-			fmt.Fprintf(os.Stderr, "  - %s\n", f)
-		}
-		os.Exit(1)
-	}
-
-	fmt.Printf("ok: %s (%d layer(s) verified)\n", fset.Arg(0), len(lf.Layers))
+	cmd.Flags().BoolVar(&rekorFlag, "rekor", false, "verify each layer's Rekor entry against the live transparency log")
+	return cmd
 }
 
 // collectPresenceFailures returns a list of field-presence violation messages.

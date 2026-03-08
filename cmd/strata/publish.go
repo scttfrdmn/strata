@@ -2,74 +2,76 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
 
 	"github.com/scttfrdmn/strata/internal/zenodo"
 	"github.com/scttfrdmn/strata/spec"
 )
 
-// runPublish implements "strata publish <lock.yaml> [--token TOKEN] [--sandbox]".
-//
-// It publishes a frozen lockfile to Zenodo via the Deposit API and prints
-// the minted DOI. The lockfile must be fully frozen (all layers have SHA256).
-// The Zenodo token must be provided via --token or the ZENODO_TOKEN env var.
-func runPublish(args []string) {
-	fset := flag.NewFlagSet("publish", flag.ExitOnError)
-	token := fset.String("token", "", "Zenodo personal access token (overrides ZENODO_TOKEN env var)")
-	sandbox := fset.Bool("sandbox", false, "use sandbox.zenodo.org instead of production")
-	fset.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: strata publish <lock.yaml> [--token TOKEN] [--sandbox]\n")
-		fset.PrintDefaults()
-	}
-	if err := fset.Parse(args); err != nil {
-		fatal("publish: %v", err)
-	}
-	if fset.NArg() != 1 {
-		fset.Usage()
-		os.Exit(1)
+func newPublishCmd() *cobra.Command {
+	var token string
+	var sandbox bool
+
+	cmd := &cobra.Command{
+		Use:   "publish <lock.yaml>",
+		Short: "Publish a frozen lockfile to Zenodo (mint DOI)",
+		Long: `Publish a frozen lockfile to Zenodo via the Deposit API and print the
+minted DOI. The lockfile must be fully frozen (all layers have SHA256).
+Provide your Zenodo personal access token via --token or ZENODO_TOKEN.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			tok, err := resolveToken(token)
+			if err != nil {
+				return err
+			}
+			lf, err := parseFrozenLockFile(args[0])
+			if err != nil {
+				return err
+			}
+
+			client := &zenodo.Client{Token: tok}
+			if sandbox {
+				client.BaseURL = "https://sandbox.zenodo.org"
+			}
+
+			result, err := client.Deposit(context.Background(), lf)
+			if err != nil {
+				return fmt.Errorf("publish: %w", err)
+			}
+
+			fmt.Printf("published: doi:%s\n", result.DOI)
+			fmt.Printf("record:    %s\n", result.RecordURL)
+			return nil
+		},
 	}
 
-	tok := resolveToken(*token)
-	lf := parseFrozenLockFile(fset.Arg(0))
-
-	client := &zenodo.Client{Token: tok}
-	if *sandbox {
-		client.BaseURL = "https://sandbox.zenodo.org"
-	}
-
-	result, err := client.Deposit(context.Background(), lf)
-	if err != nil {
-		fatal("publish: %v", err)
-	}
-
-	fmt.Printf("published: doi:%s\n", result.DOI)
-	fmt.Printf("record:    %s\n", result.RecordURL)
+	cmd.Flags().StringVar(&token, "token", "", "Zenodo personal access token (overrides ZENODO_TOKEN env var)")
+	cmd.Flags().BoolVar(&sandbox, "sandbox", false, "use sandbox.zenodo.org instead of production")
+	return cmd
 }
 
 // resolveToken returns the token from the flag or ZENODO_TOKEN env var.
-// It calls fatal if neither is set.
-func resolveToken(flagValue string) string {
+func resolveToken(flagValue string) (string, error) {
 	if flagValue != "" {
-		return flagValue
+		return flagValue, nil
 	}
 	if t := os.Getenv("ZENODO_TOKEN"); t != "" {
-		return t
+		return t, nil
 	}
-	fatal("publish: Zenodo token required — set ZENODO_TOKEN or use --token")
-	return "" // unreachable
+	return "", fmt.Errorf("publish: Zenodo token required — set ZENODO_TOKEN or use --token")
 }
 
 // parseFrozenLockFile reads a lockfile and verifies it is frozen.
-// Calls fatal if the lockfile is not frozen.
-func parseFrozenLockFile(path string) *spec.LockFile {
+func parseFrozenLockFile(path string) (*spec.LockFile, error) {
 	lf, err := spec.ParseLockFile(path)
 	if err != nil {
-		fatal("publish: %v", err)
+		return nil, fmt.Errorf("publish: %w", err)
 	}
 	if !lf.IsFrozen() {
-		fatal("publish: lockfile is not frozen — run \"strata freeze\" first to pin all layer SHA256s")
+		return nil, fmt.Errorf("publish: lockfile is not frozen — run \"strata freeze\" first to pin all layer SHA256s")
 	}
-	return lf
+	return lf, nil
 }

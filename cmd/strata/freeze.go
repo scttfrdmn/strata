@@ -2,74 +2,74 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
 
 	"github.com/scttfrdmn/strata/internal/resolver"
 )
 
-// runFreeze implements "strata freeze <profile.yaml>".
-//
-// It resolves the profile identically to "strata resolve", then verifies
-// that the resulting lockfile is fully frozen — all layers must have a SHA256
-// and the base AMI must have a SHA256. If any are missing, it reports which
-// layers need to be built and pushed to the registry before freezing.
-func runFreeze(args []string) {
-	fs := flag.NewFlagSet("freeze", flag.ExitOnError)
-	output := fs.String("o", "", "output lockfile path (default: <profile-basename>.lock.yaml)")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: strata freeze <profile.yaml> [-o output.lock.yaml]\n")
-		fs.PrintDefaults()
-	}
-	if err := fs.Parse(args); err != nil {
-		fatal("freeze: %v", err)
-	}
-	if fs.NArg() != 1 {
-		fs.Usage()
-		os.Exit(1)
-	}
+func newFreezeCmd() *cobra.Command {
+	var output string
 
-	profile := loadProfile(fs.Arg(0))
-	reg := buildRegistryClient()
-	probeClient := buildProbeClient()
+	cmd := &cobra.Command{
+		Use:   "freeze <profile.yaml>",
+		Short: "Resolve and require all layers to be SHA256-pinned",
+		Long: `Resolve a profile identically to "strata resolve", then verify that
+every layer in the lockfile has a SHA256 hash. If any layers are missing
+SHA256s they must be built and pushed to the registry first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			profile := loadProfile(args[0])
+			reg := buildRegistryClient()
+			probeClient := buildProbeClient()
 
-	r, err := resolver.New(resolver.Config{
-		Registry:      reg,
-		Probe:         probeClient,
-		StrataVersion: version,
-	})
-	if err != nil {
-		fatal("freeze: %v", err)
-	}
-
-	lf, err := r.Resolve(context.Background(), profile)
-	if err != nil {
-		fatal("freeze: %v", err)
-	}
-
-	if !lf.IsFrozen() {
-		var missing []string
-		for _, layer := range lf.Layers {
-			if layer.SHA256 == "" {
-				missing = append(missing, layer.ID)
+			r, err := resolver.New(resolver.Config{
+				Registry:      reg,
+				Probe:         probeClient,
+				StrataVersion: version,
+			})
+			if err != nil {
+				return fmt.Errorf("freeze: %w", err)
 			}
-		}
-		fmt.Fprintf(os.Stderr,
-			"strata freeze: lockfile is not frozen — layers must be built and pushed to the registry before freezing\n")
-		if len(missing) > 0 {
-			fmt.Fprintf(os.Stderr, "missing SHA256 for: %s (%d layer", joinNames(missing), len(missing))
-			if len(missing) != 1 {
-				fmt.Fprintf(os.Stderr, "s")
+
+			lf, err := r.Resolve(context.Background(), profile)
+			if err != nil {
+				return fmt.Errorf("freeze: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, ")\n")
-		}
-		os.Exit(1)
+
+			if !lf.IsFrozen() {
+				var missing []string
+				for _, layer := range lf.Layers {
+					if layer.SHA256 == "" {
+						missing = append(missing, layer.ID)
+					}
+				}
+				fmt.Fprintf(os.Stderr, //nolint:errcheck
+					"strata freeze: lockfile is not frozen — layers must be built and pushed to the registry before freezing\n")
+				if len(missing) > 0 {
+					fmt.Fprintf(os.Stderr, "missing SHA256 for: %s (%d layer", joinNames(missing), len(missing)) //nolint:errcheck
+					if len(missing) != 1 {
+						fmt.Fprint(os.Stderr, "s") //nolint:errcheck
+					}
+					fmt.Fprintln(os.Stderr, ")") //nolint:errcheck
+				}
+				return errors.New("") // already printed; suppress double-print in main
+			}
+
+			outPath := resolveOutputPath(args[0], output, ".lock.yaml")
+			if err := writeYAML(outPath, lf); err != nil {
+				return err
+			}
+			fmt.Printf("frozen: %s\n", outPath)
+			return nil
+		},
 	}
 
-	outPath := resolveOutputPath(fs.Arg(0), *output, ".lock.yaml")
-	writeYAML(outPath, lf)
-	fmt.Printf("frozen: %s\n", outPath)
+	cmd.Flags().StringVarP(&output, "o", "o", "", "output lockfile path (default: <profile-basename>.lock.yaml)")
+	return cmd
 }
 
 // joinNames joins a slice of strings with ", " for human-readable output.

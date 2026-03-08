@@ -1,0 +1,164 @@
+package build
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"time"
+
+	"github.com/scttfrdmn/strata/internal/trust"
+	"github.com/scttfrdmn/strata/spec"
+)
+
+// PushRegistry is the narrow interface the pipeline needs from the registry.
+// Satisfied by *registry.S3Client. Defined here (consumer side) to enable
+// lightweight mock injection in pipeline tests.
+type PushRegistry interface {
+	PushLayer(ctx context.Context, manifest *spec.LayerManifest,
+		sqfsPath string, bundleJSON []byte) error
+}
+
+// Run executes the local build pipeline for a single recipe.
+//
+// Stages 2 (EC2 launch), 3 (overlay mount), and 11 (terminate) are skipped
+// in v0.9.0 — builds run on the local machine. Pass job.DryRun=true to
+// validate and print a summary without executing.
+//
+// reg may be nil when job.DryRun is true.
+func Run(
+	ctx context.Context,
+	job *Job,
+	recipe *Recipe,
+	reg PushRegistry,
+	executor Executor,
+	signer trust.Signer,
+) (*spec.LayerManifest, error) {
+	if err := job.Validate(); err != nil {
+		return nil, err
+	}
+
+	arch := job.Base.NormalizedArch()
+	manifest := recipe.Meta.ToLayerManifest(arch)
+
+	// DryRun path — validate and return a sentinel manifest.
+	if job.DryRun {
+		manifest.SHA256 = "dry-run"
+		manifest.RekorEntry = "dry-run"
+		fmt.Fprintf(os.Stderr, "dry-run: recipe:  %s@%s (%s/%s)\n",
+			recipe.Meta.Name, recipe.Meta.Version, recipe.Meta.Family, arch)
+		fmt.Fprintf(os.Stderr, "dry-run: script:  %s\n", recipe.BuildScriptPath)
+		return manifest, nil
+	}
+
+	if reg == nil {
+		return nil, fmt.Errorf("build: registry required for non-dry-run builds")
+	}
+
+	// Stage 1 — local (v0.9.0) builds use the system compiler; flag as bootstrap.
+	// v0.10.0 will mount build_requires layers and populate manifest.BuiltWith instead.
+	if len(recipe.Meta.BuildRequires) > 0 {
+		fmt.Fprintf(os.Stderr, "warning: build_requires are not mounted in v0.9.0 local path; layer will be marked bootstrap_build=true\n")
+	}
+	manifest.BootstrapBuild = true
+
+	// Stage 4 — create output dir, set env, execute build script.
+	outputDir, err := os.MkdirTemp("", "strata-build-*")
+	if err != nil {
+		return nil, fmt.Errorf("build: creating output dir: %w", err)
+	}
+	// outputDir is removed after squashfs is created (stage 5).
+
+	installPrefix := filepath.Join(outputDir, recipe.Meta.Name, recipe.Meta.Version)
+	if err := os.MkdirAll(installPrefix, 0o755); err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		return nil, fmt.Errorf("build: creating install prefix: %w", err)
+	}
+
+	env := []string{
+		"STRATA_PREFIX=" + outputDir,
+		"STRATA_INSTALL_PREFIX=" + installPrefix,
+		"STRATA_NCPUS=" + strconv.Itoa(runtime.NumCPU()),
+		"STRATA_ARCH=" + arch,
+		"STRATA_OUT=" + outputDir,
+	}
+	if err := executor.Execute(ctx, recipe.BuildScriptPath, env, outputDir); err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		return nil, fmt.Errorf("build: executing recipe: %w", err)
+	}
+
+	// Stage 8 — generate content manifest BEFORE removing outputDir.
+	contentManifest, err := GenerateContentManifest(outputDir, manifest.ID)
+	if err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		return nil, fmt.Errorf("build: generating content manifest: %w", err)
+	}
+	manifest.ContentManifest = contentManifest.Files
+
+	// Stage 5 — create squashfs, then free the output dir.
+	sqfsFile, err := os.CreateTemp("", "strata-layer-*.sqfs")
+	if err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		return nil, fmt.Errorf("build: creating sqfs temp file: %w", err)
+	}
+	sqfsPath := sqfsFile.Name()
+	sqfsFile.Close()          //nolint:errcheck
+	defer os.Remove(sqfsPath) //nolint:errcheck
+
+	if err := CreateSquashfs(ctx, outputDir, sqfsPath); err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		return nil, fmt.Errorf("build: creating squashfs: %w", err)
+	}
+	os.RemoveAll(outputDir) //nolint:errcheck
+
+	// Stage 6 — SHA256 of squashfs.
+	sha256hex, err := sha256HexFile(sqfsPath)
+	if err != nil {
+		return nil, fmt.Errorf("build: hashing sqfs: %w", err)
+	}
+	manifest.SHA256 = sha256hex
+
+	// Stage 7 — size of squashfs.
+	info, err := os.Stat(sqfsPath)
+	if err != nil {
+		return nil, fmt.Errorf("build: stating sqfs: %w", err)
+	}
+	manifest.Size = info.Size()
+
+	// Stage 9 — sign with cosign → Rekor.
+	manifest.RecipeSHA256, err = sha256HexFile(recipe.BuildScriptPath)
+	if err != nil {
+		return nil, fmt.Errorf("build: hashing build script: %w", err)
+	}
+	manifest.BuiltAt = time.Now().UTC()
+
+	annotations := map[string]string{
+		"strata.layer.name":          recipe.Meta.Name,
+		"strata.layer.version":       recipe.Meta.Version,
+		"strata.layer.family":        recipe.Meta.Family,
+		"strata.layer.arch":          arch,
+		"strata.layer.recipe_sha256": manifest.RecipeSHA256,
+	}
+	bundle, err := signer.Sign(ctx, sqfsPath, annotations)
+	if err != nil {
+		return nil, fmt.Errorf("build: signing layer: %w", err)
+	}
+
+	bundleJSON, err := bundle.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("build: marshaling bundle: %w", err)
+	}
+
+	if logIdx, ok := bundle.RekorLogIndex(); ok {
+		manifest.RekorEntry = strconv.FormatInt(logIdx, 10)
+	}
+
+	// Stage 10 — push to registry.
+	if err := reg.PushLayer(ctx, manifest, sqfsPath, bundleJSON); err != nil {
+		return nil, fmt.Errorf("build: pushing layer: %w", err)
+	}
+
+	return manifest, nil
+}

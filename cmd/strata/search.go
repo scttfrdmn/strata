@@ -2,39 +2,41 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io/fs"
-	"os"
 
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/strata/spec"
 )
 
-// runSearch implements "strata search [name] [--arch ...] [--family ...] [--formation]".
-//
-// Without --formation it prints a table of matching layers from the embedded
-// Tier 0 catalog. With --formation it lists formation definitions instead.
-func runSearch(args []string) {
-	fset := flag.NewFlagSet("search", flag.ExitOnError)
-	arch := fset.String("arch", "", "filter by architecture: x86_64 or arm64")
-	family := fset.String("family", "", "filter by OS family: rhel or debian")
-	formations := fset.Bool("formation", false, "list formations instead of layers")
-	fset.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: strata search [name] [--arch x86_64|arm64] [--family rhel|debian] [--formation]\n")
-		fset.PrintDefaults()
-	}
-	if err := fset.Parse(args); err != nil {
-		fatal("search: %v", err)
-	}
-	name := fset.Arg(0)
+func newSearchCmd() *cobra.Command {
+	var arch, family string
+	var formations bool
 
-	if *formations {
-		searchFormations(name)
-		return
+	cmd := &cobra.Command{
+		Use:   "search [name]",
+		Short: "Search the embedded layer/formation catalog",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			name := ""
+			if len(args) == 1 {
+				name = args[0]
+			}
+			if formations {
+				searchFormations(name)
+				return nil
+			}
+			searchLayers(name, arch, family)
+			return nil
+		},
 	}
-	searchLayers(name, *arch, *family)
+
+	cmd.Flags().StringVar(&arch, "arch", "", "filter by architecture: x86_64 or arm64")
+	cmd.Flags().StringVar(&family, "family", "", "filter by OS family: rhel or debian")
+	cmd.Flags().BoolVar(&formations, "formation", false, "list formations instead of layers")
+	return cmd
 }
 
 // searchLayers prints a table of layers matching the given filters.
@@ -42,7 +44,8 @@ func searchLayers(name, arch, family string) {
 	store := buildCatalog()
 	layers, err := store.ListLayers(context.Background(), name, arch, family)
 	if err != nil {
-		fatal("search: listing layers: %v", err)
+		fmt.Printf("search: listing layers: %v\n", err)
+		return
 	}
 	if len(layers) == 0 {
 		fmt.Println("no layers found")

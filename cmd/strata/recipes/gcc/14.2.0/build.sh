@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="13.2.0"
+VERSION="14.2.0"
 URL="https://ftp.gnu.org/gnu/gcc/gcc-${VERSION}/gcc-${VERSION}.tar.xz"
 
 curl -fsSL "${URL}" | tar -xJ
