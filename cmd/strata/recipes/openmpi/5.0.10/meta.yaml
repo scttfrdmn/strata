@@ -1,6 +1,6 @@
 name: openmpi
-version: "5.0.6"
-description: "Open MPI 5.0.6 — MPI-4.0 compliant message passing library."
+version: "5.0.10"
+description: "Open MPI 5.0.10 — MPI-4.0 compliant message passing library."
 family: rhel
 
 # Must be built inside a Strata environment containing gcc.
@@ -13,7 +13,7 @@ build_requires:
 
 provides:
   - name: openmpi
-    version: "5.0.6"
+    version: "5.0.10"
   - name: mpi
     version: "4.0"     # MPI standard version, not implementation version
 
@@ -23,4 +23,4 @@ runtime_requires:
   - name: gcc
     min_version: "13.0.0"  # links against libstdc++, libgfortran from same gcc
 
-install_layout: versioned  # installs to openmpi/5.0.6/ — coexistence with other MPI impls
+install_layout: versioned  # installs to openmpi/5.0.10/ — coexistence with other MPI impls

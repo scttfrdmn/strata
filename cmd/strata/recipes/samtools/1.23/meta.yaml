@@ -1,12 +1,12 @@
 name: samtools
-version: "1.21.0"
-description: "SAMtools read alignment processing tools version 1.21."
+version: "1.23"
+description: "SAMtools read alignment processing tools version 1.23."
 family: rhel
 provides:
   - name: samtools
-    version: "1.21.0"
+    version: "1.23"
   - name: htslib
-    version: "1.21.0"
+    version: "1.23"
 build_requires:
   - name: gcc
     min_version: "13"

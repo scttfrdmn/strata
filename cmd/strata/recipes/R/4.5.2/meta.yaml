@@ -1,10 +1,10 @@
 name: R
-version: "4.3.3"
-description: "R statistical computing language version 4.3.3."
+version: "4.5.2"
+description: "R statistical computing language version 4.5.2."
 family: rhel
 provides:
   - name: R
-    version: "4.3.3"
+    version: "4.5.2"
 build_requires:
   - name: gcc
     min_version: "13"

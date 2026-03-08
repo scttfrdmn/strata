@@ -4,7 +4,7 @@
 # invoking this script. Do NOT run this with the system compiler.
 set -euo pipefail
 
-VERSION="5.0.6"
+VERSION="5.0.10"
 URL="https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${VERSION}.tar.bz2"
 
 curl -fsSL "${URL}" | tar -xj
