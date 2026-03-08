@@ -16,7 +16,7 @@ import (
 
 func newBuildCmd() *cobra.Command {
 	var osFlag, arch, reg, key, amiID, instanceType, cacheDir string
-	var dryRun, ec2Flag bool
+	var dryRun, ec2Flag, noWait bool
 
 	cmd := &cobra.Command{
 		Use:   "build <recipe-dir>",
@@ -71,9 +71,9 @@ executing any build steps or requiring AWS credentials.`,
 				job.EnvResolver = &build.RegistryBuildEnvResolver{Registry: regClient}
 			}
 
-			// EC2 mode: upload recipe, launch instance, poll, terminate.
+			// EC2 mode: upload recipe, launch instance (poll if !noWait).
 			if ec2Flag && !dryRun {
-				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType)
+				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType, noWait)
 			}
 
 			var executor build.Executor
@@ -106,6 +106,7 @@ executing any build steps or requiring AWS credentials.`,
 	cmd.Flags().StringVar(&key, "key", "", "cosign key file or KMS URI (empty = keyless OIDC)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate and print plan without building")
 	cmd.Flags().BoolVar(&ec2Flag, "ec2", false, "run build on a fresh EC2 instance (required for Tier 1+ layers)")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false, "with --ec2: launch instance and return immediately without polling")
 	cmd.Flags().StringVar(&amiID, "ami", "", "EC2 AMI ID for the build instance (required with --ec2)")
 	cmd.Flags().StringVar(&instanceType, "instance-type", "", "EC2 instance type (default: c5.4xlarge for x86_64, c6g.4xlarge for arm64)")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "local cache dir for downloaded build env layers (default: $TMPDIR/strata-build-cache)")
@@ -113,7 +114,7 @@ executing any build steps or requiring AWS credentials.`,
 }
 
 // runBuildEC2 orchestrates a build on an EC2 instance.
-func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType string) error {
+func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType string, noWait bool) error {
 	if amiID == "" {
 		return fmt.Errorf("--ami is required for --ec2 builds")
 	}
@@ -147,6 +148,17 @@ func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg,
 	jobID := fmt.Sprintf("%s-%s-%s", recipe.Meta.Name, recipe.Meta.Version, normalizedArch)
 	fmt.Fprintf(os.Stderr, "ec2: launching build for %s@%s on %s (%s)\n",
 		recipe.Meta.Name, recipe.Meta.Version, amiID, instanceType)
+
+	if noWait {
+		instanceID, err := runner.LaunchBuildEC2(ctx, jobID, recipe, job)
+		if err != nil {
+			return fmt.Errorf("EC2 launch failed: %w", err)
+		}
+		fmt.Printf("launched: %s  recipe: %s@%s  arch: %s\n",
+			instanceID, recipe.Meta.Name, recipe.Meta.Version, normalizedArch)
+		fmt.Printf("monitor:  aws ec2 describe-instances --instance-ids %s --query 'Reservations[].Instances[].[Tags[?Key==`strata:build-status`].Value|[0],State.Name]' --output text\n", instanceID)
+		return nil
+	}
 
 	instanceID, err := runner.RunBuildEC2(ctx, jobID, recipe, job)
 	if err != nil {

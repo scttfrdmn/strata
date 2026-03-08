@@ -110,47 +110,46 @@ func newEC2RunnerWithAPIs(cfg EC2Config, ec2API ec2LaunchAPI, s3API s3PutAPI) *E
 	return &EC2Runner{cfg: cfg, ec2: ec2API, s3: s3API}
 }
 
-// RunBuildEC2 uploads the recipe to S3, launches an EC2 build instance,
-// polls for completion, and terminates the instance. Returns the instance
-// ID on success so the caller can fetch the resulting manifest from the
-// registry.
-//
-// The EC2 instance runs `strata build` with Stage 3 OverlayFS mounting
-// if the recipe declares build_requires. Instance self-terminates after
-// tagging strata:build-status=success|failed.
-func (r *EC2Runner) RunBuildEC2(ctx context.Context, jobID string, recipe *Recipe, job *Job) (instanceID string, err error) {
-	// Upload recipe files to S3 under build/jobs/<jobID>/recipe/.
+// LaunchBuildEC2 uploads the recipe to S3 and launches an EC2 build instance,
+// returning the instance ID immediately without waiting for the build to complete.
+// The instance self-terminates on success or self-stops on failure (for log
+// retrieval). Monitor progress via the strata:build-status tag.
+func (r *EC2Runner) LaunchBuildEC2(ctx context.Context, jobID string, recipe *Recipe, job *Job) (instanceID string, err error) {
 	if err := r.uploadRecipe(ctx, jobID, recipe); err != nil {
 		return "", fmt.Errorf("ec2runner: uploading recipe: %w", err)
 	}
-
-	// Generate user-data script.
 	userData, err := r.buildUserData(jobID, recipe, job)
 	if err != nil {
 		return "", fmt.Errorf("ec2runner: generating user-data: %w", err)
 	}
-
-	// Launch instance.
-	instanceID, err = r.launchInstance(ctx, userData)
+	instanceID, err = r.launchInstance(ctx, userData, recipe)
 	if err != nil {
 		return "", fmt.Errorf("ec2runner: launching instance: %w", err)
+	}
+	return instanceID, nil
+}
+
+// RunBuildEC2 launches a build instance and polls until completion, then
+// terminates it. For fire-and-forget launches, use LaunchBuildEC2.
+func (r *EC2Runner) RunBuildEC2(ctx context.Context, jobID string, recipe *Recipe, job *Job) (instanceID string, err error) {
+	instanceID, err = r.LaunchBuildEC2(ctx, jobID, recipe, job)
+	if err != nil {
+		return "", err
 	}
 
 	// Poll until build completes (success or failed).
 	if pollErr := r.pollUntilComplete(ctx, instanceID); pollErr != nil {
-		// Best-effort terminate on poll error.
 		_, _ = r.ec2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 			InstanceIds: []string{instanceID},
 		})
 		return instanceID, fmt.Errorf("ec2runner: build did not complete: %w", pollErr)
 	}
 
-	// Terminate the instance (it may already be stopped; TerminateInstances
-	// is idempotent for stopped instances).
+	// Best-effort terminate — on success the instance already self-terminated;
+	// on failure it self-stopped so we clean it up here.
 	if _, terr := r.ec2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 		InstanceIds: []string{instanceID},
 	}); terr != nil {
-		// Non-fatal — log but don't fail the build.
 		fmt.Fprintf(os.Stderr, "ec2runner: warning: terminating %s: %v\n", instanceID, terr)
 	}
 
@@ -251,7 +250,9 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 }
 
 // launchInstance runs a new EC2 instance with the given user-data script.
-func (r *EC2Runner) launchInstance(ctx context.Context, userData string) (string, error) {
+// The Name tag encodes the recipe so status queries are self-documenting.
+func (r *EC2Runner) launchInstance(ctx context.Context, userData string, recipe *Recipe) (string, error) {
+	name := fmt.Sprintf("strata-build-%s-%s-%s", recipe.Meta.Name, recipe.Meta.Version, r.cfg.BinaryArch)
 	input := &ec2.RunInstancesInput{
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
@@ -265,7 +266,9 @@ func (r *EC2Runner) launchInstance(ctx context.Context, userData string) (string
 			{
 				ResourceType: ec2types.ResourceTypeInstance,
 				Tags: []ec2types.Tag{
-					{Key: aws.String("Name"), Value: aws.String("strata-build")},
+					{Key: aws.String("Name"), Value: aws.String(name)},
+					{Key: aws.String("strata:recipe"), Value: aws.String(recipe.Meta.Name + "@" + recipe.Meta.Version)},
+					{Key: aws.String("strata:arch"), Value: aws.String(r.cfg.BinaryArch)},
 					{Key: aws.String("strata:build-status"), Value: aws.String("launching")},
 				},
 			},
@@ -274,7 +277,7 @@ func (r *EC2Runner) launchInstance(ctx context.Context, userData string) (string
 			{
 				DeviceName: aws.String("/dev/xvda"),
 				Ebs: &ec2types.EbsBlockDevice{
-					VolumeSize:          aws.Int32(40),
+					VolumeSize:          aws.Int32(60),
 					VolumeType:          ec2types.VolumeTypeGp3,
 					DeleteOnTermination: aws.Bool(true),
 				},
@@ -376,8 +379,8 @@ func ArchForEC2(normalizedArch string) string {
 }
 
 // ec2UserDataTmpl is the user-data script template for EC2 build instances.
-// The instance: downloads the strata binary, downloads the recipe from S3,
-// installs build tools, runs strata build, tags itself, and stops.
+// On success: rebuilds registry index, tags success, self-terminates.
+// On failure: tags failed, self-stops (instance kept for log retrieval).
 var ec2UserDataTmpl = template.Must(template.New("userdata").Parse(`#!/usr/bin/env bash
 set -uo pipefail
 LOG=/var/log/strata-build.log
@@ -391,13 +394,20 @@ INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
 REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data/placement/region)
 
+export AWS_DEFAULT_REGION="$REGION"
+
 tag() {
   aws ec2 create-tags --region "$REGION" --resources "$INSTANCE_ID" \
     --tags "Key=strata:build-status,Value=$1" || true
 }
 tag "running"
 
-fail() { tag "failed"; aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"; exit 1; }
+# On failure: tag + stop (keep instance so logs are accessible via SSM).
+fail() {
+  tag "failed"
+  aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
+  exit 1
+}
 
 # Install build tools (curl-minimal is pre-installed on AL2023; do not add curl)
 dnf install -y squashfs-tools || fail
@@ -407,9 +417,8 @@ aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/b
 chmod +x /usr/local/bin/strata
 
 # Download cosign (required for signing layers)
-COSIGN_ARCH="{{.BinaryArch}}"
 curl -fsSL \
-  "https://github.com/sigstore/cosign/releases/download/{{.CosignVersion}}/cosign-linux-${COSIGN_ARCH}" \
+  "https://github.com/sigstore/cosign/releases/download/{{.CosignVersion}}/cosign-linux-{{.BinaryArch}}" \
   -o /usr/local/bin/cosign || fail
 chmod +x /usr/local/bin/cosign
 
@@ -427,14 +436,14 @@ aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || f
 
 # Run build
 export COSIGN_PASSWORD=""
-export AWS_DEFAULT_REGION="$REGION"
-set -e
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
     --registry {{.RegistryURL}}{{.KeyFlag}}; then
+  # Rebuild registry index so the new layer is immediately discoverable.
+  strata index --registry {{.RegistryURL}} || true
   tag "success"
+  # Self-terminate on success — no need to keep the instance.
+  aws ec2 terminate-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
 else
-  tag "failed"
+  fail
 fi
-
-aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
 `))
