@@ -133,3 +133,90 @@ func cleanupSquash(points []string) {
 		_ = syscall.Unmount(points[i], syscall.MNT_DETACH)
 	}
 }
+
+// MountBuildEnv mounts the given squashfs layers as a read-only OverlayFS
+// build environment at a configurable base directory. Unlike Mount, which
+// uses the production /strata/* paths, MountBuildEnv uses paths under baseDir
+// so multiple build environments can coexist without conflicting with the
+// runtime overlay.
+//
+// Layout under baseDir:
+//
+//	layers/<id>  — squashfs mount point for each layer (read-only)
+//	upper        — tmpfs for ephemeral writes during build
+//	work         — OverlayFS internal work directory (tmpfs)
+//	merged       — merged view presented to the build script
+func MountBuildEnv(layers []LayerPath, baseDir string) (*Overlay, error) {
+	sorted := make([]LayerPath, len(layers))
+	copy(sorted, layers)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].MountOrder < sorted[j].MountOrder
+	})
+
+	layersDir := filepath.Join(baseDir, "layers")
+	upperDir := filepath.Join(baseDir, "upper")
+	workDir := filepath.Join(baseDir, "work")
+	mergedDir := filepath.Join(baseDir, "merged")
+
+	var squashPoints []string
+	for _, layer := range sorted {
+		mp := filepath.Join(layersDir, layer.ID)
+		if err := os.MkdirAll(mp, 0755); err != nil {
+			cleanupSquash(squashPoints)
+			return nil, fmt.Errorf("overlay: creating build env mount point for %q: %w", layer.ID, err)
+		}
+		if err := syscall.Mount(layer.Path, mp, "squashfs", syscall.MS_RDONLY, "loop"); err != nil {
+			cleanupSquash(squashPoints)
+			return nil, fmt.Errorf("overlay: mounting build env squashfs %q: %w", layer.ID, err)
+		}
+		squashPoints = append(squashPoints, mp)
+	}
+
+	if err := os.MkdirAll(upperDir, 0755); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: creating build env upper dir: %w", err)
+	}
+	if err := syscall.Mount("tmpfs", upperDir, "tmpfs", 0, "size=512m,mode=755"); err != nil {
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: mounting build env upper tmpfs: %w", err)
+	}
+
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: creating build env work dir: %w", err)
+	}
+	if err := syscall.Mount("tmpfs", workDir, "tmpfs", 0, "size=100m,mode=755"); err != nil {
+		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: mounting build env work tmpfs: %w", err)
+	}
+
+	// OverlayFS searches lowerdir left-to-right; highest MountOrder must appear first.
+	highestFirst := make([]string, len(squashPoints))
+	for i, p := range squashPoints {
+		highestFirst[len(squashPoints)-1-i] = p
+	}
+	lowerDir := strings.Join(highestFirst, ":")
+	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
+
+	if err := os.MkdirAll(mergedDir, 0755); err != nil {
+		_ = syscall.Unmount(workDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: creating build env merged dir: %w", err)
+	}
+	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, opts); err != nil {
+		_ = syscall.Unmount(workDir, syscall.MNT_DETACH)
+		_ = syscall.Unmount(upperDir, syscall.MNT_DETACH)
+		cleanupSquash(squashPoints)
+		return nil, fmt.Errorf("overlay: mounting build env OverlayFS: %w", err)
+	}
+
+	return &Overlay{
+		MergedPath:        mergedDir,
+		UpperDir:          upperDir,
+		WorkDir:           workDir,
+		squashMountPoints: squashPoints,
+	}, nil
+}

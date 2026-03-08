@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-08
+
+### Added
+- `internal/build/buildenv.go`: Stage 3 build environment resolver infrastructure
+  - `EnvLayer`: resolved build-requires layer with local `.sqfs` path and mount order
+  - `RegistryClient`: narrow interface (`ResolveLayer` + `FetchLayerSqfs`) satisfied by `*registry.S3Client`
+  - `EnvResolver`: interface for resolving `build_requires` to local squashfs files
+  - `RegistryBuildEnvResolver`: fetches manifests from registry, downloads `.sqfs` to cache dir
+  - `FakeBuildEnvResolver`: pre-configured layers for unit testing; never calls registry
+  - `defaultLayerCacheDir()`: `$TMPDIR/strata-build-cache`
+- `internal/build/buildenv_test.go`: 5 unit tests for resolver implementations
+- `internal/overlay/mount_linux.go`: `MountBuildEnv(layers []LayerPath, baseDir string)` new function
+  - Mounts squashfs layers + OverlayFS at configurable `baseDir` (not hardcoded `/strata/*`)
+  - Enables concurrent build environments without conflicting with runtime overlay
+- `internal/overlay/mount_stub.go`: `MountBuildEnv` stub returning `ErrNotSupported` on non-Linux
+- `internal/registry/s3client.go`: `FetchLayerSqfs` — downloads layer `.sqfs` to cache dir
+  - Atomic write with SHA256 verification before committing to cache
+  - Cache-hit returns existing file immediately without network call
+- `internal/build/pipeline.go`: Stage 3 OverlayFS build environment mounting
+  - `prepareStage3`: resolves and mounts `build_requires` layers; populates `manifest.BuiltWith`,
+    `manifest.BootstrapBuild`, `manifest.BuildEnvLockID`; returns cleanup func + env vars
+  - `buildEnvLockID`: SHA256 of YAML-serialized `BuiltWith` list for independent verification
+  - Bootstrap path: `job.EnvResolver == nil` or empty `build_requires` → `BootstrapBuild = true`
+  - Build env env vars: `PATH`, `LD_LIBRARY_PATH`, `STRATA_BUILD_ENV` pointing at merged dir
+- `internal/build/ec2runner.go`: EC2 build orchestrator
+  - `EC2Config`: region, AMI, instance type, subnet, security group, IAM profile, S3 URL, key ref
+  - `EC2Runner`: uploads recipe to S3, launches EC2 instance, polls `strata:build-status` tag, terminates
+  - `RunBuildEC2`: full lifecycle — upload → launch → poll → terminate; returns instance ID
+  - `ArchForEC2(normalizedArch)`: maps `x86_64`→`amd64`, `arm64`→`arm64` for binary filenames
+  - EC2 user-data template: IMDSv2, installs `squashfs-tools`, downloads strata binary + recipe,
+    runs `strata build`, tags instance success/failed, stops instance
+  - `ec2LaunchAPI` and `s3PutAPI` interfaces for mock injection in tests
+- `internal/build/ec2runner_test.go`: 6 unit tests with fake AWS APIs
+- `internal/build/catalog.go`: recipe catalog build planner
+  - `Plan`: topologically ordered build plan with parallel stages
+  - `PlanCatalog(recipesDir)`: discovers all recipes, resolves dependency graph, returns staged plan
+  - `topoSort`: Kahn's algorithm grouping nodes at same depth into parallel build stages
+- `cmd/strata/build.go`: added `--ec2`, `--ami`, `--instance-type`, `--cache-dir` flags
+  - EC2 mode: `runBuildEC2` uploads recipe, launches instance, polls, terminates
+  - Linux non-dry-run with `build_requires`: wires `RegistryBuildEnvResolver` into `job.EnvResolver`
+- `cmd/strata/build_catalog.go`: `strata build-catalog <recipes-dir>` subcommand
+  - Discovers all recipes; prints dependency-ordered build stages with parallel grouping
+  - Non-dry-run: prints `strata build` commands for each recipe in stage order
+  - Flags: `--os`, `--arch`, `--registry`, `--key`, `--dry-run`
+- `cmd/strata/main.go`: registered `build-catalog` subcommand; updated usage text
+
+### Changed
+- `internal/build/recipe.go`: added `EnvResolver EnvResolver` and `CacheDir string` to `Job` struct
+  - `EnvResolver`: nil = bootstrap mode (Tier 0); set by caller for Tier 1+ builds
+  - `CacheDir`: overrides default `$TMPDIR/strata-build-cache`
+
 ## [0.9.0] - 2026-03-08
 
 ### Added

@@ -37,7 +37,7 @@ func (s *FakeSigner) Sign(_ context.Context, artifactPath string, annotations ma
 			TlogEntries: []TlogEntry{
 				{
 					LogIndex:       fmt.Sprintf("%d", idx),
-					LogID:          "fake-rekor-log-id",
+					LogID:          LogID{KeyID: "fake-rekor-log-id"},
 					IntegratedTime: "0",
 				},
 			},

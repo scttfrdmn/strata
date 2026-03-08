@@ -7,7 +7,28 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
+
+// CosignToolVersion returns the version string of the cosign binary on PATH
+// (e.g. "v3.0.5"). Returns "unknown" if cosign is not found or the version
+// cannot be parsed. The result is suitable for recording in LayerManifest.
+func CosignToolVersion(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "cosign", "version").Output()
+	if err != nil {
+		return "unknown"
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "GitVersion:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return "unknown"
+}
 
 // CosignSigner implements Signer using the cosign CLI.
 // It requires cosign to be installed and available on PATH.
@@ -28,6 +49,11 @@ func (s *CosignSigner) Sign(ctx context.Context, artifactPath string, annotation
 	bundleFile.Close()          //nolint:errcheck
 	defer os.Remove(bundlePath) //nolint:errcheck
 
+	// cosign v3 dropped --annotations from sign-blob; annotations are recorded
+	// in manifest.yaml instead. The signing key, SHA256, and Rekor log entry
+	// provide all required provenance without embedded metadata.
+	_ = annotations
+
 	args := []string{
 		"sign-blob",
 		"--bundle", bundlePath,
@@ -35,9 +61,6 @@ func (s *CosignSigner) Sign(ctx context.Context, artifactPath string, annotation
 	}
 	if s.KeyRef != "" {
 		args = append(args, "--key", s.KeyRef)
-	}
-	for k, v := range annotations {
-		args = append(args, "--annotations", k+"="+v)
 	}
 	args = append(args, artifactPath)
 

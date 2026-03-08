@@ -48,22 +48,32 @@ type VerificationMaterial struct {
 	// TlogEntries are the Rekor transparency log entries for this bundle.
 	// Strata requires at least one entry (Rekor logging is mandatory).
 	TlogEntries []TlogEntry `json:"tlogEntries,omitempty"`
+
+	// TimestampVerificationData holds RFC3161 timestamps (cosign v3+).
+	TimestampVerificationData *TimestampVerificationData `json:"timestampVerificationData,omitempty"`
 }
 
 // RawMaterial holds a DER-encoded certificate or public key.
+// In cosign v3, key-based bundles use Hint instead of RawBytes.
 type RawMaterial struct {
-	RawBytes []byte `json:"rawBytes"`
+	RawBytes []byte `json:"rawBytes,omitempty"`
+	// Hint is the base64-encoded public key hint used by cosign v3 key-based bundles.
+	Hint string `json:"hint,omitempty"`
 }
 
 // TlogEntry is a single entry in the Rekor transparency log.
+// Field names and types match the cosign v3 bundle format (Sigstore protobuf JSON).
 type TlogEntry struct {
 	// LogIndex is the entry's position in the Rekor log. Used as the
 	// stable reference stored in LayerManifest.RekorEntry.
 	LogIndex string `json:"logIndex"`
 
-	// LogID is the SHA256 of the Rekor instance's public key, identifying
-	// which Rekor instance holds this entry.
-	LogID string `json:"logID"`
+	// LogID identifies the Rekor instance. In cosign v3 this is an object
+	// {"keyId": "<base64>"}, not a plain string.
+	LogID LogID `json:"logId"`
+
+	// KindVersion identifies the Rekor entry type (e.g. hashedrekord 0.0.1).
+	KindVersion *KindVersion `json:"kindVersion,omitempty"`
 
 	// IntegratedTime is the Unix timestamp (seconds) when Rekor accepted
 	// this entry.
@@ -76,11 +86,35 @@ type TlogEntry struct {
 	// InclusionPromise is the Rekor server's signed promise that this
 	// entry will be included in the log.
 	InclusionPromise *InclusionPromise `json:"inclusionPromise,omitempty"`
+
+	// InclusionProof is the Merkle inclusion proof (cosign v3+).
+	InclusionProof json.RawMessage `json:"inclusionProof,omitempty"`
+}
+
+// LogID identifies a Rekor instance by the SHA256 of its public key (cosign v3 format).
+type LogID struct {
+	KeyID string `json:"keyId"`
+}
+
+// KindVersion identifies the Rekor entry type and schema version.
+type KindVersion struct {
+	Kind    string `json:"kind"`
+	Version string `json:"version"`
 }
 
 // InclusionPromise is the Rekor server's signed timestamp promise.
 type InclusionPromise struct {
 	SignedEntryTimestamp []byte `json:"signedEntryTimestamp"`
+}
+
+// TimestampVerificationData holds RFC3161 timestamps included in cosign v3 bundles.
+type TimestampVerificationData struct {
+	RFC3161Timestamps []RFC3161Timestamp `json:"rfc3161Timestamps,omitempty"`
+}
+
+// RFC3161Timestamp is a signed RFC3161 timestamp token.
+type RFC3161Timestamp struct {
+	SignedTimestamp []byte `json:"signedTimestamp"`
 }
 
 // MessageSignature holds the signature over the artifact's content hash.

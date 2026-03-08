@@ -3,10 +3,13 @@ package registry
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -51,6 +54,11 @@ func NewS3Client(bucketURL string) (*S3Client, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("registry: loading AWS config: %w", err)
+	}
+	// Fall back to us-east-1 when no region is resolved from env/config/IMDS.
+	// All Strata registry resources live in us-east-1.
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
 	}
 	return &S3Client{bucket: bucket, s3: s3.NewFromConfig(cfg)}, nil
 }
@@ -356,6 +364,96 @@ func (c *S3Client) upsertLayerIndex(ctx context.Context, manifest *spec.LayerMan
 		return fmt.Errorf("registry: writing layer index: %w", err)
 	}
 	return nil
+}
+
+// FetchLayerSqfs downloads the squashfs file for manifest to cacheDir.
+// If cacheDir already contains a file named <sha256>.sqfs it is returned
+// immediately without re-downloading. The downloaded file is verified against
+// manifest.SHA256 before it is committed to the cache.
+func (c *S3Client) FetchLayerSqfs(ctx context.Context, manifest *spec.LayerManifest, cacheDir string) (string, error) {
+	cachePath := filepath.Join(cacheDir, manifest.SHA256+".sqfs")
+	if _, err := os.Stat(cachePath); err == nil {
+		return cachePath, nil
+	}
+
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", fmt.Errorf("registry: creating cache dir: %w", err)
+	}
+
+	bucket, key, ok := parseObjectURI(manifest.Source)
+	if !ok {
+		return "", fmt.Errorf("registry: invalid layer source URI %q for %q", manifest.Source, manifest.ID)
+	}
+
+	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return "", fmt.Errorf("registry: fetching squashfs for %q: %w", manifest.ID, err)
+	}
+	defer out.Body.Close() //nolint:errcheck
+
+	tmp, err := os.CreateTemp(cacheDir, "*.sqfs.tmp")
+	if err != nil {
+		return "", fmt.Errorf("registry: creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := io.Copy(tmp, out.Body); err != nil {
+		tmp.Close()        //nolint:errcheck
+		os.Remove(tmpPath) //nolint:errcheck
+		return "", fmt.Errorf("registry: writing squashfs for %q: %w", manifest.ID, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath) //nolint:errcheck
+		return "", fmt.Errorf("registry: closing squashfs temp file: %w", err)
+	}
+
+	actual, err := hexSHA256File(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath) //nolint:errcheck
+		return "", fmt.Errorf("registry: hashing squashfs for %q: %w", manifest.ID, err)
+	}
+	if actual != manifest.SHA256 {
+		os.Remove(tmpPath) //nolint:errcheck
+		return "", fmt.Errorf("registry: squashfs SHA256 mismatch for %q: manifest=%q actual=%q",
+			manifest.ID, manifest.SHA256, actual)
+	}
+
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		os.Remove(tmpPath) //nolint:errcheck
+		return "", fmt.Errorf("registry: caching squashfs for %q: %w", manifest.ID, err)
+	}
+	return cachePath, nil
+}
+
+// parseObjectURI splits an "s3://<bucket>/<key>" URI into bucket and key.
+// Returns (bucket, key, true) on success, ("", "", false) otherwise.
+func parseObjectURI(uri string) (bucket, key string, ok bool) {
+	rest, found := strings.CutPrefix(uri, "s3://")
+	if !found || rest == "" {
+		return "", "", false
+	}
+	idx := strings.IndexByte(rest, '/')
+	if idx < 0 {
+		return "", "", false
+	}
+	return rest[:idx], rest[idx+1:], true
+}
+
+// hexSHA256File returns the hex-encoded SHA256 of the named file.
+func hexSHA256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() //nolint:errcheck
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // RebuildIndex scans all layer manifests in the registry and rewrites

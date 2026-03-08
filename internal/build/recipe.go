@@ -188,6 +188,15 @@ type Job struct {
 	// DryRun skips the actual EC2 launch and squashfs creation.
 	// Used for recipe validation in CI without cloud access.
 	DryRun bool
+
+	// EnvResolver resolves and downloads build_requires layers for Stage 3
+	// (OverlayFS build environment). When nil, build_requires are not mounted
+	// and the layer is marked bootstrap_build=true (Tier 0 only).
+	EnvResolver EnvResolver
+
+	// CacheDir is the local directory for caching downloaded .sqfs files.
+	// Defaults to os.TempDir()/strata-build-cache when empty.
+	CacheDir string
 }
 
 // Validate checks that a Job is well-formed.

@@ -2,14 +2,15 @@
 //
 // Usage:
 //
-//	strata resolve  <profile.yaml> [-o output.lock.yaml] [--strata-version v]
-//	strata freeze   <profile.yaml> [-o output.lock.yaml]
-//	strata search   [name] [--arch x86_64|arm64] [--family rhel|debian] [--formation]
-//	strata verify   <lock.yaml> [--rekor]
-//	strata publish  <lock.yaml> [--token TOKEN] [--sandbox]
-//	strata probe    <os> <arch> [--registry s3://...]
-//	strata build    <recipe-dir> [options]
-//	strata index    --registry s3://...
+//	strata resolve        <profile.yaml> [-o output.lock.yaml] [--strata-version v]
+//	strata freeze         <profile.yaml> [-o output.lock.yaml]
+//	strata search         [name] [--arch x86_64|arm64] [--family rhel|debian] [--formation]
+//	strata verify         <lock.yaml> [--rekor]
+//	strata publish        <lock.yaml> [--token TOKEN] [--sandbox]
+//	strata probe          <os> <arch> [--registry s3://...]
+//	strata build          <recipe-dir> [options]
+//	strata build-catalog  <recipes-dir> [options]
+//	strata index          --registry s3://...
 //
 // See https://github.com/scttfrdmn/strata for documentation.
 package main
@@ -51,6 +52,7 @@ func newRootCmd() *cobra.Command {
 		newPublishCmd(),
 		newProbeCmd(),
 		newBuildCmd(),
+		newBuildCatalogCmd(),
 		newIndexCmd(),
 	)
 

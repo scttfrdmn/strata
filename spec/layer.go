@@ -26,9 +26,10 @@ type LayerManifest struct {
 	ContentManifest map[string]string `yaml:"content_manifest" json:"content_manifest"`
 
 	// Sigstore attestation — mandatory, populated at build time.
-	RekorEntry string `yaml:"rekor_entry" json:"rekor_entry"` // Rekor log entry ID
-	Bundle     string `yaml:"bundle" json:"bundle"`           // cosign bundle path in registry
-	SignedBy   string `yaml:"signed_by" json:"signed_by"`     // signing key identity
+	RekorEntry    string `yaml:"rekor_entry" json:"rekor_entry"`       // Rekor log entry ID
+	Bundle        string `yaml:"bundle" json:"bundle"`                 // cosign bundle path in registry
+	SignedBy      string `yaml:"signed_by" json:"signed_by"`           // signing key identity
+	CosignVersion string `yaml:"cosign_version" json:"cosign_version"` // e.g. "v3.0.5"
 
 	// Capability contract — what this layer provides and requires.
 	Provides []Capability  `yaml:"provides" json:"provides"`

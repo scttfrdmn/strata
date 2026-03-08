@@ -39,7 +39,7 @@ func TestBundleParseMarshal(t *testing.T) {
 			TlogEntries: []trust.TlogEntry{
 				{
 					LogIndex:       "42",
-					LogID:          "abc123",
+					LogID:          trust.LogID{KeyID: "abc123"},
 					IntegratedTime: "1234567890",
 				},
 			},
