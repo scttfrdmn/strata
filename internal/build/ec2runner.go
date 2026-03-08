@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -362,9 +363,8 @@ func parseObjectURI(uri string) (bucket, key string, ok bool) {
 }
 
 // encodeUserData base64-encodes a string for EC2 UserData.
-// AWS SDK v2 accepts the raw string (it encodes internally), so we just
-// return it directly.
-func encodeUserData(s string) string { return s }
+// The EC2 API requires base64-encoded UserData.
+func encodeUserData(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 // ArchForEC2 returns the binary arch suffix for the strata binary filename.
 // x86_64 → "amd64", arm64 → "arm64".
