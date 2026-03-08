@@ -3,8 +3,10 @@
 package overlay
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -44,7 +46,7 @@ func Mount(layers []LayerPath) (*Overlay, error) {
 			cleanupSquash(squashPoints)
 			return nil, fmt.Errorf("overlay: creating mount point for %q: %w", layer.ID, err)
 		}
-		if err := syscall.Mount(layer.Path, mp, "squashfs", syscall.MS_RDONLY, "loop"); err != nil {
+		if err := mountSquashfs(layer.Path, mp); err != nil {
 			cleanupSquash(squashPoints)
 			return nil, fmt.Errorf("overlay: mounting squashfs %q at %q: %w", layer.ID, mp, err)
 		}
@@ -132,6 +134,19 @@ func cleanupSquash(points []string) {
 	for i := len(points) - 1; i >= 0; i-- {
 		_ = syscall.Unmount(points[i], syscall.MNT_DETACH)
 	}
+}
+
+// mountSquashfs mounts a squashfs file at mp read-only via the userspace
+// mount(8) command. Using the syscall directly with "loop" data doesn't work
+// because the kernel mount(2) doesn't set up loop devices — only mount(8) does.
+func mountSquashfs(sqfsPath, mp string) error {
+	var stderr bytes.Buffer
+	cmd := exec.Command("mount", "-t", "squashfs", "-o", "loop,ro", sqfsPath, mp)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w: %s", err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	return nil
 }
 
 // MountBuildEnv mounts the given squashfs layers as a read-only OverlayFS
