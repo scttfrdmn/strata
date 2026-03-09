@@ -11,7 +11,7 @@ cd "pmix-${VERSION}"
   --prefix="${STRATA_INSTALL_PREFIX}" \
   --enable-shared \
   --disable-static \
-  --with-hwloc="${STRATA_BUILD_ENV:-/usr}" \
+  --with-hwloc="${STRATA_BUILD_ENV_HWLOC:-/usr}" \
   --with-pic
 
 make -j"${STRATA_NCPUS}"

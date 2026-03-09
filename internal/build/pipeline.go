@@ -273,6 +273,15 @@ func prepareStage3(ctx context.Context, job *Job, recipe *Recipe, arch string, m
 		"STRATA_BUILD_ENV=" + ov.MergedPath,
 	}
 
+	// Per-package env vars for --with-<pkg>= configure flags.
+	// STRATA_BUILD_ENV_<NAME> = <mergedPath>/<name>/<version>
+	// e.g. STRATA_BUILD_ENV_HWLOC=/tmp/strata-buildenv-XXX/merged/hwloc/2.11.2
+	for _, l := range layers {
+		base := ov.MergedPath + "/" + l.Manifest.Name + "/" + l.Manifest.Version
+		envKey := "STRATA_BUILD_ENV_" + strings.ToUpper(l.Manifest.Name)
+		vars = append(vars, envKey+"="+base)
+	}
+
 	return cleanupFn, vars, nil
 }
 

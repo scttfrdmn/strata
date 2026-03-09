@@ -7,18 +7,18 @@ URL="https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${VERSION}.tar.
 curl -fsSL "${URL}" | tar -xj
 cd "openmpi-${VERSION}"
 
-# STRATA_BUILD_ENV is the OverlayFS merged view of all build_requires layers.
-# ucx, hwloc, pmix, and libfabric are all mounted there.
+# Per-package build env vars point to each dependency's install prefix within
+# the OverlayFS merged view: STRATA_BUILD_ENV_<NAME>=<merged>/<name>/<version>
 ./configure \
   --prefix="${STRATA_INSTALL_PREFIX}" \
   --enable-mpi-fortran \
   --enable-shared \
   --disable-static \
   --with-pic \
-  --with-ucx="${STRATA_BUILD_ENV}" \
-  --with-hwloc="${STRATA_BUILD_ENV}" \
-  --with-pmix="${STRATA_BUILD_ENV}" \
-  --with-ofi="${STRATA_BUILD_ENV}" \
+  --with-ucx="${STRATA_BUILD_ENV_UCX}" \
+  --with-hwloc="${STRATA_BUILD_ENV_HWLOC}" \
+  --with-pmix="${STRATA_BUILD_ENV_PMIX}" \
+  --with-ofi="${STRATA_BUILD_ENV_LIBFABRIC}" \
   --with-verbs=no
 
 make -j"${STRATA_NCPUS}"
