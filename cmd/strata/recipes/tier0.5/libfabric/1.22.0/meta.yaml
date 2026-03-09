@@ -1,0 +1,19 @@
+name: libfabric
+version: "1.22.0"
+tier: "0.5"
+description: "libfabric 1.22.0 — OFI fabric layer for EFA, Slingshot, and InfiniBand."
+family: rhel
+
+build_requires:
+  - name: gcc
+    min_version: "13"
+
+provides:
+  - name: libfabric
+    version: "1.22.0"
+  - name: libfabric
+    version: "1"
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

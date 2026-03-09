@@ -4,24 +4,32 @@ tier: "0.5"
 description: "Open MPI 5.0.10 — MPI-4.0 compliant message passing library."
 family: rhel
 
-# Must be built inside a Strata environment containing gcc.
-# The pipeline mounts these layers via OverlayFS before invoking build.sh.
-# This is what makes the provenance chain valid: the exact gcc binary used
-# to compile OpenMPI is recorded in the layer manifest's built_with field.
 build_requires:
   - name: gcc
     min_version: "13"
+  - name: ucx
+    min_version: "1"
+  - name: hwloc
+    min_version: "2"
+  - name: pmix
+    min_version: "5"
+  - name: libfabric
+    min_version: "1"
 
 provides:
   - name: openmpi
     version: "5.0.10"
   - name: mpi
-    version: "4.0"     # MPI standard version, not implementation version
+    version: "4.0"
 
 runtime_requires:
   - name: glibc
     min_version: "2.34"
-  - name: gcc
-    min_version: "13"  # links against libstdc++, libgfortran from same gcc
-
-install_layout: versioned  # installs to openmpi/5.0.10/ — coexistence with other MPI impls
+  - name: ucx
+    min_version: "1"
+  - name: hwloc
+    min_version: "2"
+  - name: pmix
+    min_version: "5"
+  - name: libfabric
+    min_version: "1"
