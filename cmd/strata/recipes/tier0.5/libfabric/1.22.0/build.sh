@@ -11,9 +11,6 @@ cd "libfabric-${VERSION}"
   --prefix="${STRATA_INSTALL_PREFIX}" \
   --enable-shared \
   --disable-static \
-  --enable-efa \
-  --enable-tcp \
-  --enable-rxm \
   --with-pic
 
 make -j"${STRATA_NCPUS}"

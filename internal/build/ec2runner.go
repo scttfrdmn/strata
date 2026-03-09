@@ -421,7 +421,9 @@ dnf install -y \
   pcre2-devel libcurl-devel \
   libpng-devel libjpeg-turbo-devel \
   cairo-devel pango-devel \
-  libxml2-devel || fail
+  libxml2-devel \
+  libevent-devel \
+  hwloc-devel || fail
 
 # Download strata binary
 aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail
