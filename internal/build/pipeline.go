@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -105,6 +106,15 @@ func Run(
 			buildEnvCleanup()
 		}
 		return nil, fmt.Errorf("build: executing recipe: %w", err)
+	}
+
+	// Patch pkg-config .pc files to replace the random temp installPrefix with
+	// the squashfs-relative path "/<name>/<version>". Without this, consumers
+	// of the layer (e.g. openmpi building against pmix) get cflags/ldflags
+	// pointing at a temp directory that no longer exists on their machine.
+	sqfsRelPrefix := "/" + recipe.Meta.Name + "/" + recipe.Meta.Version
+	if pcErr := fixPkgConfigFiles(outputDir, installPrefix, sqfsRelPrefix); pcErr != nil {
+		fmt.Fprintf(os.Stderr, "build: warning: patching .pc files: %v\n", pcErr)
 	}
 
 	// Stage 8 — generate content manifest BEFORE removing outputDir.
@@ -276,13 +286,47 @@ func prepareStage3(ctx context.Context, job *Job, recipe *Recipe, arch string, m
 	// Per-package env vars for --with-<pkg>= configure flags.
 	// STRATA_BUILD_ENV_<NAME> = <mergedPath>/<name>/<version>
 	// e.g. STRATA_BUILD_ENV_HWLOC=/tmp/strata-buildenv-XXX/merged/hwloc/2.11.2
+	var pkgConfigDirs []string
 	for _, l := range layers {
 		base := ov.MergedPath + "/" + l.Manifest.Name + "/" + l.Manifest.Version
 		envKey := "STRATA_BUILD_ENV_" + strings.ToUpper(l.Manifest.Name)
 		vars = append(vars, envKey+"="+base)
+		pkgConfigDirs = append(pkgConfigDirs, base+"/lib/pkgconfig", base+"/share/pkgconfig")
 	}
 
+	// PKG_CONFIG_SYSROOT_DIR causes pkg-config to prepend the merged root to
+	// all absolute paths in .pc files. Combined with fixPkgConfigFiles() which
+	// rewrites /<name>/<version> as the prefix, this makes pkg-config return
+	// correct -I and -L flags pointing into the merged build environment.
+	vars = append(vars,
+		"PKG_CONFIG_PATH="+strings.Join(pkgConfigDirs, ":"),
+		"PKG_CONFIG_SYSROOT_DIR="+ov.MergedPath,
+	)
+
 	return cleanupFn, vars, nil
+}
+
+// fixPkgConfigFiles walks dir, finds all *.pc files, and replaces occurrences
+// of oldPrefix with newPrefix. This is called after a recipe's build script
+// runs to strip the random temp installPrefix (e.g. /tmp/strata-build-XXX/foo/1.0)
+// and replace it with the squashfs-relative path (e.g. /foo/1.0). Consumers
+// that mount the squashfs via OverlayFS then set PKG_CONFIG_SYSROOT_DIR to
+// their merged root, causing pkg-config to return correct -I/-L flags.
+func fixPkgConfigFiles(dir, oldPrefix, newPrefix string) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".pc") {
+			return err
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		fixed := strings.ReplaceAll(string(data), oldPrefix, newPrefix)
+		if fixed == string(data) {
+			return nil
+		}
+		return os.WriteFile(path, []byte(fixed), d.Type().Perm())
+	})
 }
 
 // buildEnvLockID returns the SHA256 of the YAML-serialized BuiltWith list.
