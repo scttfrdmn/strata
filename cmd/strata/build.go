@@ -103,7 +103,7 @@ executing any build steps or requiring AWS credentials.`,
 	cmd.Flags().StringVar(&arch, "arch", "x86_64", "target architecture (x86_64, arm64)")
 	cmd.Flags().StringVar(&reg, "registry", os.Getenv("STRATA_REGISTRY_URL"),
 		"S3 registry URL (e.g. s3://my-strata-bucket); overrides STRATA_REGISTRY_URL")
-	cmd.Flags().StringVar(&key, "key", "", "cosign key file or KMS URI (empty = keyless OIDC)")
+	cmd.Flags().StringVar(&key, "key", "awskms:///alias/strata-signing-key", "cosign key file or KMS URI (default: AWS KMS alias/strata-signing-key)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate and print plan without building")
 	cmd.Flags().BoolVar(&ec2Flag, "ec2", false, "run build on a fresh EC2 instance (required for Tier 1+ layers)")
 	cmd.Flags().BoolVar(&noWait, "no-wait", false, "with --ec2: launch instance and return immediately without polling")
