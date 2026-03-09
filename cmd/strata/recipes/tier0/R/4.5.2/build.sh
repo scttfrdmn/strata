@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION="4.5.2"
-URL="https://cran.r-project.org/src/base/R-${VERSION}.tar.gz"
+URL="https://cran.r-project.org/src/base/R-4/R-${VERSION}.tar.gz"
 
 curl -fsSL "${URL}" | tar -xz
 cd "R-${VERSION}"
