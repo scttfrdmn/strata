@@ -417,7 +417,11 @@ dnf groupinstall -y "Development Tools" || fail
 dnf install -y \
   squashfs-tools \
   openssl-devel zlib-devel bzip2-devel libffi-devel xz-devel \
-  ncurses-devel readline-devel sqlite-devel || fail
+  ncurses-devel readline-devel sqlite-devel \
+  pcre2-devel libcurl-devel \
+  libpng-devel libjpeg-turbo-devel \
+  cairo-devel pango-devel \
+  libxml2-devel || fail
 
 # Download strata binary
 aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail

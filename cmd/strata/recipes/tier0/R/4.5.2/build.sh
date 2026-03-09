@@ -12,6 +12,8 @@ cd "R-${VERSION}"
   --enable-R-shlib \
   --with-blas \
   --with-lapack \
+  --without-x \
+  --without-recommended-packages \
   --enable-memory-profiling
 
 make -j"${STRATA_NCPUS}"
