@@ -410,7 +410,8 @@ fail() {
 }
 
 # Install build tools (curl-minimal is pre-installed on AL2023; do not add curl)
-dnf install -y squashfs-tools || fail
+# glibc-devel provides crt1.o/crti.o required by any gcc built from source
+dnf install -y squashfs-tools glibc-devel || fail
 
 # Download strata binary
 aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail
