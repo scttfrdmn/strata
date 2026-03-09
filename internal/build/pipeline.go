@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -253,9 +254,22 @@ func prepareStage3(ctx context.Context, job *Job, recipe *Recipe, arch string, m
 		os.RemoveAll(baseDir) //nolint:errcheck
 	}
 
+	// Build PATH and LD_LIBRARY_PATH from the actual install layout of each
+	// layer. The pipeline installs each layer to <name>/<version>/ inside the
+	// squashfs root, so binaries live at <mergedPath>/<name>/<version>/bin/.
+	var pathDirs, ldDirs []string
+	for _, l := range layers {
+		base := ov.MergedPath + "/" + l.Manifest.Name + "/" + l.Manifest.Version
+		pathDirs = append(pathDirs, base+"/bin")
+		ldDirs = append(ldDirs, base+"/lib", base+"/lib64")
+	}
+	// Append system dirs as fallback.
+	pathDirs = append(pathDirs, "/usr/local/bin", "/usr/bin", "/bin")
+	ldDirs = append(ldDirs, "/usr/lib", "/usr/lib64")
+
 	vars := []string{
-		"PATH=" + ov.MergedPath + "/usr/local/bin:" + ov.MergedPath + "/usr/bin:/usr/local/bin:/usr/bin:/bin",
-		"LD_LIBRARY_PATH=" + ov.MergedPath + "/usr/lib:" + ov.MergedPath + "/usr/lib64",
+		"PATH=" + strings.Join(pathDirs, ":"),
+		"LD_LIBRARY_PATH=" + strings.Join(ldDirs, ":"),
 		"STRATA_BUILD_ENV=" + ov.MergedPath,
 	}
 
