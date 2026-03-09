@@ -41,15 +41,10 @@ traces back to a Tier 0 layer.
 | `rocm@6.0` | `rocm@6` | AMD GPU runtime |
 | `python@3.11`, `python@3.12` | `python@3.N` | CPython interpreter + pip |
 | `R@4.3`, `R@4.4` | `R@4.N` | R interpreter + base packages |
-| `miniforge@24.3` | `conda@24` | Conda base environment |
 
 Python and R belong here because compiled C extensions link against the interpreter
 ABI directly. Swapping Python 3.11 for 3.12 breaks `.so` extensions — same binary
 compatibility concern as swapping a compiler.
-
-`miniforge` belongs here because it is the root of the conda ecosystem: everything
-installed via `conda install` inside a layer traces back to a specific `miniforge`
-base environment.
 
 ---
 
@@ -133,6 +128,7 @@ that researchers run directly.
 | Bioinformatics | SAMtools, BLAST, BWA, GATK, bcftools |
 | Compiled Python | NumPy, SciPy, h5py, mpi4py |
 | Notebooks / publishing | JupyterLab, Quarto, RStudio Server |
+| Package managers | miniforge (conda + mamba) |
 
 Note on compiled Python packages: NumPy/SciPy link against BLAS at compile time,
 so their `built_with` chain is as deep as a Tier 1.0 layer's — but they are still
@@ -166,7 +162,7 @@ cmd/strata/recipes/
 ## Build Order
 
 ```
-Tier 0    gcc, LLVM, CUDA, Python, R, miniforge       ← parallel, no deps
+Tier 0    gcc, LLVM, CUDA, Python, R                   ← parallel, no deps
               │
 Tier 0.5  ucx, libfabric, pmix, hwloc                 ← parallel, deps on Tier 0
           openmpi, mpich, mvapich2                     ← after ucx+pmix+hwloc
@@ -180,6 +176,7 @@ Tier 1.5  petsc, trilinos, magma, slepc
               │
 Tier 2    gromacs, wrf, pytorch, samtools, ...
           numpy, scipy, h5py, mpi4py
+          miniforge, jupyterlab, quarto
 ```
 
 Within each tier, independent chains build in parallel. Across tiers, the DAG

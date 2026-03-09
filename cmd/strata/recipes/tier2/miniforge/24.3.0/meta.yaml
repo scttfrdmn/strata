@@ -1,6 +1,6 @@
 name: miniforge
 version: "24.3.0"
-tier: "0"
+tier: "2"
 description: "Miniforge conda distribution version 24.3.0 with mamba solver."
 family: rhel
 provides:
