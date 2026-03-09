@@ -409,9 +409,15 @@ fail() {
   exit 1
 }
 
-# Install build tools (curl-minimal is pre-installed on AL2023; do not add curl)
-# glibc-devel provides crt1.o/crti.o required by any gcc built from source
-dnf install -y squashfs-tools glibc-devel || fail
+# Install build toolchain. "Development Tools" group provides gcc, g++, make,
+# binutils, glibc-devel, and other essentials needed to compile from source.
+# squashfs-tools: mksquashfs to package the build output.
+# The -devel packages cover common recipe build deps (Python, R, OpenMPI, etc.).
+dnf groupinstall -y "Development Tools" || fail
+dnf install -y \
+  squashfs-tools \
+  openssl-devel zlib-devel bzip2-devel libffi-devel xz-devel \
+  ncurses-devel readline-devel sqlite-devel || fail
 
 # Download strata binary
 aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail
