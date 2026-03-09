@@ -59,6 +59,12 @@ type RecipeMeta struct {
 	// Description is optional human-readable context.
 	Description string `yaml:"description,omitempty"`
 
+	// Tier classifies where this layer sits in the dependency stack.
+	// See docs/layer-tier-structure.md for the invariants of each tier.
+	// Valid values: "0", "0.5", "1.0", "1.5", "2".
+	// Required; validated by Validate().
+	Tier string `yaml:"tier"`
+
 	// Provides is the list of capabilities this layer makes available.
 	// Written into LayerManifest.Provides at build time.
 	Provides []spec.Capability `yaml:"provides"`
@@ -77,6 +83,11 @@ type RecipeMeta struct {
 	Family string `yaml:"family"`
 }
 
+// validTiers is the set of accepted tier values.
+var validTiers = map[string]bool{
+	"0": true, "0.5": true, "1.0": true, "1.5": true, "2": true,
+}
+
 // Validate checks that a RecipeMeta is well-formed.
 func (m *RecipeMeta) Validate() error {
 	if m.Name == "" {
@@ -84,6 +95,9 @@ func (m *RecipeMeta) Validate() error {
 	}
 	if m.Version == "" {
 		return fmt.Errorf("recipe meta: version is required for %q", m.Name)
+	}
+	if !validTiers[m.Tier] {
+		return fmt.Errorf("recipe meta: %q has unsupported tier %q — supported: 0, 0.5, 1.0, 1.5, 2", m.Name, m.Tier)
 	}
 	if len(m.Provides) == 0 {
 		return fmt.Errorf("recipe meta: %q@%s must declare at least one provides entry", m.Name, m.Version)
@@ -96,6 +110,10 @@ func (m *RecipeMeta) Validate() error {
 		if p.Name == "" {
 			return fmt.Errorf("recipe meta: provides[%d] has empty name", i)
 		}
+	}
+	// Tier 0 invariant: no build_requires (bootstrap_build).
+	if m.Tier == "0" && len(m.BuildRequires) > 0 {
+		return fmt.Errorf("recipe meta: %q is tier 0 but has build_requires — tier 0 layers must use only the OS system compiler", m.Name)
 	}
 	return nil
 }

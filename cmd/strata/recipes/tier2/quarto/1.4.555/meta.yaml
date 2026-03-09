@@ -1,0 +1,11 @@
+name: quarto
+version: "1.4.555"
+tier: "2"
+description: "Quarto scientific and technical publishing system version 1.4.555."
+family: rhel
+provides:
+  - name: quarto
+    version: "1.4.555"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

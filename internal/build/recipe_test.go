@@ -29,6 +29,7 @@ func writeRecipe(t *testing.T, dir string, meta string) string {
 const validMeta = `
 name: openmpi
 version: 4.1.6
+tier: "0.5"
 description: Open MPI
 provides:
   - name: openmpi
@@ -108,6 +109,7 @@ func TestRecipeMetaValidation(t *testing.T) {
 			meta: build.RecipeMeta{
 				Name:    "python",
 				Version: "3.11.9",
+				Tier:    "0",
 				Provides: []spec.Capability{
 					{Name: "python", Version: "3.11.9"},
 				},
@@ -117,22 +119,41 @@ func TestRecipeMetaValidation(t *testing.T) {
 		},
 		{
 			name:    "missing name",
-			meta:    build.RecipeMeta{Version: "1.0", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
+			meta:    build.RecipeMeta{Version: "1.0", Tier: "0", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
 			wantErr: true,
 		},
 		{
 			name:    "missing version",
-			meta:    build.RecipeMeta{Name: "x", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
+			meta:    build.RecipeMeta{Name: "x", Tier: "0", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
+			wantErr: true,
+		},
+		{
+			name:    "missing tier",
+			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid tier",
+			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Tier: "3", Provides: []spec.Capability{{Name: "x"}}, Family: "rhel"},
+			wantErr: true,
+		},
+		{
+			name: "tier 0 with build_requires",
+			meta: build.RecipeMeta{
+				Name: "x", Version: "1.0", Tier: "0", Family: "rhel",
+				Provides:      []spec.Capability{{Name: "x"}},
+				BuildRequires: []spec.Requirement{{Name: "gcc", MinVersion: "13"}},
+			},
 			wantErr: true,
 		},
 		{
 			name:    "empty provides",
-			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Family: "rhel"},
+			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Tier: "0", Family: "rhel"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid family",
-			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Provides: []spec.Capability{{Name: "x"}}, Family: "windows"},
+			meta:    build.RecipeMeta{Name: "x", Version: "1.0", Tier: "0", Provides: []spec.Capability{{Name: "x"}}, Family: "windows"},
 			wantErr: true,
 		},
 		{
@@ -140,6 +161,7 @@ func TestRecipeMetaValidation(t *testing.T) {
 			meta: build.RecipeMeta{
 				Name:    "x",
 				Version: "1.0",
+				Tier:    "0",
 				Provides: []spec.Capability{
 					{Name: ""},
 				},

@@ -126,6 +126,7 @@ func TestPlanCatalog_TwoRecipes_NoDeps(t *testing.T) {
 	writeRecipe(t, dir, "gcc", "13.2.0", `
 name: gcc
 version: "13.2.0"
+tier: "0"
 family: rhel
 provides:
   - name: gcc
@@ -134,6 +135,7 @@ provides:
 	writeRecipe(t, dir, "python", "3.11.9", `
 name: python
 version: "3.11.9"
+tier: "0"
 family: rhel
 provides:
   - name: python
@@ -160,6 +162,7 @@ func TestPlanCatalog_WithDependency(t *testing.T) {
 	writeRecipe(t, dir, "gcc", "13.2.0", `
 name: gcc
 version: "13.2.0"
+tier: "0"
 family: rhel
 provides:
   - name: gcc
@@ -170,6 +173,7 @@ provides:
 	writeRecipe(t, dir, "openmpi", "4.1.6", `
 name: openmpi
 version: "4.1.6"
+tier: "0.5"
 family: rhel
 provides:
   - name: openmpi
@@ -200,6 +204,7 @@ func TestPlanCatalog_LatestVersionOnly(t *testing.T) {
 	writeRecipe(t, dir, "gcc", "13.2.0", `
 name: gcc
 version: "13.2.0"
+tier: "0"
 family: rhel
 provides:
   - name: gcc
@@ -208,6 +213,7 @@ provides:
 	writeRecipe(t, dir, "gcc", "14.2.0", `
 name: gcc
 version: "14.2.0"
+tier: "0"
 family: rhel
 provides:
   - name: gcc

@@ -24,8 +24,8 @@ var catalogFS embed.FS
 func buildCatalog() *registry.MemoryStore {
 	store := registry.NewMemoryStore()
 
-	// Walk recipes/<name>/<version>/meta.yaml → two LayerManifests (x86_64 + arm64).
-	entries, _ := fs.Glob(catalogFS, "recipes/*/*/meta.yaml")
+	// Walk recipes/<tier>/<name>/<version>/meta.yaml → two LayerManifests (x86_64 + arm64).
+	entries, _ := fs.Glob(catalogFS, "recipes/*/*/*/meta.yaml")
 	for _, path := range entries {
 		data, err := catalogFS.ReadFile(path)
 		if err != nil {

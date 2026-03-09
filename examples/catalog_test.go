@@ -14,56 +14,79 @@ import (
 // TestAllRecipesParse validates that every recipe directory under
 // cmd/strata/recipes/ has a well-formed meta.yaml and a build.sh that exists.
 // This acts as a catalog correctness gate: CI fails if any recipe is broken.
+//
+// Directory structure: recipes/<tier>/<name>/<version>/.
 func TestAllRecipesParse(t *testing.T) {
 	recipesRoot := filepath.Join("..", "cmd", "strata", "recipes")
 
-	// Walk two levels: <name>/<version>/
-	nameDirs, err := os.ReadDir(recipesRoot)
+	// Walk three levels: <tier>/<name>/<version>/
+	tierDirs, err := os.ReadDir(recipesRoot)
 	if err != nil {
 		t.Fatalf("reading recipes dir %q: %v", recipesRoot, err)
 	}
-	if len(nameDirs) == 0 {
-		t.Fatalf("no recipe name directories found under %q", recipesRoot)
+	if len(tierDirs) == 0 {
+		t.Fatalf("no tier directories found under %q", recipesRoot)
 	}
 
 	total := 0
-	for _, nameEntry := range nameDirs {
-		if !nameEntry.IsDir() {
+	for _, tierEntry := range tierDirs {
+		if !tierEntry.IsDir() {
 			continue
 		}
-		nameDir := filepath.Join(recipesRoot, nameEntry.Name())
+		tierDir := filepath.Join(recipesRoot, tierEntry.Name())
 
-		versionDirs, err := os.ReadDir(nameDir)
+		nameDirs, err := os.ReadDir(tierDir)
 		if err != nil {
-			t.Errorf("reading name dir %q: %v", nameDir, err)
+			t.Errorf("reading tier dir %q: %v", tierDir, err)
 			continue
 		}
 
-		for _, verEntry := range versionDirs {
-			if !verEntry.IsDir() {
+		for _, nameEntry := range nameDirs {
+			if !nameEntry.IsDir() {
 				continue
 			}
-			recipeDir := filepath.Join(nameDir, verEntry.Name())
-			total++
+			nameDir := filepath.Join(tierDir, nameEntry.Name())
 
-			t.Run(nameEntry.Name()+"/"+verEntry.Name(), func(t *testing.T) {
-				recipe, err := build.ParseRecipe(recipeDir)
-				if err != nil {
-					t.Fatalf("ParseRecipe(%q): %v", recipeDir, err)
+			versionDirs, err := os.ReadDir(nameDir)
+			if err != nil {
+				t.Errorf("reading name dir %q: %v", nameDir, err)
+				continue
+			}
+
+			for _, verEntry := range versionDirs {
+				if !verEntry.IsDir() {
+					continue
 				}
-				if recipe.Meta.Name == "" {
-					t.Error("Name is empty")
-				}
-				if recipe.Meta.Version == "" {
-					t.Error("Version is empty")
-				}
-				if len(recipe.Meta.Provides) == 0 {
-					t.Error("Provides is empty")
-				}
-				if recipe.Meta.Family == "" {
-					t.Error("Family is empty")
-				}
-			})
+				recipeDir := filepath.Join(nameDir, verEntry.Name())
+				total++
+
+				t.Run(tierEntry.Name()+"/"+nameEntry.Name()+"/"+verEntry.Name(), func(t *testing.T) {
+					recipe, err := build.ParseRecipe(recipeDir)
+					if err != nil {
+						t.Fatalf("ParseRecipe(%q): %v", recipeDir, err)
+					}
+					if recipe.Meta.Name == "" {
+						t.Error("Name is empty")
+					}
+					if recipe.Meta.Version == "" {
+						t.Error("Version is empty")
+					}
+					if recipe.Meta.Tier == "" {
+						t.Error("Tier is empty")
+					}
+					if len(recipe.Meta.Provides) == 0 {
+						t.Error("Provides is empty")
+					}
+					if recipe.Meta.Family == "" {
+						t.Error("Family is empty")
+					}
+					// Structural invariant: directory tier must match meta.yaml tier field.
+					if recipe.Meta.Tier != tierEntry.Name()[len("tier"):] {
+						t.Errorf("tier mismatch: directory is %q but meta.yaml declares tier %q",
+							tierEntry.Name(), recipe.Meta.Tier)
+					}
+				})
+			}
 		}
 	}
 
