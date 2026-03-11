@@ -55,7 +55,7 @@ func Run(
 		manifest.SHA256 = "dry-run"
 		manifest.RekorEntry = "dry-run"
 		fmt.Fprintf(os.Stderr, "dry-run: recipe:  %s@%s (%s/%s)\n",
-			recipe.Meta.Name, recipe.Meta.Version, recipe.Meta.Family, arch)
+			recipe.Meta.Name, recipe.Meta.Version, recipe.Meta.ABI, arch)
 		fmt.Fprintf(os.Stderr, "dry-run: script:  %s\n", recipe.BuildScriptPath)
 		return manifest, nil
 	}
@@ -65,7 +65,7 @@ func Run(
 	}
 
 	// Stage 3 — resolve and mount build_requires via OverlayFS if an EnvResolver
-	// is configured. Falls back to bootstrap mode (Tier 0) when absent.
+	// is configured. Falls back to bootstrap mode (core tier) when absent.
 	baseEnv := []string{
 		"STRATA_NCPUS=" + strconv.Itoa(runtime.NumCPU()),
 		"STRATA_ARCH=" + arch,
@@ -86,7 +86,12 @@ func Run(
 	}
 	// outputDir is removed after squashfs is created (stage 5).
 
-	installPrefix := filepath.Join(outputDir, recipe.Meta.Name, recipe.Meta.Version)
+	var installPrefix string
+	if recipe.Meta.InstallLayout == "flat" {
+		installPrefix = outputDir
+	} else {
+		installPrefix = filepath.Join(outputDir, recipe.Meta.Name, recipe.Meta.Version)
+	}
 	if err := os.MkdirAll(installPrefix, 0o755); err != nil {
 		os.RemoveAll(outputDir) //nolint:errcheck
 		if buildEnvCleanup != nil {
@@ -112,9 +117,21 @@ func Run(
 	// the squashfs-relative path "/<name>/<version>". Without this, consumers
 	// of the layer (e.g. openmpi building against pmix) get cflags/ldflags
 	// pointing at a temp directory that no longer exists on their machine.
-	sqfsRelPrefix := "/" + recipe.Meta.Name + "/" + recipe.Meta.Version
-	if pcErr := fixPkgConfigFiles(outputDir, installPrefix, sqfsRelPrefix); pcErr != nil {
-		fmt.Fprintf(os.Stderr, "build: warning: patching .pc files: %v\n", pcErr)
+	// Skip for flat layout — the install prefix is the squashfs root itself.
+	if recipe.Meta.InstallLayout != "flat" {
+		sqfsRelPrefix := "/" + recipe.Meta.Name + "/" + recipe.Meta.Version
+		if pcErr := fixPkgConfigFiles(outputDir, installPrefix, sqfsRelPrefix); pcErr != nil {
+			fmt.Fprintf(os.Stderr, "build: warning: patching .pc files: %v\n", pcErr)
+		}
+	}
+
+	// Generate Lmod modulefile — non-fatal, must not block the build.
+	if recipe.Meta.InstallLayout != "flat" {
+		if mfErr := GenerateModulefile(outputDir, installPrefix, &recipe.Meta); mfErr != nil {
+			fmt.Fprintf(os.Stderr, "build: warning: generating modulefile: %v\n", mfErr)
+		} else {
+			manifest.HasModulefile = true
+		}
 	}
 
 	// Stage 8 — generate content manifest BEFORE removing outputDir.
@@ -172,7 +189,7 @@ func Run(
 	annotations := map[string]string{
 		"strata.layer.name":          recipe.Meta.Name,
 		"strata.layer.version":       recipe.Meta.Version,
-		"strata.layer.family":        recipe.Meta.Family,
+		"strata.layer.abi":           recipe.Meta.ABI,
 		"strata.layer.arch":          arch,
 		"strata.layer.recipe_sha256": manifest.RecipeSHA256,
 	}
@@ -207,7 +224,7 @@ func Run(
 //   - err: non-nil if resolution or mounting failed
 //
 // When job.EnvResolver is nil or recipe.Meta.BuildRequires is empty, the layer
-// is classified as a bootstrap build (Tier 0): manifest.BootstrapBuild = true
+// is classified as a bootstrap build (core tier): manifest.BootstrapBuild = true
 // and cleanup/envVars are both nil.
 func prepareStage3(ctx context.Context, job *Job, recipe *Recipe, arch string, manifest *spec.LayerManifest) (cleanup func(), envVars []string, err error) {
 	if job.EnvResolver == nil || len(recipe.Meta.BuildRequires) == 0 {
@@ -220,7 +237,7 @@ func prepareStage3(ctx context.Context, job *Job, recipe *Recipe, arch string, m
 		cacheDir = defaultLayerCacheDir()
 	}
 
-	layers, err := job.EnvResolver.Resolve(ctx, recipe.Meta.BuildRequires, arch, recipe.Meta.Family, cacheDir)
+	layers, err := job.EnvResolver.Resolve(ctx, recipe.Meta.BuildRequires, arch, recipe.Meta.ABI, cacheDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build: resolving build environment: %w", err)
 	}

@@ -111,12 +111,12 @@ func (m *mockS3) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*
 }
 
 // layerManifest is a helper to build a *spec.LayerManifest for tests.
-func layerManifest(name, version, arch, family string) *spec.LayerManifest {
+func layerManifest(name, version, arch, abi string) *spec.LayerManifest {
 	return &spec.LayerManifest{
 		Name:    name,
 		Version: version,
 		Arch:    arch,
-		Family:  family,
+		ABI:     abi,
 	}
 }
 
@@ -125,12 +125,12 @@ func layerManifest(name, version, arch, family string) *spec.LayerManifest {
 func TestResolveLayer_ReturnsNewest(t *testing.T) {
 	mock := newMockS3()
 	for _, ver := range []string{"3.11.7", "3.11.9", "3.11.8"} {
-		mock.put("layers/rhel/x86_64/python/"+ver+"/manifest.yaml",
-			layerManifest("python", ver, "x86_64", "rhel"))
+		mock.put("layers/linux-gnu-2.34/x86_64/python/"+ver+"/manifest.yaml",
+			layerManifest("python", ver, "x86_64", "linux-gnu-2.34"))
 	}
 	c := newS3ClientWithAPI("bucket", mock)
 
-	m, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "rhel")
+	m, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "linux-gnu-2.34")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,12 +142,12 @@ func TestResolveLayer_ReturnsNewest(t *testing.T) {
 func TestResolveLayer_VersionPrefixFilter(t *testing.T) {
 	mock := newMockS3()
 	for _, ver := range []string{"3.11.9", "3.12.1"} {
-		mock.put("layers/rhel/x86_64/python/"+ver+"/manifest.yaml",
-			layerManifest("python", ver, "x86_64", "rhel"))
+		mock.put("layers/linux-gnu-2.34/x86_64/python/"+ver+"/manifest.yaml",
+			layerManifest("python", ver, "x86_64", "linux-gnu-2.34"))
 	}
 	c := newS3ClientWithAPI("bucket", mock)
 
-	m, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "rhel")
+	m, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "linux-gnu-2.34")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestResolveLayer_VersionPrefixFilter(t *testing.T) {
 
 func TestResolveLayer_NotFound(t *testing.T) {
 	c := newS3ClientWithAPI("bucket", newMockS3())
-	_, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "rhel")
+	_, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "linux-gnu-2.34")
 	if !IsNotFound(err) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -166,11 +166,11 @@ func TestResolveLayer_NotFound(t *testing.T) {
 
 func TestResolveLayer_VersionPrefixNoMatch(t *testing.T) {
 	mock := newMockS3()
-	mock.put("layers/rhel/x86_64/python/3.12.1/manifest.yaml",
-		layerManifest("python", "3.12.1", "x86_64", "rhel"))
+	mock.put("layers/linux-gnu-2.34/x86_64/python/3.12.1/manifest.yaml",
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"))
 	c := newS3ClientWithAPI("bucket", mock)
 
-	_, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "rhel")
+	_, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "linux-gnu-2.34")
 	if !IsNotFound(err) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -224,9 +224,9 @@ func TestGetBaseCapabilities_NotFoundBeforeStore(t *testing.T) {
 func TestStoreAndGetBaseCapabilities_RoundTrip(t *testing.T) {
 	c := newS3ClientWithAPI("bucket", newMockS3())
 	caps := &spec.BaseCapabilities{
-		AMIID:  "ami-abc123",
-		Arch:   "x86_64",
-		Family: "rhel",
+		AMIID: "ami-abc123",
+		Arch:  "x86_64",
+		ABI:   "linux-gnu-2.34",
 	}
 
 	if err := c.StoreBaseCapabilities(context.Background(), caps); err != nil {
@@ -250,9 +250,9 @@ func TestStoreAndGetBaseCapabilities_RoundTrip(t *testing.T) {
 func TestListLayers_FilterByName(t *testing.T) {
 	mock := newMockS3()
 	idx := LayerIndex{Layers: []*spec.LayerManifest{
-		layerManifest("python", "3.12.1", "x86_64", "rhel"),
-		layerManifest("python", "3.11.9", "x86_64", "rhel"),
-		layerManifest("gcc", "13.2.0", "x86_64", "rhel"),
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.11.9", "x86_64", "linux-gnu-2.34"),
+		layerManifest("gcc", "13.2.0", "x86_64", "linux-gnu-2.34"),
 	}}
 	mock.put("index/layers.yaml", idx)
 	c := newS3ClientWithAPI("bucket", mock)
@@ -273,8 +273,8 @@ func TestListLayers_FilterByName(t *testing.T) {
 func TestListLayers_FilterByArch(t *testing.T) {
 	mock := newMockS3()
 	idx := LayerIndex{Layers: []*spec.LayerManifest{
-		layerManifest("python", "3.12.1", "x86_64", "rhel"),
-		layerManifest("python", "3.12.1", "arm64", "rhel"),
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.12.1", "arm64", "linux-gnu-2.34"),
 	}}
 	mock.put("index/layers.yaml", idx)
 	c := newS3ClientWithAPI("bucket", mock)
@@ -291,18 +291,18 @@ func TestListLayers_FilterByArch(t *testing.T) {
 func TestListLayers_FilterByFamily(t *testing.T) {
 	mock := newMockS3()
 	idx := LayerIndex{Layers: []*spec.LayerManifest{
-		layerManifest("python", "3.12.1", "x86_64", "rhel"),
-		layerManifest("python", "3.12.1", "x86_64", "debian"),
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.35"),
 	}}
 	mock.put("index/layers.yaml", idx)
 	c := newS3ClientWithAPI("bucket", mock)
 
-	layers, err := c.ListLayers(context.Background(), "", "", "debian")
+	layers, err := c.ListLayers(context.Background(), "", "", "linux-gnu-2.35")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(layers) != 1 || layers[0].Family != "debian" {
-		t.Errorf("expected 1 debian layer, got %v", layers)
+	if len(layers) != 1 || layers[0].ABI != "linux-gnu-2.35" {
+		t.Errorf("expected 1 linux-gnu-2.35 layer, got %v", layers)
 	}
 }
 
@@ -317,7 +317,7 @@ func TestListLayers_EmptyIndex(t *testing.T) {
 func TestListLayers_NoMatchReturnsEmpty(t *testing.T) {
 	mock := newMockS3()
 	idx := LayerIndex{Layers: []*spec.LayerManifest{
-		layerManifest("gcc", "13.2.0", "x86_64", "rhel"),
+		layerManifest("gcc", "13.2.0", "x86_64", "linux-gnu-2.34"),
 	}}
 	mock.put("index/layers.yaml", idx)
 	c := newS3ClientWithAPI("bucket", mock)
@@ -363,7 +363,7 @@ func TestPushLayer_UploadsThreeObjects(t *testing.T) {
 
 	manifest := &spec.LayerManifest{
 		ID: "python-3.11.9-rhel-x86_64", Name: "python", Version: "3.11.9",
-		Arch: "x86_64", Family: "rhel",
+		Arch: "x86_64", ABI: "linux-gnu-2.34",
 	}
 	sqfsPath := tempSqfsFile(t)
 
@@ -371,7 +371,7 @@ func TestPushLayer_UploadsThreeObjects(t *testing.T) {
 		t.Fatalf("PushLayer: %v", err)
 	}
 
-	prefix := "layers/rhel/x86_64/python/3.11.9/"
+	prefix := "layers/linux-gnu-2.34/x86_64/python/3.11.9/"
 	for _, key := range []string{prefix + "layer.sqfs", prefix + "manifest.yaml", prefix + "bundle.json"} {
 		if _, ok := mock.objects[key]; !ok {
 			t.Errorf("expected key %q to be present in mock S3", key)
@@ -385,7 +385,7 @@ func TestPushLayer_UpdatesIndex(t *testing.T) {
 
 	manifest := &spec.LayerManifest{
 		ID: "gcc-13.2.0-rhel-x86_64", Name: "gcc", Version: "13.2.0",
-		Arch: "x86_64", Family: "rhel",
+		Arch: "x86_64", ABI: "linux-gnu-2.34",
 	}
 	sqfsPath := tempSqfsFile(t)
 
@@ -412,7 +412,7 @@ func TestPushLayer_UpsertReplacesExisting(t *testing.T) {
 
 	manifest := &spec.LayerManifest{
 		ID: "gcc-13.2.0-rhel-x86_64", Name: "gcc", Version: "13.2.0",
-		Arch: "x86_64", Family: "rhel", SHA256: "aaa",
+		Arch: "x86_64", ABI: "linux-gnu-2.34", SHA256: "aaa",
 	}
 	sqfsPath := tempSqfsFile(t)
 
@@ -445,12 +445,12 @@ func TestRebuildIndex_ScansAllManifests(t *testing.T) {
 	c := newS3ClientWithAPI("bucket", mock)
 
 	manifests := []*spec.LayerManifest{
-		{ID: "gcc-13.2.0-rhel-x86_64", Name: "gcc", Version: "13.2.0", Arch: "x86_64", Family: "rhel"},
-		{ID: "python-3.11.9-rhel-x86_64", Name: "python", Version: "3.11.9", Arch: "x86_64", Family: "rhel"},
-		{ID: "python-3.11.9-rhel-arm64", Name: "python", Version: "3.11.9", Arch: "arm64", Family: "rhel"},
+		{ID: "gcc-13.2.0-rhel-x86_64", Name: "gcc", Version: "13.2.0", Arch: "x86_64", ABI: "linux-gnu-2.34"},
+		{ID: "python-3.11.9-rhel-x86_64", Name: "python", Version: "3.11.9", Arch: "x86_64", ABI: "linux-gnu-2.34"},
+		{ID: "python-3.11.9-rhel-arm64", Name: "python", Version: "3.11.9", Arch: "arm64", ABI: "linux-gnu-2.34"},
 	}
 	for _, m := range manifests {
-		key := "layers/" + m.Family + "/" + m.Arch + "/" + m.Name + "/" + m.Version + "/manifest.yaml"
+		key := "layers/" + m.ABI + "/" + m.Arch + "/" + m.Name + "/" + m.Version + "/manifest.yaml"
 		mock.put(key, m)
 	}
 
@@ -494,9 +494,9 @@ func TestS3ClientIntegration(t *testing.T) {
 
 	// Round-trip a BaseCapabilities record.
 	caps := &spec.BaseCapabilities{
-		AMIID:  "ami-integration-test",
-		Arch:   "x86_64",
-		Family: "rhel",
+		AMIID: "ami-integration-test",
+		Arch:  "x86_64",
+		ABI:   "linux-gnu-2.34",
 	}
 	ctx := context.Background()
 	if err := c.StoreBaseCapabilities(ctx, caps); err != nil {

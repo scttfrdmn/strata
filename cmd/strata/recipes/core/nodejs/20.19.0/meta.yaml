@@ -1,0 +1,19 @@
+name: nodejs
+version: "20.19.0"
+tier: core
+description: "Node.js 20.19.0 LTS — JavaScript runtime for JupyterLab extensions and Quarto rendering."
+abi: linux-gnu-2.34
+provides:
+  - name: nodejs
+    version: "20.19.0"
+  - name: npm
+    version: "10.8.2"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: NODEJS_HOME
+    path: ""
+  - var: NODE_PATH
+    path: ""

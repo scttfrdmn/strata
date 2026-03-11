@@ -41,7 +41,7 @@ cache the result in the S3 registry.
 			}
 
 			fmt.Printf("  AMI:    %s\n", amiID)
-			fmt.Printf("  Family: %s\n", caps.Family)
+			fmt.Printf("  ABI:    %s\n", caps.ABI)
 			fmt.Printf("  Arch:   %s\n", caps.Arch)
 			fmt.Printf("  OS:     %s\n", caps.OS)
 			fmt.Printf("  Provides:\n")

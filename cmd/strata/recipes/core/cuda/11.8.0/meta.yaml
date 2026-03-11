@@ -1,0 +1,19 @@
+name: cuda
+version: "11.8.0"
+tier: core
+description: "NVIDIA CUDA Toolkit 11.8.0 for GPU-accelerated computing."
+abi: linux-gnu-2.34
+provides:
+  - name: cuda
+    version: "11.8.0"
+  - name: nvcc
+    version: "11.8.0"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: CUDA_HOME
+    path: ""
+  - var: CUDA_PATH
+    path: ""

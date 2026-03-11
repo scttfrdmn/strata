@@ -26,8 +26,8 @@ type EnvLayer struct {
 // RegistryBuildEnvResolver. Satisfied by *registry.S3Client.
 type RegistryClient interface {
 	// ResolveLayer returns the highest-versioned layer manifest matching name,
-	// versionPrefix, arch, and family.
-	ResolveLayer(ctx context.Context, name, versionPrefix, arch, family string) (*spec.LayerManifest, error)
+	// versionPrefix, arch, and abi.
+	ResolveLayer(ctx context.Context, name, versionPrefix, arch, abi string) (*spec.LayerManifest, error)
 
 	// FetchLayerSqfs downloads the squashfs file for manifest to cacheDir and
 	// returns the local file path. Cache hit returns the existing file immediately.
@@ -38,10 +38,10 @@ type RegistryClient interface {
 // ready for OverlayFS mounting as a build environment. This is Stage 3 of the
 // build pipeline.
 type EnvResolver interface {
-	// Resolve fetches manifests matching buildRequires (arch + family) from the
+	// Resolve fetches manifests matching buildRequires (arch + abi) from the
 	// registry, downloads their squashfs files to cacheDir, and returns the
 	// resolved layers in mount order (lowest-tier layer first).
-	Resolve(ctx context.Context, buildRequires []spec.Requirement, arch, family, cacheDir string) ([]EnvLayer, error)
+	Resolve(ctx context.Context, buildRequires []spec.Requirement, arch, abi, cacheDir string) ([]EnvLayer, error)
 }
 
 // RegistryBuildEnvResolver resolves and downloads build environment layers from
@@ -53,14 +53,14 @@ type RegistryBuildEnvResolver struct {
 // Resolve fetches and downloads each build_requires layer in order.
 // The returned layers are indexed by their position in buildRequires; the
 // first requirement gets MountOrder=1 (lowest in the OverlayFS stack).
-func (r *RegistryBuildEnvResolver) Resolve(ctx context.Context, buildRequires []spec.Requirement, arch, family, cacheDir string) ([]EnvLayer, error) {
+func (r *RegistryBuildEnvResolver) Resolve(ctx context.Context, buildRequires []spec.Requirement, arch, abi, cacheDir string) ([]EnvLayer, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("buildenv: creating cache dir %q: %w", cacheDir, err)
 	}
 
 	result := make([]EnvLayer, 0, len(buildRequires))
 	for i, req := range buildRequires {
-		m, err := r.Registry.ResolveLayer(ctx, req.Name, req.MinVersion, arch, family)
+		m, err := r.Registry.ResolveLayer(ctx, req.Name, req.MinVersion, arch, abi)
 		if err != nil {
 			return nil, fmt.Errorf("buildenv: resolving build_requires %q: %w", req.String(), err)
 		}

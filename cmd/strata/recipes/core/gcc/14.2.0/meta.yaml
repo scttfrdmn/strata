@@ -1,0 +1,25 @@
+name: gcc
+version: "14.2.0"
+tier: core
+description: "GNU Compiler Collection 14.2.0 — C, C++, and Fortran compilers."
+abi: linux-gnu-2.34
+provides:
+  - name: gcc
+    version: "14.2.0"
+  - name: gfortran
+    version: "14.2.0"
+  - name: g++
+    version: "14.2.0"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: GCC_HOME
+    path: ""
+  - var: CC
+    path: "bin/gcc"
+  - var: CXX
+    path: "bin/g++"
+  - var: FC
+    path: "bin/gfortran"

@@ -66,9 +66,9 @@ func TestRegistryBuildEnvResolver_Resolve(t *testing.T) {
 		Name:    "gcc",
 		Version: "13.2.0",
 		Arch:    "x86_64",
-		Family:  "rhel",
+		ABI:     "linux-gnu-2.34",
 		SHA256:  "abc123",
-		Source:  "s3://strata-registry/layers/rhel/x86_64/gcc/13.2.0/layer.sqfs",
+		Source:  "s3://strata-registry/layers/linux-gnu-2.34/x86_64/gcc/13.2.0/layer.sqfs",
 	}
 
 	client := &fakeRegistryClient{
@@ -85,7 +85,7 @@ func TestRegistryBuildEnvResolver_Resolve(t *testing.T) {
 
 	layers, err := resolver.Resolve(context.Background(),
 		[]spec.Requirement{{Name: "gcc", MinVersion: "13.0"}},
-		"x86_64", "rhel", cacheDir)
+		"x86_64", "linux-gnu-2.34", cacheDir)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

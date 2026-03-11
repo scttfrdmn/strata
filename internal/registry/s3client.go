@@ -33,7 +33,7 @@ type s3API interface {
 //
 // The registry layout is:
 //
-//	s3://<bucket>/layers/<family>/<arch>/<name>/<version>/manifest.yaml
+//	s3://<bucket>/layers/<abi>/<arch>/<name>/<version>/manifest.yaml
 //	s3://<bucket>/formations/<name>/<version>/manifest.yaml
 //	s3://<bucket>/probes/<ami-id>/capabilities.yaml
 //	s3://<bucket>/index/layers.yaml
@@ -84,25 +84,25 @@ func parseBucketURL(u string) (string, bool) {
 }
 
 // ResolveLayer returns the highest-versioned layer manifest whose name, arch,
-// family, and version prefix match the request.
+// abi, and version prefix match the request.
 //
-// It lists s3://<bucket>/layers/<family>/<arch>/<name>/ using the delimiter
+// It lists s3://<bucket>/layers/<abi>/<arch>/<name>/ using the delimiter
 // "/" to get one common-prefix per version directory, then applies
 // versionMatches + compareSegments to select the best, and fetches its
 // manifest.yaml.
-func (c *S3Client) ResolveLayer(ctx context.Context, name, versionPrefix, arch, family string) (*spec.LayerManifest, error) {
-	prefix := fmt.Sprintf("layers/%s/%s/%s/", family, arch, name)
+func (c *S3Client) ResolveLayer(ctx context.Context, name, versionPrefix, arch, abi string) (*spec.LayerManifest, error) {
+	prefix := fmt.Sprintf("layers/%s/%s/%s/", abi, arch, name)
 	versions, err := c.listCommonPrefixes(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
 	if len(versions) == 0 {
-		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, family)}
+		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, abi)}
 	}
 
 	var bestVersion string
 	for _, vdir := range versions {
-		// vdir is like "layers/rhel/x86_64/python/3.11.9/"
+		// vdir is like "layers/linux-gnu-2.34/x86_64/python/3.11.9/"
 		ver := extractLastSegment(strings.TrimSuffix(vdir, "/"))
 		if versionPrefix != "" && !versionMatches(ver, versionPrefix) {
 			continue
@@ -112,10 +112,10 @@ func (c *S3Client) ResolveLayer(ctx context.Context, name, versionPrefix, arch, 
 		}
 	}
 	if bestVersion == "" {
-		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, family)}
+		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, abi)}
 	}
 
-	key := fmt.Sprintf("layers/%s/%s/%s/%s/manifest.yaml", family, arch, name, bestVersion)
+	key := fmt.Sprintf("layers/%s/%s/%s/%s/manifest.yaml", abi, arch, name, bestVersion)
 	var m spec.LayerManifest
 	if err := c.getYAML(ctx, key, &m); err != nil {
 		return nil, err
@@ -168,9 +168,9 @@ func (c *S3Client) StoreBaseCapabilities(ctx context.Context, caps *spec.BaseCap
 }
 
 // ListLayers fetches the flat layer index and returns all manifests matching
-// name, arch, and family (any empty filter matches all). Results are sorted
+// name, arch, and abi (any empty filter matches all). Results are sorted
 // newest-first.
-func (c *S3Client) ListLayers(ctx context.Context, name, arch, family string) ([]*spec.LayerManifest, error) {
+func (c *S3Client) ListLayers(ctx context.Context, name, arch, abi string) ([]*spec.LayerManifest, error) {
 	var idx LayerIndex
 	if err := c.getYAML(ctx, "index/layers.yaml", &idx); err != nil {
 		return nil, err
@@ -184,7 +184,7 @@ func (c *S3Client) ListLayers(ctx context.Context, name, arch, family string) ([
 		if arch != "" && m.Arch != arch {
 			continue
 		}
-		if family != "" && m.Family != family {
+		if abi != "" && m.ABI != abi {
 			continue
 		}
 		cp := *m
@@ -273,10 +273,10 @@ func kindFromKey(key string) string {
 }
 
 // PushLayer uploads layer.sqfs, manifest.yaml, and bundle.json to the registry
-// under layers/<family>/<arch>/<name>/<version>/, then upserts the manifest
+// under layers/<abi>/<arch>/<name>/<version>/, then upserts the manifest
 // into index/layers.yaml.
 func (c *S3Client) PushLayer(ctx context.Context, manifest *spec.LayerManifest, sqfsPath string, bundleJSON []byte) error {
-	prefix := fmt.Sprintf("layers/%s/%s/%s/%s/", manifest.Family, manifest.Arch, manifest.Name, manifest.Version)
+	prefix := fmt.Sprintf("layers/%s/%s/%s/%s/", manifest.ABI, manifest.Arch, manifest.Name, manifest.Version)
 
 	// Upload layer.sqfs.
 	sqfsFile, err := os.Open(sqfsPath)
@@ -459,10 +459,10 @@ func hexSHA256File(path string) (string, error) {
 // RebuildIndex scans all layer manifests in the registry and rewrites
 // index/layers.yaml. Use after batch builds or to repair index inconsistency.
 func (c *S3Client) RebuildIndex(ctx context.Context) error {
-	// List all family prefixes: layers/<family>/
+	// List all ABI prefixes: layers/<abi>/
 	familyPrefixes, err := c.listCommonPrefixes(ctx, "layers/")
 	if err != nil {
-		return fmt.Errorf("registry: listing families: %w", err)
+		return fmt.Errorf("registry: listing abi prefixes: %w", err)
 	}
 
 	var manifests []*spec.LayerManifest

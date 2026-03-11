@@ -77,11 +77,11 @@ func TestAllRecipesParse(t *testing.T) {
 					if len(recipe.Meta.Provides) == 0 {
 						t.Error("Provides is empty")
 					}
-					if recipe.Meta.Family == "" {
-						t.Error("Family is empty")
+					if recipe.Meta.ABI == "" {
+						t.Error("ABI is empty")
 					}
 					// Structural invariant: directory tier must match meta.yaml tier field.
-					if recipe.Meta.Tier != tierEntry.Name()[len("tier"):] {
+					if recipe.Meta.Tier != tierEntry.Name() {
 						t.Errorf("tier mismatch: directory is %q but meta.yaml declares tier %q",
 							tierEntry.Name(), recipe.Meta.Tier)
 					}

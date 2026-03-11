@@ -14,7 +14,7 @@
 //
 //	s3://<bucket>/
 //	  layers/
-//	    <family>/<arch>/<name>/<version>/
+//	    <abi>/<arch>/<name>/<version>/
 //	      manifest.yaml     — LayerManifest
 //	      layer.sqfs        — squashfs image
 //	      bundle.json       — cosign bundle
@@ -38,14 +38,14 @@ import (
 )
 
 // Client is the interface the resolver uses to query the layer catalog.
-// All methods operate on name/version/arch/family coordinates, not raw
+// All methods operate on name/version/arch/abi coordinates, not raw
 // S3 URLs — those are the registry's internal concern.
 type Client interface {
 	// ResolveLayer returns the best-matching LayerManifest for the given
 	// coordinates. versionPrefix is a semver prefix (e.g. "12.3" matches
 	// "12.3.0", "12.3.1", …). An empty versionPrefix returns the latest
 	// stable version. Returns ErrNotFound if no match exists.
-	ResolveLayer(ctx context.Context, name, versionPrefix, arch, family string) (*spec.LayerManifest, error)
+	ResolveLayer(ctx context.Context, name, versionPrefix, arch, abi string) (*spec.LayerManifest, error)
 
 	// ResolveFormation returns the Formation for name@version.
 	// Returns ErrNotFound if the formation does not exist.
@@ -60,9 +60,9 @@ type Client interface {
 	StoreBaseCapabilities(ctx context.Context, caps *spec.BaseCapabilities) error
 
 	// ListLayers returns all LayerManifests that match the given name,
-	// filtered by arch and family. An empty name returns all layers.
+	// filtered by arch and abi. An empty name returns all layers.
 	// Results are ordered by version descending (newest first).
-	ListLayers(ctx context.Context, name, arch, family string) ([]*spec.LayerManifest, error)
+	ListLayers(ctx context.Context, name, arch, abi string) ([]*spec.LayerManifest, error)
 }
 
 // ErrNotFound is returned when a layer, formation, or capability set does
@@ -110,8 +110,8 @@ func (s *MemoryStore) AddFormation(f *spec.Formation) {
 }
 
 // ResolveLayer returns the highest-versioned layer matching name, arch,
-// family, and versionPrefix.
-func (s *MemoryStore) ResolveLayer(_ context.Context, name, versionPrefix, arch, family string) (*spec.LayerManifest, error) {
+// abi, and versionPrefix.
+func (s *MemoryStore) ResolveLayer(_ context.Context, name, versionPrefix, arch, abi string) (*spec.LayerManifest, error) {
 	var best *spec.LayerManifest
 	for _, m := range s.layers {
 		if m.Name != name {
@@ -120,7 +120,7 @@ func (s *MemoryStore) ResolveLayer(_ context.Context, name, versionPrefix, arch,
 		if arch != "" && m.Arch != arch {
 			continue
 		}
-		if family != "" && m.Family != family {
+		if abi != "" && m.ABI != abi {
 			continue
 		}
 		if versionPrefix != "" && !versionMatches(m.Version, versionPrefix) {
@@ -131,7 +131,7 @@ func (s *MemoryStore) ResolveLayer(_ context.Context, name, versionPrefix, arch,
 		}
 	}
 	if best == nil {
-		key := layerKey(name, versionPrefix, arch, family)
+		key := layerKey(name, versionPrefix, arch, abi)
 		return nil, &ErrNotFound{Kind: "layer", Key: key}
 	}
 	return best, nil
@@ -162,7 +162,7 @@ func (s *MemoryStore) StoreBaseCapabilities(_ context.Context, caps *spec.BaseCa
 }
 
 // ListLayers returns all layers matching the filter criteria, newest-first.
-func (s *MemoryStore) ListLayers(_ context.Context, name, arch, family string) ([]*spec.LayerManifest, error) {
+func (s *MemoryStore) ListLayers(_ context.Context, name, arch, abi string) ([]*spec.LayerManifest, error) {
 	var result []*spec.LayerManifest
 	for _, m := range s.layers {
 		if name != "" && m.Name != name {
@@ -171,7 +171,7 @@ func (s *MemoryStore) ListLayers(_ context.Context, name, arch, family string) (
 		if arch != "" && m.Arch != arch {
 			continue
 		}
-		if family != "" && m.Family != family {
+		if abi != "" && m.ABI != abi {
 			continue
 		}
 		result = append(result, m)
@@ -255,13 +255,13 @@ func sortManifestsByVersionDesc(manifests []*spec.LayerManifest) {
 }
 
 // layerKey constructs a display key for error messages.
-func layerKey(name, version, arch, family string) string {
+func layerKey(name, version, arch, abi string) string {
 	key := name
 	if version != "" {
 		key += "@" + version
 	}
-	if arch != "" || family != "" {
-		key += " (" + arch + "/" + family + ")"
+	if arch != "" || abi != "" {
+		key += " (" + arch + "/" + abi + ")"
 	}
 	return key
 }

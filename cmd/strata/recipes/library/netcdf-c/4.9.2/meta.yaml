@@ -1,0 +1,29 @@
+name: netcdf-c
+version: "4.9.2"
+tier: library
+description: "NetCDF-C 4.9.2 — self-describing data format for atmospheric and ocean sciences."
+abi: linux-gnu-2.34
+
+build_requires:
+  - name: gcc
+    min_version: "13"
+  - name: hdf5
+    min_version: "1.12"
+
+provides:
+  - name: netcdf-c
+    version: "4.9.2"
+  - name: netcdf
+    version: "4.9.2"
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+  - name: hdf5
+    min_version: "1.12"
+
+modulefile_env:
+  - var: NETCDF_HOME
+    path: ""
+  - var: NETCDF_C_HOME
+    path: ""

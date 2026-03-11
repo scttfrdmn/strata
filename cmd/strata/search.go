@@ -12,8 +12,8 @@ import (
 )
 
 func newSearchCmd() *cobra.Command {
-	var arch, family string
-	var formations bool
+	var arch, abi string
+	var formations, all bool
 
 	cmd := &cobra.Command{
 		Use:   "search [name]",
@@ -28,33 +28,48 @@ func newSearchCmd() *cobra.Command {
 				searchFormations(name)
 				return nil
 			}
-			searchLayers(name, arch, family)
+			searchLayers(name, arch, abi, all)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&arch, "arch", "", "filter by architecture: x86_64 or arm64")
-	cmd.Flags().StringVar(&family, "family", "", "filter by OS family: rhel or debian")
+	cmd.Flags().StringVar(&abi, "abi", "", "filter by C runtime ABI: linux-gnu-2.34, linux-gnu-2.35")
 	cmd.Flags().BoolVar(&formations, "formation", false, "list formations instead of layers")
+	cmd.Flags().BoolVar(&all, "all", false, "include dependency-only layers (user_selectable=false)")
 	return cmd
 }
 
+// filterUserSelectable removes layers with UserSelectable=false from the slice.
+func filterUserSelectable(layers []*spec.LayerManifest) []*spec.LayerManifest {
+	result := layers[:0]
+	for _, m := range layers {
+		if m.UserSelectable {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
 // searchLayers prints a table of layers matching the given filters.
-func searchLayers(name, arch, family string) {
+func searchLayers(name, arch, abi string, all bool) {
 	store := buildCatalog()
-	layers, err := store.ListLayers(context.Background(), name, arch, family)
+	layers, err := store.ListLayers(context.Background(), name, arch, abi)
 	if err != nil {
 		fmt.Printf("search: listing layers: %v\n", err)
 		return
+	}
+	if !all {
+		layers = filterUserSelectable(layers)
 	}
 	if len(layers) == 0 {
 		fmt.Println("no layers found")
 		return
 	}
 
-	fmt.Printf("%-16s %-12s %-8s %-8s %s\n", "NAME", "VERSION", "ARCH", "FAMILY", "PROVIDES")
-	fmt.Printf("%-16s %-12s %-8s %-8s %s\n",
-		"----------------", "------------", "--------", "--------", "--------")
+	fmt.Printf("%-16s %-12s %-8s %-18s %s\n", "NAME", "VERSION", "ARCH", "ABI", "PROVIDES")
+	fmt.Printf("%-16s %-12s %-8s %-18s %s\n",
+		"----------------", "------------", "--------", "------------------", "--------")
 	for _, m := range layers {
 		provides := ""
 		for i, p := range m.Provides {
@@ -63,7 +78,7 @@ func searchLayers(name, arch, family string) {
 			}
 			provides += p.String()
 		}
-		fmt.Printf("%-16s %-12s %-8s %-8s %s\n", m.Name, m.Version, m.Arch, m.Family, provides)
+		fmt.Printf("%-16s %-12s %-8s %-18s %s\n", m.Name, m.Version, m.Arch, m.ABI, provides)
 	}
 }
 

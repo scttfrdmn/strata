@@ -28,12 +28,12 @@ func baseCapabilities() *spec.BaseCapabilities {
 		AMIID:    testAMIID,
 		OS:       testOS,
 		Arch:     testArch,
-		Family:   "rhel",
+		ABI:      "linux-gnu-2.34",
 		ProbedAt: time.Now(),
 		Provides: []spec.Capability{
 			{Name: "glibc", Version: "2.34"},
 			{Name: "kernel", Version: "6.1"},
-			{Name: "family", Version: "rhel"},
+			{Name: "abi", Version: "linux-gnu-2.34"},
 		},
 	}
 }
@@ -55,14 +55,14 @@ func testProbe() *probe.Client {
 }
 
 // signedLayer returns a LayerManifest with Bundle and RekorEntry set.
-func signedLayer(name, version, family string, provides []spec.Capability, requires []spec.Requirement) *spec.LayerManifest {
-	id := name + "-" + version + "-" + family + "-" + testArch
+func signedLayer(name, version, abi string, provides []spec.Capability, requires []spec.Requirement) *spec.LayerManifest {
+	id := name + "-" + version + "-" + abi + "-" + testArch
 	return &spec.LayerManifest{
 		ID:         id,
 		Name:       name,
 		Version:    version,
 		Arch:       testArch,
-		Family:     family,
+		ABI:        abi,
 		SHA256:     "sha256-" + id,
 		Bundle:     "s3://strata-test-layers/" + id + "/bundle.json",
 		RekorEntry: "42",
@@ -141,10 +141,10 @@ func TestHappyPath_FormationPlusStandalone(t *testing.T) {
 	store := registry.NewMemoryStore()
 
 	// Formation layers.
-	python := signedLayer("python", "3.11.9", "rhel",
+	python := signedLayer("python", "3.11.9", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "python", Version: "3.11.9"}},
 		[]spec.Requirement{{Name: "glibc", MinVersion: "2.34"}})
-	numpy := signedLayer("numpy", "1.26.0", "rhel",
+	numpy := signedLayer("numpy", "1.26.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "numpy", Version: "1.26.0"}},
 		[]spec.Requirement{{Name: "python", MinVersion: "3.11"}})
 	store.AddLayer(python)
@@ -162,7 +162,7 @@ func TestHappyPath_FormationPlusStandalone(t *testing.T) {
 	})
 
 	// Standalone layer.
-	scipy := signedLayer("scipy", "1.12.0", "rhel",
+	scipy := signedLayer("scipy", "1.12.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "scipy", Version: "1.12.0"}},
 		[]spec.Requirement{{Name: "numpy", MinVersion: "1.26"}})
 	store.AddLayer(scipy)
@@ -223,7 +223,7 @@ func TestHappyPath_FormationPlusStandalone(t *testing.T) {
 func TestHappyPath_FormationOnly(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	cuda := signedLayer("cuda", "12.3.2", "rhel",
+	cuda := signedLayer("cuda", "12.3.2", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "cuda", Version: "12.3.2"}},
 		nil)
 	store.AddLayer(cuda)
@@ -285,9 +285,9 @@ func TestStage3_LayerNotFound(t *testing.T) {
 	store := registry.NewMemoryStore()
 
 	// Register older versions so available list is non-empty.
-	store.AddLayer(signedLayer("alphafold", "3.0.0", "rhel",
+	store.AddLayer(signedLayer("alphafold", "3.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "alphafold", Version: "3.0.0"}}, nil))
-	store.AddLayer(signedLayer("alphafold", "3.0.1", "rhel",
+	store.AddLayer(signedLayer("alphafold", "3.0.1", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "alphafold", Version: "3.0.1"}}, nil))
 
 	r := newResolver(t, store, nil)
@@ -317,7 +317,7 @@ func TestStage4_UnsatisfiedRequirement(t *testing.T) {
 	store := registry.NewMemoryStore()
 
 	// openmpi requires cuda@>=12.0 — but cuda is not registered.
-	openmpi := signedLayer("openmpi", "4.1.6", "rhel",
+	openmpi := signedLayer("openmpi", "4.1.6", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "mpi", Version: "3.1"}},
 		[]spec.Requirement{{Name: "cuda", MinVersion: "12.0"}})
 	store.AddLayer(openmpi)
@@ -327,17 +327,78 @@ func TestStage4_UnsatisfiedRequirement(t *testing.T) {
 	assertResolutionError(t, err, "UNSATISFIED_REQUIREMENT")
 }
 
-// TestStage5_CapabilityConflict verifies that two layers providing the same
-// capability name from different sources produce a CAPABILITY_CONFLICT error.
+// TestStage5_CapabilityConflict verifies that two flat-layout layers providing
+// the same capability name produce a CAPABILITY_CONFLICT error. Flat layers
+// install to / and cannot coexist in the same OverlayFS because their files
+// overlap at the filesystem root.
 func TestStage5_CapabilityConflict(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	openmpi := signedLayer("openmpi", "4.1.6", "rhel",
+	// Two hypothetical flat-layout libc implementations, both providing "glibc".
+	libc1 := signedLayer("glibc-vendor-a", "2.34", "linux-gnu-2.34",
+		[]spec.Capability{{Name: "glibc", Version: "2.34"}}, nil)
+	libc1.InstallLayout = "flat"
+
+	libc2 := signedLayer("glibc-vendor-b", "2.34", "linux-gnu-2.34",
+		[]spec.Capability{{Name: "glibc", Version: "2.34"}}, nil)
+	libc2.InstallLayout = "flat"
+
+	store.AddLayer(libc1)
+	store.AddLayer(libc2)
+
+	r := newResolver(t, store, nil)
+	_, err := r.Resolve(context.Background(), testProfile(
+		softwareRef("glibc-vendor-a", "2.34"),
+		softwareRef("glibc-vendor-b", "2.34"),
+	))
+	assertResolutionError(t, err, "CAPABILITY_CONFLICT")
+}
+
+// TestStage5_MultiVersionCoexistence verifies that two different versions of
+// the same software (both versioned layout) can coexist. This is the core
+// multi-version support — Lmod handles mutual exclusion at activation time.
+func TestStage5_MultiVersionCoexistence(t *testing.T) {
+	store := registry.NewMemoryStore()
+
+	gcc13 := signedLayer("gcc", "13.2.0", "linux-gnu-2.34",
+		[]spec.Capability{
+			{Name: "gcc", Version: "13.2.0"},
+			{Name: "gfortran", Version: "13.2.0"},
+		}, nil)
+	gcc14 := signedLayer("gcc", "14.2.0", "linux-gnu-2.34",
+		[]spec.Capability{
+			{Name: "gcc", Version: "14.2.0"},
+			{Name: "gfortran", Version: "14.2.0"},
+		}, nil)
+	store.AddLayer(gcc13)
+	store.AddLayer(gcc14)
+
+	r := newResolver(t, store, nil)
+	lf, err := r.Resolve(context.Background(), testProfile(
+		softwareRef("gcc", "13.2.0"),
+		softwareRef("gcc", "14.2.0"),
+	))
+	if err != nil {
+		t.Fatalf("expected no conflict for multi-version gcc; got: %v", err)
+	}
+	if len(lf.Layers) != 2 {
+		t.Errorf("expected 2 layers; got %d", len(lf.Layers))
+	}
+}
+
+// TestStage5_DifferentImpls_Coexist verifies that two different MPI
+// implementations (openmpi and mpich, both versioned) can coexist in the
+// OverlayFS even though they both provide the "mpi" capability. Lmod
+// conflict() in each modulefile prevents simultaneous activation.
+func TestStage5_DifferentImpls_Coexist(t *testing.T) {
+	store := registry.NewMemoryStore()
+
+	openmpi := signedLayer("openmpi", "4.1.6", "linux-gnu-2.34",
 		[]spec.Capability{
 			{Name: "openmpi", Version: "4.1.6"},
 			{Name: "mpi", Version: "3.1"},
 		}, nil)
-	mpich := signedLayer("mpich", "4.0.0", "rhel",
+	mpich := signedLayer("mpich", "4.0.0", "linux-gnu-2.34",
 		[]spec.Capability{
 			{Name: "mpich", Version: "4.0.0"},
 			{Name: "mpi", Version: "3.1"},
@@ -346,11 +407,16 @@ func TestStage5_CapabilityConflict(t *testing.T) {
 	store.AddLayer(mpich)
 
 	r := newResolver(t, store, nil)
-	_, err := r.Resolve(context.Background(), testProfile(
+	lf, err := r.Resolve(context.Background(), testProfile(
 		softwareRef("openmpi", "4.1.6"),
 		softwareRef("mpich", "4.0.0"),
 	))
-	assertResolutionError(t, err, "CAPABILITY_CONFLICT")
+	if err != nil {
+		t.Fatalf("expected no conflict for openmpi+mpich coexistence; got: %v", err)
+	}
+	if len(lf.Layers) != 2 {
+		t.Errorf("expected 2 layers; got %d", len(lf.Layers))
+	}
 }
 
 // TestStage5_FileConflict verifies that two layers with conflicting ContentManifest
@@ -358,13 +424,13 @@ func TestStage5_CapabilityConflict(t *testing.T) {
 func TestStage5_FileConflict(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	layerA := signedLayer("liba", "1.0.0", "rhel",
+	layerA := signedLayer("liba", "1.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "liba", Version: "1.0.0"}}, nil)
 	layerA.ContentManifest = map[string]string{
 		"/usr/lib/libfoo.so": "aaaa1111",
 	}
 
-	layerB := signedLayer("libb", "1.0.0", "rhel",
+	layerB := signedLayer("libb", "1.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "libb", Version: "1.0.0"}}, nil)
 	layerB.ContentManifest = map[string]string{
 		"/usr/lib/libfoo.so": "bbbb2222", // same path, different SHA
@@ -387,9 +453,9 @@ func TestStage5_SameFormation_NoConflict(t *testing.T) {
 	store := registry.NewMemoryStore()
 
 	// Two layers that both provide "python" — normally a conflict.
-	py310 := signedLayer("python310", "3.10.14", "rhel",
+	py310 := signedLayer("python310", "3.10.14", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "python", Version: "3.10.14"}}, nil)
-	py311 := signedLayer("python311", "3.11.9", "rhel",
+	py311 := signedLayer("python311", "3.11.9", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "python", Version: "3.11.9"}}, nil)
 	store.AddLayer(py310)
 	store.AddLayer(py311)
@@ -421,10 +487,10 @@ func TestStage5_SameFormation_NoConflict(t *testing.T) {
 func TestStage6_MountOrder(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	gcc := signedLayer("gcc", "13.2.0", "rhel",
+	gcc := signedLayer("gcc", "13.2.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "gcc", Version: "13.2.0"}},
 		nil)
-	openmpi := signedLayer("openmpi", "4.1.6", "rhel",
+	openmpi := signedLayer("openmpi", "4.1.6", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "mpi", Version: "3.1"}},
 		[]spec.Requirement{{Name: "gcc", MinVersion: "13.0"}})
 	store.AddLayer(gcc)
@@ -458,7 +524,7 @@ func TestStage6_MountOrder(t *testing.T) {
 func TestStage7_BundleMissing(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	layer := signedLayer("tool", "1.0.0", "rhel",
+	layer := signedLayer("tool", "1.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil)
 	layer.Bundle = "" // clear the bundle
 
@@ -473,7 +539,7 @@ func TestStage7_BundleMissing(t *testing.T) {
 func TestStage7_RekorEntryMissing(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	layer := signedLayer("tool", "1.0.0", "rhel",
+	layer := signedLayer("tool", "1.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil)
 	layer.RekorEntry = "" // clear the Rekor entry
 
@@ -488,7 +554,7 @@ func TestStage7_RekorEntryMissing(t *testing.T) {
 func TestStage7_RekorVerification(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	layer := signedLayer("tool", "1.0.0", "rhel",
+	layer := signedLayer("tool", "1.0.0", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil)
 	store.AddLayer(layer)
 
@@ -508,7 +574,7 @@ func TestStage7_RekorVerification(t *testing.T) {
 func TestEnvironmentID_Stability(t *testing.T) {
 	store := registry.NewMemoryStore()
 
-	layer := signedLayer("python", "3.11.9", "rhel",
+	layer := signedLayer("python", "3.11.9", "linux-gnu-2.34",
 		[]spec.Capability{{Name: "python", Version: "3.11.9"}},
 		nil)
 	store.AddLayer(layer)

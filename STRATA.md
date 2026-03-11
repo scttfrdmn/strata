@@ -79,6 +79,54 @@ These are not design goals. They are enforced properties:
 
 ---
 
+## The Kernel Anchor
+
+Linux provides one permanent guarantee: the kernel syscall ABI never breaks.
+Linus Torvalds' policy is explicit and decades old. A binary that calls
+`read(2)` with a given calling convention will still work on a Linux kernel
+released twenty years from now.
+
+Everything above the syscall layer — glibc, libgcc, ld.so — is a convention,
+not a guarantee. It is stable enough for practical purposes, but it is not
+permanent. AL2023 will be hard to find in 2035. The glibc version that shipped
+with it will not.
+
+Strata's answer: encode the C runtime in a layer.
+
+When glibc is a Strata layer, the complete software stack is:
+
+```
+┌─────────────────────────────────────┐
+│  Application layer (python, R, ...)  │
+│  Toolchain layer (gcc, cuda, ...)    │
+│  Runtime layer (glibc 2.34)          │  ← Strata layer: reproducible forever
+├─────────────────────────────────────┤
+│  Linux kernel syscall ABI            │  ← permanent: Linus's guarantee
+└─────────────────────────────────────┘
+```
+
+The `abi: linux-gnu-2.34` field in every layer manifest encodes this boundary.
+It means: "this binary was compiled against glibc 2.34's ABI and will run on
+any system that provides glibc >= 2.34 at the standard ELF interpreter path."
+
+This replaces the old `family: rhel` field, which was a distribution name used
+as a proxy for the ABI. Distribution names go out of service. ABI identifiers
+do not: `linux-gnu-2.34` is verifiable from a binary's ELF header today,
+in 2035, or in 2050.
+
+### Execution model (v0.13.0+)
+
+Mounting glibc as a layer requires the agent to use `bwrap` (bubblewrap) or
+`pivot_root` to present the assembled layer stack as a complete root filesystem.
+Without this, the host kernel loads `/lib64/ld-linux-x86-64.so.2` from the
+host system — ignoring the glibc layer entirely.
+
+The bwrap execution model is specified in [docs/architecture-execution-model.md](docs/architecture-execution-model.md).
+It is not implemented in v0.12.0; the glibc recipe ships as a skeleton.
+Current environments continue to use the OverlayFS-only model.
+
+---
+
 ## Concepts
 
 ### Layer

@@ -1,0 +1,16 @@
+name: glibc
+version: "2.34"
+tier: core
+description: >
+  GNU C Library 2.34 — the C runtime ABI anchor for linux-gnu-2.34 environments.
+  Installs to a flat FHS layout so /lib64/ld-linux-x86-64.so.2 is at its
+  kernel-hardcoded path. Build is bootstrap (OS toolchain); no Strata build_requires.
+  NOTE: this recipe requires bwrap/pivot_root support in the agent (v0.13.0+).
+abi: linux-gnu-2.34
+install_layout: flat
+
+provides:
+  - name: glibc
+    version: "2.34"
+  - name: abi
+    version: "linux-gnu-2.34"

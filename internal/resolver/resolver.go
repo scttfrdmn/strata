@@ -95,7 +95,7 @@ func (r *Resolver) Resolve(ctx context.Context, profile *spec.Profile) (*spec.Lo
 	}
 
 	// Stage 3: resolve regular software refs → resolved layers.
-	regularLayers, err := r.stage3ResolveSoftware(ctx, remaining, arch, base.Capabilities.Family)
+	regularLayers, err := r.stage3ResolveSoftware(ctx, remaining, arch, base.Capabilities.ABI)
 	if err != nil {
 		return nil, err
 	}

@@ -109,15 +109,15 @@ func (r *Resolver) stage2ExpandFormations(
 func (r *Resolver) stage3ResolveSoftware(
 	ctx context.Context,
 	refs []spec.SoftwareRef,
-	arch, family string,
+	arch, abi string,
 ) ([]resolvedLayer, error) {
 	layers := make([]resolvedLayer, 0, len(refs))
 
 	for _, ref := range refs {
-		manifest, err := r.cfg.Registry.ResolveLayer(ctx, ref.Name, ref.Version, arch, family)
+		manifest, err := r.cfg.Registry.ResolveLayer(ctx, ref.Name, ref.Version, arch, abi)
 		if err != nil {
 			if registry.IsNotFound(err) {
-				available, listErr := r.cfg.Registry.ListLayers(ctx, ref.Name, arch, family)
+				available, listErr := r.cfg.Registry.ListLayers(ctx, ref.Name, arch, abi)
 				var versions []string
 				if listErr == nil {
 					for _, m := range available {
@@ -168,25 +168,49 @@ func (r *Resolver) stage4ValidateGraph(base *spec.BaseCapabilities, layers []res
 	return nil
 }
 
+// canCoexist reports whether two layers can both be present in the same
+// OverlayFS without conflicting at the filesystem level. Layers using the
+// versioned install layout install to non-overlapping paths
+// (<name>/<version>/), so different versions of the same software can
+// coexist physically. Lmod's conflict() directive in the generated
+// modulefile prevents simultaneous activation in user sessions.
+//
+// Returns false if either layer uses the flat layout, which installs directly
+// to / and would produce real filesystem conflicts.
+func canCoexist(a, b *spec.LayerManifest) bool {
+	aVersioned := a.InstallLayout == "" || a.InstallLayout == "versioned"
+	bVersioned := b.InstallLayout == "" || b.InstallLayout == "versioned"
+	return aVersioned && bVersioned
+}
+
 // stage5DetectConflicts checks for capability-level and file-level conflicts
 // between layers. Layers within the same formation are exempt from
 // intra-formation conflict checks (they were pre-validated as a unit).
+// Layers that canCoexist (both versioned layout) are also exempt from
+// capability-level conflicts — Lmod handles mutual exclusion at activation.
 func (r *Resolver) stage5DetectConflicts(layers []resolvedLayer) error {
 	// Capability-level: two layers both provide the same capability name.
-	// capProvider maps capability name → index of the first layer that provides it.
-	capProvider := make(map[string]int)
+	// capProviders maps capability name → list of layer indices providing it.
+	capProviders := make(map[string][]int)
 
 	for i, rl := range layers {
 		for _, cap := range rl.manifest.Provides {
-			if prev, exists := capProvider[cap.Name]; exists {
-				prevLayer := layers[prev]
-				// Layers within the same formation are pre-validated — exempt.
-				if rl.fromFormation != "" && rl.fromFormation == prevLayer.fromFormation {
-					continue
+			if prevs, exists := capProviders[cap.Name]; exists {
+				for _, prev := range prevs {
+					prevLayer := layers[prev]
+					// Layers within the same formation are pre-validated — exempt.
+					if rl.fromFormation != "" && rl.fromFormation == prevLayer.fromFormation {
+						continue
+					}
+					// Versioned layout: paths don't overlap; Lmod prevents
+					// simultaneous activation. Allow coexistence.
+					if canCoexist(prevLayer.manifest, rl.manifest) {
+						continue
+					}
+					return errCapabilityConflict(prevLayer.manifest.ID, rl.manifest.ID, cap)
 				}
-				return errCapabilityConflict(prevLayer.manifest.ID, rl.manifest.ID, cap)
 			}
-			capProvider[cap.Name] = i
+			capProviders[cap.Name] = append(capProviders[cap.Name], i)
 		}
 	}
 
@@ -384,8 +408,9 @@ func (r *Resolver) stage8Assemble(
 			AMIID:        base.AMIID,
 			Capabilities: *base.Capabilities,
 		},
-		Layers:  resolvedLayers,
-		Env:     profile.Env,
-		OnReady: profile.OnReady,
+		Layers:   resolvedLayers,
+		Env:      profile.Env,
+		OnReady:  profile.OnReady,
+		Defaults: profile.Defaults,
 	}
 }

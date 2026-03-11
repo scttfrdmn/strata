@@ -253,19 +253,14 @@ Recipes live at:
 
 ```
 cmd/strata/recipes/
-  tier0/    <name>/<version>/   ← gcc, llvm, cuda, rocm, python, R, julia, jdk
-  tier0.5/  <name>/<version>/   ← openmpi, ucx, libfabric, pmix, hwloc
-  tier1.0/  <name>/<version>/   ← openblas, fftw, hdf5, ...
-  tier1.5/  <name>/<version>/   ← petsc, trilinos, ...
-  tier2/    <name>/<version>/   ← samtools, GROMACS, JupyterLab, miniforge, ...
+  core/         <name>/<version>/   ← gcc, llvm, cuda, rocm, python, R, julia, jdk
+  library/      <name>/<version>/   ← openmpi, ucx, libfabric, pmix, hwloc, openblas, fftw, hdf5
+  application/  <name>/<version>/   ← samtools, GROMACS, JupyterLab, miniforge, ...
 ```
 
-`meta.yaml` must declare `tier: "N"` matching the directory. The test in
-`examples/catalog_test.go` enforces this: a tier mismatch is a CI failure.
-
 `RecipeMeta.Validate()` enforces:
-- `tier` must be one of: `0`, `0.5`, `1.0`, `1.5`, `2`
-- Tier 0 recipes with non-empty `build_requires` are rejected
+- `tier` must be one of: `core`, `library`, `application`
+- Core recipes with non-empty `build_requires` are rejected
 
 ---
 

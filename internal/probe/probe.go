@@ -43,14 +43,15 @@ var osAliasSSM = map[string]map[string]string{
 	},
 }
 
-// OSFamily maps a Strata OS name to its capability family.
-// The family is used by the resolver to filter the layer catalog:
-// all layers tagged family=rhel are candidates for any rhel-family OS.
-var OSFamily = map[string]string{
-	"al2023":   "rhel",
-	"rocky9":   "rhel",
-	"rocky10":  "rhel",
-	"ubuntu24": "debian",
+// OSABI maps a Strata OS name to its C runtime ABI identifier.
+// The ABI encodes the libc family and minimum version that binaries
+// built for this OS require. Layers tagged with a given abi are
+// compatible with any OS that provides that ABI or newer.
+var OSABI = map[string]string{
+	"al2023":   "linux-gnu-2.34",
+	"rocky9":   "linux-gnu-2.34",
+	"rocky10":  "linux-gnu-2.34",
+	"ubuntu24": "linux-gnu-2.35",
 }
 
 // ResolveSSMParam is the SSM parameter path for a given OS and arch.
@@ -213,7 +214,7 @@ func (c *MemoryCache) Set(_ context.Context, amiID string, caps *spec.BaseCapabi
 // Strata base OS images. Used to bootstrap the registry's probe cache and
 // for testing without running actual probes.
 func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, error) {
-	family, ok := OSFamily[os]
+	abi, ok := OSABI[os]
 	if !ok {
 		return nil, fmt.Errorf("unknown OS %q", os)
 	}
@@ -227,7 +228,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "kernel", Version: "6.1"},
 			{Name: "systemd", Version: "252"},
 			{Name: "rpm", Version: "4.16"},
-			{Name: "family", Version: family},
+			{Name: "abi", Version: abi},
 		}
 		// AL2023 ships gcc 11 as the system compiler, locked for the lifetime of the distro.
 		systemCompiler = "gcc-11.4.1-2.amzn2023.0.1." + arch
@@ -237,7 +238,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "kernel", Version: "5.14"},
 			{Name: "systemd", Version: "252"},
 			{Name: "rpm", Version: "4.16"},
-			{Name: "family", Version: family},
+			{Name: "abi", Version: abi},
 		}
 		systemCompiler = "gcc-11.4.1-3.el9." + arch
 	case "rocky10":
@@ -246,7 +247,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "kernel", Version: "6.8"},
 			{Name: "systemd", Version: "255"},
 			{Name: "rpm", Version: "4.19"},
-			{Name: "family", Version: family},
+			{Name: "abi", Version: abi},
 		}
 		systemCompiler = "gcc-14.2.1-6.el10." + arch
 	case "ubuntu24":
@@ -255,7 +256,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 			{Name: "kernel", Version: "6.8"},
 			{Name: "systemd", Version: "255"},
 			{Name: "dpkg", Version: "1.22"},
-			{Name: "family", Version: family},
+			{Name: "abi", Version: abi},
 		}
 		// Ubuntu 24.04 ships gcc-13 as the default system compiler.
 		systemCompiler = "gcc-13-13.2.0-23ubuntu4-" + arch
@@ -267,7 +268,7 @@ func KnownBaseCapabilities(os, arch, amiID string) (*spec.BaseCapabilities, erro
 		AMIID:          amiID,
 		OS:             os,
 		Arch:           arch,
-		Family:         family,
+		ABI:            abi,
 		ProbedAt:       time.Now(),
 		SystemCompiler: systemCompiler,
 		Provides:       provides,

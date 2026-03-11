@@ -45,6 +45,12 @@ type Profile struct {
 	// OnReady is a list of commands run after the overlay is assembled,
 	// before the instance signals ready.
 	OnReady []string `yaml:"on_ready,omitempty" json:"on_ready,omitempty"`
+
+	// Defaults lists software modules to pre-load via Lmod when a user logs
+	// in. The agent generates /etc/profile.d/strata-defaults.sh from this.
+	// Each entry should name a package in the Software list.
+	// Example: [{name: gcc, version: "14.2.0"}, {name: python, version: "3.12.13"}]
+	Defaults []SoftwareRef `yaml:"defaults,omitempty" json:"defaults,omitempty"`
 }
 
 // BaseRef identifies the target OS and architecture for environment assembly.

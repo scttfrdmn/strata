@@ -82,7 +82,7 @@ func TestEC2Runner_UploadRecipe(t *testing.T) {
 	recipe := &Recipe{
 		Dir:             dir,
 		BuildScriptPath: filepath.Join(dir, "build.sh"),
-		Meta:            RecipeMeta{Name: "test", Version: "1.0", Family: "rhel"},
+		Meta:            RecipeMeta{Name: "test", Version: "1.0", ABI: "linux-gnu-2.34"},
 	}
 
 	s3Fake := &fakeS3Put{}
@@ -104,7 +104,7 @@ func TestEC2Runner_UploadRecipe(t *testing.T) {
 func TestEC2Runner_BuildUserData(t *testing.T) {
 	recipe := &Recipe{
 		Dir:  "/tmp/recipe",
-		Meta: RecipeMeta{Name: "openmpi", Version: "5.0.6", Family: "rhel"},
+		Meta: RecipeMeta{Name: "openmpi", Version: "5.0.6", ABI: "linux-gnu-2.34"},
 	}
 	job := &Job{
 		Base:        stubBaseRef("al2023", "x86_64"),

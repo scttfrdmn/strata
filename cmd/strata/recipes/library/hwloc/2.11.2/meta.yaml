@@ -1,0 +1,24 @@
+name: hwloc
+version: "2.11.2"
+tier: library
+description: "Hardware Locality 2.11.2 — NUMA and CPU topology discovery for MPI binding."
+abi: linux-gnu-2.34
+user_selectable: false
+
+build_requires:
+  - name: gcc
+    min_version: "13"
+
+provides:
+  - name: hwloc
+    version: "2.11.2"
+  - name: hwloc
+    version: "2"
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: HWLOC_HOME
+    path: ""

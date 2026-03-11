@@ -38,6 +38,10 @@ type LockFile struct {
 
 	// OnReady are commands to run after overlay assembly.
 	OnReady []string `yaml:"on_ready,omitempty" json:"on_ready,omitempty"`
+
+	// Defaults lists software modules to pre-load via Lmod at login.
+	// Copied from the profile; used by the agent to write strata-defaults.sh.
+	Defaults []SoftwareRef `yaml:"defaults,omitempty" json:"defaults,omitempty"`
 }
 
 // ResolvedBase is the fully resolved base for an environment.

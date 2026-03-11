@@ -1,0 +1,23 @@
+name: hdf5
+version: "1.14.4"
+tier: library
+description: "HDF5 1.14.4 — hierarchical data format library required by netCDF, AlphaFold, and many scientific codes."
+abi: linux-gnu-2.34
+
+build_requires:
+  - name: gcc
+    min_version: "13"
+
+provides:
+  - name: hdf5
+    version: "1.14.4"
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: HDF5_HOME
+    path: ""
+  - var: HDF5_DIR
+    path: ""

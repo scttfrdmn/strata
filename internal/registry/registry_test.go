@@ -8,13 +8,13 @@ import (
 	"github.com/scttfrdmn/strata/spec"
 )
 
-func layer(name, version, arch, family string) *spec.LayerManifest {
+func layer(name, version, arch, abi string) *spec.LayerManifest {
 	return &spec.LayerManifest{
-		ID:      name + "-" + version + "-" + family + "-" + arch,
+		ID:      name + "-" + version + "-" + abi + "-" + arch,
 		Name:    name,
 		Version: version,
 		Arch:    arch,
-		Family:  family,
+		ABI:     abi,
 		SHA256:  "sha256-" + version,
 	}
 }
@@ -23,12 +23,12 @@ func TestMemoryStoreResolveLayer(t *testing.T) {
 	ctx := context.Background()
 	s := registry.NewMemoryStore()
 
-	s.AddLayer(layer("python", "3.11.9", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.11.8", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.12.0", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.11.9", "arm64", "rhel"))
-	s.AddLayer(layer("python", "3.11.9", "x86_64", "debian"))
-	s.AddLayer(layer("cuda", "12.3.2", "x86_64", "rhel"))
+	s.AddLayer(layer("python", "3.11.9", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.8", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.12.0", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.9", "arm64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.9", "x86_64", "linux-gnu-2.35"))
+	s.AddLayer(layer("cuda", "12.3.2", "x86_64", "linux-gnu-2.34"))
 
 	tests := []struct {
 		name, prefix, arch, family string
@@ -36,21 +36,21 @@ func TestMemoryStoreResolveLayer(t *testing.T) {
 		wantErr                    bool
 	}{
 		// No prefix → returns latest for arch/family.
-		{"python", "", "x86_64", "rhel", "3.12.0", false},
+		{"python", "", "x86_64", "linux-gnu-2.34", "3.12.0", false},
 		// Prefix "3.11" → returns latest in that minor series.
-		{"python", "3.11", "x86_64", "rhel", "3.11.9", false},
+		{"python", "3.11", "x86_64", "linux-gnu-2.34", "3.11.9", false},
 		// Exact version prefix.
-		{"python", "3.11.8", "x86_64", "rhel", "3.11.8", false},
+		{"python", "3.11.8", "x86_64", "linux-gnu-2.34", "3.11.8", false},
 		// Different arch.
-		{"python", "3.11", "arm64", "rhel", "3.11.9", false},
+		{"python", "3.11", "arm64", "linux-gnu-2.34", "3.11.9", false},
 		// Different family.
-		{"python", "", "x86_64", "debian", "3.11.9", false},
+		{"python", "", "x86_64", "linux-gnu-2.35", "3.11.9", false},
 		// cuda latest.
-		{"cuda", "", "x86_64", "rhel", "12.3.2", false},
+		{"cuda", "", "x86_64", "linux-gnu-2.34", "12.3.2", false},
 		// Not found.
-		{"alphafold", "", "x86_64", "rhel", "", true},
+		{"alphafold", "", "x86_64", "linux-gnu-2.34", "", true},
 		// Wrong arch.
-		{"cuda", "", "arm64", "rhel", "", true},
+		{"cuda", "", "arm64", "linux-gnu-2.34", "", true},
 	}
 
 	for _, tt := range tests {
@@ -109,10 +109,10 @@ func TestMemoryStoreBaseCapabilities(t *testing.T) {
 	s := registry.NewMemoryStore()
 
 	caps := &spec.BaseCapabilities{
-		AMIID:  "ami-0abc123",
-		OS:     "al2023",
-		Arch:   "x86_64",
-		Family: "rhel",
+		AMIID: "ami-0abc123",
+		OS:    "al2023",
+		Arch:  "x86_64",
+		ABI:   "linux-gnu-2.34",
 	}
 
 	// Not yet stored → ErrNotFound.
@@ -138,14 +138,14 @@ func TestMemoryStoreListLayers(t *testing.T) {
 	ctx := context.Background()
 	s := registry.NewMemoryStore()
 
-	s.AddLayer(layer("python", "3.12.0", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.11.9", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.11.8", "x86_64", "rhel"))
-	s.AddLayer(layer("cuda", "12.3.2", "x86_64", "rhel"))
-	s.AddLayer(layer("python", "3.11.9", "arm64", "rhel"))
+	s.AddLayer(layer("python", "3.12.0", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.9", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.8", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("cuda", "12.3.2", "x86_64", "linux-gnu-2.34"))
+	s.AddLayer(layer("python", "3.11.9", "arm64", "linux-gnu-2.34"))
 
 	// List all python x86_64 rhel → newest first.
-	layers, err := s.ListLayers(ctx, "python", "x86_64", "rhel")
+	layers, err := s.ListLayers(ctx, "python", "x86_64", "linux-gnu-2.34")
 	if err != nil {
 		t.Fatalf("ListLayers() error: %v", err)
 	}

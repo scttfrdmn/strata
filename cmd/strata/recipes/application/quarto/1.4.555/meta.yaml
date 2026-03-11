@@ -1,0 +1,11 @@
+name: quarto
+version: "1.4.555"
+tier: application
+description: "Quarto scientific and technical publishing system version 1.4.555."
+abi: linux-gnu-2.34
+provides:
+  - name: quarto
+    version: "1.4.555"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

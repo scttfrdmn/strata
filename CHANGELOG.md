@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-09
+
+### Added
+- **Lmod modulefile auto-generation**: build pipeline now writes
+  `modulefiles/<name>/<version>.lua` inside every non-flat squashfs layer
+  (`internal/build/modulefile.go`). Auto-detects `bin/`, `lib/`, `lib64/`,
+  `lib/pkgconfig/`, `share/man/`, `share/info/`, `include/` and emits the
+  corresponding `prepend_path()` Lmod directives. `conflict()` emitted for
+  each user-visible capability name so only one version is active at a time.
+- `spec/layer.go`: `LayerManifest.HasModulefile bool` — set true by the build
+  pipeline when a modulefile was successfully generated
+- `internal/build/recipe.go`: `ModuleEnvVar` struct + `RecipeMeta.ModulefileEnv
+  []ModuleEnvVar` — declares extra `setenv()` vars in generated modulefiles
+  (e.g. `GCC_HOME`, `CC`, `CXX`, `FC`, `MPI_HOME`, `HDF5_HOME`)
+- `spec/profile.go`: `Profile.Defaults []SoftwareRef` — lists modules to
+  pre-load at login; agent generates `/etc/profile.d/strata-defaults.sh`
+- `spec/lockfile.go`: `LockFile.Defaults []SoftwareRef` — copied from profile
+  by resolver stage 8; consumed by agent to write defaults script
+- `internal/overlay/overlay.go`: `ConfigureEnvironment` now writes
+  `/etc/profile.d/strata-modules.sh` (registers `modulefiles/` with Lmod) and
+  `/etc/profile.d/strata-defaults.sh` (pre-loads `profile.defaults` modules)
+- **Multi-version coexistence**: `canCoexist()` in resolver stage 5 allows two
+  versioned-layout layers to share a capability name — e.g. gcc@13 + gcc@14 in
+  the same profile without a CAPABILITY_CONFLICT. Flat-layout layers still
+  conflict. Lmod `conflict()` prevents simultaneous activation.
+- `internal/resolver/stages.go`: `canCoexist(a, b *spec.LayerManifest) bool`
+- New resolver tests: `TestStage5_MultiVersionCoexistence`,
+  `TestStage5_DifferentImpls_Coexist`
+- **New recipes — core tier**:
+  - `core/lmod/8.7.37/`: Lmod environment modules system; provides `lmod`,
+    `modules@8.7.37`; AL2023 ships Lua natively
+  - `core/nodejs/20.19.0/`: Node.js 20 LTS (pre-built binary); provides
+    `nodejs@20.19.0`, `npm@10.8.2`
+  - `core/nodejs/22.14.0/`: Node.js 22 LTS (pre-built binary); provides
+    `nodejs@22.14.0`, `npm@10.9.2`
+- **New recipes — library tier**:
+  - `library/openblas/0.3.26/`: provides `openblas@0.3.26`, `blas@3.11`,
+    `lapack@3.11`; built with DYNAMIC_ARCH for runtime CPU dispatch
+  - `library/openblas/0.3.28/`: provides `openblas@0.3.28`, `blas@3.12`,
+    `lapack@3.12`
+  - `library/fftw/3.3.10/`: provides `fftw@3.3.10`; builds double, float, and
+    long-double precision libraries; AVX/AVX2/AVX-512 on x86, NEON on arm64
+  - `library/hdf5/1.12.3/`: provides `hdf5@1.12.3`; C, C++, Fortran APIs;
+    zlib compression
+  - `library/hdf5/1.14.4/`: provides `hdf5@1.14.4`
+  - `library/netcdf-c/4.9.2/`: provides `netcdf-c@4.9.2`, `netcdf@4.9.2`;
+    requires `hdf5>=1.12` in build and runtime env
+- **New recipes — application tier**:
+  - `application/julia/1.10.7/`: Julia 1.10 LTS (pre-built binary); provides
+    `julia@1.10.7`
+  - `application/julia/1.11.3/`: Julia 1.11 (pre-built binary); provides
+    `julia@1.11.3`
+- `modulefile_env:` added to all existing recipes: gcc (GCC_HOME, CC, CXX,
+  FC), python (PYTHON, PYTHONHOME), R (R_HOME), cuda (CUDA_HOME, CUDA_PATH),
+  openmpi (MPI_HOME, MPICC, MPICXX, MPIFC), ucx/hwloc/pmix/libfabric
+  (UCX_HOME, HWLOC_HOME, PMIX_HOME, LIBFABRIC_HOME), samtools (SAMTOOLS_HOME),
+  jupyterlab (JUPYTERLAB_HOME), miniforge (CONDA_PREFIX)
+
+### Changed
+- `internal/resolver/stages.go` `stage5DetectConflicts`: capability conflict
+  check uses `capProviders map[string][]int` (was `capProvider map[string]int`)
+  to support multiple providers per capability name; `canCoexist()` exempts
+  versioned-layout pairs from capability-level rejection
+- `internal/resolver/resolver_test.go` `TestStage5_CapabilityConflict`: updated
+  to test flat-layout conflict (glibc-vendor-a + glibc-vendor-b); old MPI
+  conflict test replaced by `TestStage5_DifferentImpls_Coexist`
+
+## [0.12.0] - 2026-03-09
+
+### Added
+- `spec/layer.go`: `LayerManifest.UserSelectable bool` — false for dependency-only layers
+  (ucx, hwloc, pmix, libfabric) that are resolved transitively but never shown in default
+  `strata search` output or allowed as top-level user software choices
+- `spec/layer.go`: `LayerManifest.InstallLayout string` — "versioned" (default,
+  `/<name>/<version>/`) or "flat" (directly to `/`, required for glibc)
+- `internal/build/recipe.go`: `RecipeMeta.UserSelectable *bool` — defaults to true;
+  `RecipeMeta.UserSelectableBool()` helper
+- `internal/build/recipe.go`: `RecipeMeta.InstallLayout string` — validated: "", "versioned", "flat"
+- `internal/build/pipeline.go`: flat layout support — `installPrefix = outputDir` when
+  `InstallLayout == "flat"`; pkg-config patching skipped for flat layout
+- `cmd/strata/search.go`: `--abi` flag (replaces `--family`); `--all` flag to include
+  `user_selectable=false` layers; default search hides dependency-only layers
+- `cmd/strata/recipes/core/glibc/2.34/`: glibc 2.34 recipe skeleton (not yet buildable;
+  requires bwrap agent support in v0.13.0+)
+- `docs/architecture-execution-model.md`: specification of the bwrap/pivot_root execution
+  model required for glibc-as-layer (target: v0.13.0)
+- `STRATA.md`: "The Kernel Anchor" section explaining the ABI-first reproducibility philosophy
+
+### Changed
+- **Schema breaking change**: `family` field renamed to `abi` in `LayerManifest`,
+  `BaseCapabilities`, `RecipeMeta` across the entire codebase
+- **ABI values**: `"rhel"` → `"linux-gnu-2.34"`, `"debian"` → `"linux-gnu-2.35"`
+- **S3 key paths**: `layers/rhel/<arch>/...` → `layers/linux-gnu-2.34/<arch>/...`
+  (rebuild all layers to populate new paths; old `layers/rhel/` objects become orphaned)
+- `probe.OSFamily` renamed to `probe.OSABI` with new ABI values
+- `probe.KnownBaseCapabilities`: capability `{Name: "family", Version: "rhel"}` →
+  `{Name: "abi", Version: "linux-gnu-2.34"}`
+- `internal/probe/compiler.go`: `DetectSystemCompiler` switches on ABI string
+- `internal/registry/registry.go`: all `family` parameters renamed to `abi`
+- `internal/resolver/stages.go`: `stage3ResolveSoftware` passes `base.Capabilities.ABI`
+- `internal/build/pipeline.go`: annotation `strata.layer.family` → `strata.layer.abi`
+- All recipe `meta.yaml` files: `family: rhel` → `abi: linux-gnu-2.34`
+- `library/{ucx,hwloc,pmix,libfabric}` recipes: added `user_selectable: false`
+
 ## [0.10.0] - 2026-03-08
 
 ### Added

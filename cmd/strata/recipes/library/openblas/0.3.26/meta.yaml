@@ -1,0 +1,29 @@
+name: openblas
+version: "0.3.26"
+tier: library
+description: "OpenBLAS 0.3.26 — optimized BLAS/LAPACK for numpy, scipy, and R linear algebra."
+abi: linux-gnu-2.34
+
+build_requires:
+  - name: gcc
+    min_version: "13"
+
+provides:
+  - name: openblas
+    version: "0.3.26"
+  - name: blas
+    version: "3.11"
+  - name: lapack
+    version: "3.11"
+
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"
+
+modulefile_env:
+  - var: OPENBLAS_HOME
+    path: ""
+  - var: BLAS_HOME
+    path: ""
+  - var: LAPACK_HOME
+    path: ""

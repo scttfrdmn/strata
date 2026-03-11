@@ -28,8 +28,8 @@ func makeTestRecipe(t *testing.T, scriptContent string) *Recipe {
 	dir := t.TempDir()
 	meta := `name: test-layer
 version: "1.0.0"
-tier: "2"
-family: rhel
+tier: application
+abi: linux-gnu-2.34
 provides:
   - name: test-layer
     version: "1.0.0"

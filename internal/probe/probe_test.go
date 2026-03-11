@@ -41,16 +41,16 @@ func TestResolveSSMParam(t *testing.T) {
 	}
 }
 
-func TestOSFamily(t *testing.T) {
+func TestOSABI(t *testing.T) {
 	tests := []struct{ os, want string }{
-		{"al2023", "rhel"},
-		{"rocky9", "rhel"},
-		{"rocky10", "rhel"},
-		{"ubuntu24", "debian"},
+		{"al2023", "linux-gnu-2.34"},
+		{"rocky9", "linux-gnu-2.34"},
+		{"rocky10", "linux-gnu-2.34"},
+		{"ubuntu24", "linux-gnu-2.35"},
 	}
 	for _, tt := range tests {
-		if got := probe.OSFamily[tt.os]; got != tt.want {
-			t.Errorf("OSFamily[%q] = %q, want %q", tt.os, got, tt.want)
+		if got := probe.OSABI[tt.os]; got != tt.want {
+			t.Errorf("OSABI[%q] = %q, want %q", tt.os, got, tt.want)
 		}
 	}
 }
@@ -197,14 +197,14 @@ func TestClientResolve(t *testing.T) {
 
 func TestKnownBaseCapabilities(t *testing.T) {
 	tests := []struct {
-		os, arch   string
-		wantFamily string
-		wantGlibc  string
+		os, arch  string
+		wantABI   string
+		wantGlibc string
 	}{
-		{"al2023", "x86_64", "rhel", "2.34"},
-		{"rocky9", "x86_64", "rhel", "2.34"},
-		{"rocky10", "x86_64", "rhel", "2.39"},
-		{"ubuntu24", "x86_64", "debian", "2.39"},
+		{"al2023", "x86_64", "linux-gnu-2.34", "2.34"},
+		{"rocky9", "x86_64", "linux-gnu-2.34", "2.34"},
+		{"rocky10", "x86_64", "linux-gnu-2.34", "2.39"},
+		{"ubuntu24", "x86_64", "linux-gnu-2.35", "2.39"},
 	}
 
 	for _, tt := range tests {
@@ -213,14 +213,14 @@ func TestKnownBaseCapabilities(t *testing.T) {
 			if err != nil {
 				t.Fatalf("KnownBaseCapabilities(%q, %q) error: %v", tt.os, tt.arch, err)
 			}
-			if caps.Family != tt.wantFamily {
-				t.Errorf("Family = %q, want %q", caps.Family, tt.wantFamily)
+			if caps.ABI != tt.wantABI {
+				t.Errorf("ABI = %q, want %q", caps.ABI, tt.wantABI)
 			}
 			if !caps.HasCapability("glibc", tt.wantGlibc) {
 				t.Errorf("glibc@%s not satisfied by %v", tt.wantGlibc, caps.Provides)
 			}
-			if !caps.HasCapability("family", tt.wantFamily) {
-				t.Errorf("family=%q not in capabilities", tt.wantFamily)
+			if !caps.HasCapability("abi", tt.wantABI) {
+				t.Errorf("abi=%q not in capabilities", tt.wantABI)
 			}
 		})
 	}

@@ -7,24 +7,24 @@ import (
 )
 
 // DetectSystemCompiler returns the exact package identifier of the system C
-// compiler, using the package manager appropriate for the OS family.
+// compiler, using the package manager appropriate for the ABI.
 //
 // This is called by the probe script running on the actual AMI. The result
 // is stored in BaseCapabilities.SystemCompiler and later copied to
 // LayerManifest.BootstrapCompiler for Tier 0 bootstrap builds.
 //
-// Output format by family:
+// Output format by ABI:
 //
-//	rhel:   rpm NVR  — "gcc-11.4.1-2.amzn2023.0.1.x86_64"
-//	debian: dpkg NVR — "gcc-11-11.4.0-1ubuntu1~22.04-amd64"
-func DetectSystemCompiler(family string) (string, error) {
-	switch family {
-	case "rhel":
+//	linux-gnu-2.34 (rpm):  "gcc-11.4.1-2.amzn2023.0.1.x86_64"
+//	linux-gnu-2.35 (dpkg): "gcc-11-11.4.0-1ubuntu1~22.04-amd64"
+func DetectSystemCompiler(abi string) (string, error) {
+	switch abi {
+	case "linux-gnu-2.34":
 		return detectRPMCompiler()
-	case "debian":
+	case "linux-gnu-2.35":
 		return detectDpkgCompiler()
 	default:
-		return "", fmt.Errorf("DetectSystemCompiler: unknown family %q — supported: rhel, debian", family)
+		return "", fmt.Errorf("DetectSystemCompiler: unknown abi %q — supported: linux-gnu-2.34, linux-gnu-2.35", abi)
 	}
 }
 

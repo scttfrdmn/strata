@@ -88,6 +88,39 @@ func ConfigureEnvironment(lockfile *spec.LockFile, ov *Overlay, rootDir string) 
 		return fmt.Errorf("overlay: writing strata.sh: %w", err)
 	}
 
+	// --- /etc/profile.d/strata-modules.sh ---
+	// Registers the Strata modulefile directory with Lmod so that
+	// `module avail` lists all layers that have generated modulefiles.
+	// This is a no-op if Lmod is not installed on the instance.
+	var mods strings.Builder
+	mods.WriteString("# Strata Lmod integration — auto-generated, do not edit\n")
+	mods.WriteString("if command -v module >/dev/null 2>&1; then\n")
+	fmt.Fprintf(&mods, "    module use %s/modulefiles\n", mergedPath)
+	mods.WriteString("fi\n")
+	if err := os.WriteFile(filepath.Join(profileD, "strata-modules.sh"), []byte(mods.String()), 0644); err != nil {
+		return fmt.Errorf("overlay: writing strata-modules.sh: %w", err)
+	}
+
+	// --- /etc/profile.d/strata-defaults.sh ---
+	// Pre-loads the modules listed in the profile's defaults: key so users
+	// get the specified versions active immediately at login.
+	if len(lockfile.Defaults) > 0 {
+		var defs strings.Builder
+		defs.WriteString("# Strata default modules — auto-generated, do not edit\n")
+		defs.WriteString("if command -v module >/dev/null 2>&1; then\n")
+		for _, ref := range lockfile.Defaults {
+			if ref.Version != "" {
+				fmt.Fprintf(&defs, "    module load %s/%s\n", ref.Name, ref.Version)
+			} else {
+				fmt.Fprintf(&defs, "    module load %s\n", ref.Name)
+			}
+		}
+		defs.WriteString("fi\n")
+		if err := os.WriteFile(filepath.Join(profileD, "strata-defaults.sh"), []byte(defs.String()), 0644); err != nil {
+			return fmt.Errorf("overlay: writing strata-defaults.sh: %w", err)
+		}
+	}
+
 	// --- /etc/strata/environment (systemd EnvironmentFile) ---
 	strataDir := filepath.Join(rootDir, "etc", "strata")
 	if err := os.MkdirAll(strataDir, 0755); err != nil {

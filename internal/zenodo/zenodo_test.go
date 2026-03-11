@@ -24,7 +24,7 @@ func frozenLockfile() *spec.LockFile {
 			AMISHA256:  strings.Repeat("a", 64),
 			Capabilities: spec.BaseCapabilities{
 				AMIID:    "ami-test123",
-				Family:   "rhel",
+				ABI:      "linux-gnu-2.34",
 				ProbedAt: time.Now(),
 			},
 		},

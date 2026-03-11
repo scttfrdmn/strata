@@ -12,7 +12,7 @@ import (
 // Every field is populated before the layer enters the registry.
 type LayerManifest struct {
 	// Identity
-	ID      string `yaml:"id" json:"id"`           // e.g. "python-3.11.9-rhel-x86_64"
+	ID      string `yaml:"id" json:"id"`           // e.g. "python-3.11.9-linux-gnu-2.34-x86_64"
 	Name    string `yaml:"name" json:"name"`       // e.g. "python"
 	Version string `yaml:"version" json:"version"` // e.g. "3.11.9"
 
@@ -36,9 +36,25 @@ type LayerManifest struct {
 	Requires []Requirement `yaml:"requires" json:"requires"`
 
 	// Registry metadata.
-	Arch    string    `yaml:"arch" json:"arch"`     // "x86_64", "arm64"
-	Family  string    `yaml:"family" json:"family"` // "rhel", "debian"
+	Arch    string    `yaml:"arch" json:"arch"` // "x86_64", "arm64"
+	ABI     string    `yaml:"abi" json:"abi"`   // e.g. "linux-gnu-2.34", "linux-gnu-2.35"
 	BuiltAt time.Time `yaml:"built_at" json:"built_at"`
+
+	// UserSelectable is false for dependency-only layers (ucx, hwloc, pmix, libfabric)
+	// that are resolved transitively but never shown in default strata search output
+	// or allowed as top-level user software choices.
+	UserSelectable bool `yaml:"user_selectable" json:"user_selectable"`
+
+	// InstallLayout describes how the recipe installs into the squashfs.
+	// "versioned" (default): installs to /<name>/<version>/
+	// "flat": installs directly to / (used by glibc, musl)
+	InstallLayout string `yaml:"install_layout,omitempty" json:"install_layout,omitempty"`
+
+	// HasModulefile is true when the build pipeline generated an Lmod
+	// modulefile (modulefiles/<name>/<version>.lua) inside the squashfs.
+	// Set for all non-flat layouts by the build pipeline after a successful
+	// GenerateModulefile call.
+	HasModulefile bool `yaml:"has_modulefile,omitempty" json:"has_modulefile,omitempty"`
 
 	// Build provenance — what produced this layer.
 	RecipeSHA256      string     `yaml:"recipe_sha256" json:"recipe_sha256"`                               // SHA256 of build.sh
@@ -66,7 +82,7 @@ type LayerRef struct {
 //	{Name: "cuda",    Version: "12.3.2"}
 //	{Name: "glibc",   Version: "2.34"}
 //	{Name: "mpi",     Version: "3.1"}
-//	{Name: "family",  Version: "rhel"}   // OS family, not versioned
+//	{Name: "abi",     Version: "linux-gnu-2.34"}  // C runtime ABI identifier
 type Capability struct {
 	Name    string `yaml:"name" json:"name"`
 	Version string `yaml:"version" json:"version"`
@@ -121,19 +137,19 @@ type BaseCapabilities struct {
 	// Arch is the architecture, e.g. "x86_64".
 	Arch string `yaml:"arch" json:"arch"`
 
-	// Family is the OS family used for layer catalog filtering.
-	// "rhel" covers AL2023, Rocky 8/9/10, RHEL 8/9.
-	// "debian" covers Ubuntu, Debian.
-	Family string `yaml:"family" json:"family"`
+	// ABI is the C runtime ABI identifier used for layer catalog filtering.
+	// "linux-gnu-2.34" covers AL2023, Rocky 9/10, RHEL 9.
+	// "linux-gnu-2.35" covers Ubuntu 22.04, Debian 12.
+	ABI string `yaml:"abi" json:"abi"`
 
 	// ProbedAt is when this capability set was generated.
 	ProbedAt time.Time `yaml:"probed_at" json:"probed_at"`
 
 	// SystemCompiler is the exact package identifier of the system C compiler.
-	// Populated by the probe script; format is family-specific but always
+	// Populated by the probe script; format is ABI-specific but always
 	// uniquely identifies the compiler version and build:
-	//   rhel family:   rpm NVR, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
-	//   debian family: dpkg NVR, e.g. "gcc-11-11.4.0-1ubuntu1~22.04-amd64"
+	//   linux-gnu (rpm):  rpm NVR, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
+	//   linux-gnu (dpkg): dpkg NVR, e.g. "gcc-11-11.4.0-1ubuntu1~22.04-amd64"
 	// Used as LayerManifest.BootstrapCompiler for Tier 0 bootstrap builds.
 	SystemCompiler string `yaml:"system_compiler" json:"system_compiler"`
 
