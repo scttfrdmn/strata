@@ -70,16 +70,32 @@ func PlanCatalog(recipesDir string) (*Plan, error) {
 	}, nil
 }
 
-// discoverRecipes finds all recipes in recipesDir. Each recipe is expected
-// at recipesDir/<name>/<version>/ containing build.sh and meta.yaml.
+// discoverRecipes finds all recipes under recipesDir. It supports both flat
+// and nested layouts:
+//
+//   - Flat:   recipesDir/<name>/<version>/build.sh
+//   - Nested: recipesDir/<category>/<name>/<version>/build.sh
+//
 // For each name, only the lexicographically latest version directory is used.
+// Names in a nested layout take the form "name" (category is not included);
+// duplicate names across categories are not supported.
 func discoverRecipes(dir string) (map[string]*Recipe, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	recipes := make(map[string]*Recipe)
+	if err := discoverRecipesDir(dir, recipes); err != nil {
 		return nil, err
 	}
+	return recipes, nil
+}
 
-	recipes := make(map[string]*Recipe)
+// discoverRecipesDir recursively discovers recipes under dir. Directories
+// that contain a meta.yaml directly inside a version subdir are recipe roots;
+// others are treated as category containers and recursed into.
+func discoverRecipesDir(dir string, recipes map[string]*Recipe) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -87,29 +103,44 @@ func discoverRecipes(dir string) (map[string]*Recipe, error) {
 		name := entry.Name()
 		nameDir := filepath.Join(dir, name)
 
-		// Find the latest version subdirectory.
+		// Find version subdirectories (directories containing meta.yaml).
 		versions, err := os.ReadDir(nameDir)
 		if err != nil {
 			continue
 		}
+
 		var latestVersion string
+		hasVersionWithMeta := false
 		for _, v := range versions {
-			if v.IsDir() && v.Name() > latestVersion {
-				latestVersion = v.Name()
+			if !v.IsDir() {
+				continue
+			}
+			// A version dir contains meta.yaml at its root.
+			metaPath := filepath.Join(nameDir, v.Name(), "meta.yaml")
+			if _, statErr := os.Stat(metaPath); statErr == nil {
+				hasVersionWithMeta = true
+				if v.Name() > latestVersion {
+					latestVersion = v.Name()
+				}
 			}
 		}
-		if latestVersion == "" {
-			continue
-		}
 
-		recipeDir := filepath.Join(nameDir, latestVersion)
-		r, err := ParseRecipe(recipeDir)
-		if err != nil {
-			return nil, fmt.Errorf("parsing recipe at %q: %w", recipeDir, err)
+		if hasVersionWithMeta {
+			// This is a recipe root: nameDir/<version>/meta.yaml exists.
+			recipeDir := filepath.Join(nameDir, latestVersion)
+			r, parseErr := ParseRecipe(recipeDir)
+			if parseErr != nil {
+				return fmt.Errorf("parsing recipe at %q: %w", recipeDir, parseErr)
+			}
+			recipes[name] = r
+		} else {
+			// Treat as a category container and recurse.
+			if recurseErr := discoverRecipesDir(nameDir, recipes); recurseErr != nil {
+				return recurseErr
+			}
 		}
-		recipes[name] = r
 	}
-	return recipes, nil
+	return nil
 }
 
 // topoSort performs Kahn's topological sort on the dependency graph, grouping
