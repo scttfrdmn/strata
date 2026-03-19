@@ -86,41 +86,38 @@ func parseBucketURL(u string) (string, bool) {
 // ResolveLayer returns the highest-versioned layer manifest whose name, arch,
 // abi, and version prefix match the request.
 //
-// It lists s3://<bucket>/layers/<abi>/<arch>/<name>/ using the delimiter
-// "/" to get one common-prefix per version directory, then applies
-// versionMatches + compareSegments to select the best, and fetches its
-// manifest.yaml.
+// It reads the flat index at index/layers.yaml (which contains complete
+// manifests including Sigstore signing fields) and selects the best-matching
+// version using versionMatches + compareSegments.
 func (c *S3Client) ResolveLayer(ctx context.Context, name, versionPrefix, arch, abi string) (*spec.LayerManifest, error) {
-	prefix := fmt.Sprintf("layers/%s/%s/%s/", abi, arch, name)
-	versions, err := c.listCommonPrefixes(ctx, prefix)
-	if err != nil {
+	var idx LayerIndex
+	if err := c.getYAML(ctx, "index/layers.yaml", &idx); err != nil {
 		return nil, err
 	}
-	if len(versions) == 0 {
-		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, abi)}
-	}
 
-	var bestVersion string
-	for _, vdir := range versions {
-		// vdir is like "layers/linux-gnu-2.34/x86_64/python/3.11.9/"
-		ver := extractLastSegment(strings.TrimSuffix(vdir, "/"))
-		if versionPrefix != "" && !versionMatches(ver, versionPrefix) {
+	var best *spec.LayerManifest
+	for _, m := range idx.Layers {
+		if m.Name != name {
 			continue
 		}
-		if bestVersion == "" || compareSegments(ver, bestVersion) > 0 {
-			bestVersion = ver
+		if arch != "" && m.Arch != arch {
+			continue
+		}
+		if abi != "" && m.ABI != abi {
+			continue
+		}
+		if versionPrefix != "" && !versionMatches(m.Version, versionPrefix) {
+			continue
+		}
+		if best == nil || compareSegments(m.Version, best.Version) > 0 {
+			cp := *m
+			best = &cp
 		}
 	}
-	if bestVersion == "" {
+	if best == nil {
 		return nil, &ErrNotFound{Kind: "layer", Key: layerKey(name, versionPrefix, arch, abi)}
 	}
-
-	key := fmt.Sprintf("layers/%s/%s/%s/%s/manifest.yaml", abi, arch, name, bestVersion)
-	var m spec.LayerManifest
-	if err := c.getYAML(ctx, key, &m); err != nil {
-		return nil, err
-	}
-	return &m, nil
+	return best, nil
 }
 
 // ResolveFormation fetches the formation manifest for nameVersion
@@ -248,16 +245,6 @@ func (c *S3Client) listCommonPrefixes(ctx context.Context, prefix string) ([]str
 	return prefixes, nil
 }
 
-// extractLastSegment returns the last path component (after the final "/",
-// treating a trailing "/" as already stripped before calling this).
-func extractLastSegment(path string) string {
-	idx := strings.LastIndex(path, "/")
-	if idx < 0 {
-		return path
-	}
-	return path[idx+1:]
-}
-
 // kindFromKey infers the ErrNotFound.Kind from the S3 key path.
 func kindFromKey(key string) string {
 	switch {
@@ -295,8 +282,9 @@ func (c *S3Client) PushLayer(ctx context.Context, manifest *spec.LayerManifest, 
 		return fmt.Errorf("registry: uploading layer.sqfs: %w", err)
 	}
 
-	// Set Source on the manifest before marshaling.
+	// Set Source and Bundle on the manifest before marshaling.
 	manifest.Source = "s3://" + c.bucket + "/" + prefix + "layer.sqfs"
+	manifest.Bundle = "s3://" + c.bucket + "/" + prefix + "bundle.json"
 
 	// Upload manifest.yaml.
 	manifestData, err := yaml.Marshal(manifest)
@@ -489,6 +477,10 @@ func (c *S3Client) RebuildIndex(ctx context.Context) error {
 							continue
 						}
 						return fmt.Errorf("registry: fetching manifest %q: %w", key, err)
+					}
+					// Derive Bundle URI from the known layout if not already set.
+					if m.Bundle == "" {
+						m.Bundle = "s3://" + c.bucket + "/" + versionPrefix + "bundle.json"
 					}
 					cp := m
 					manifests = append(manifests, &cp)

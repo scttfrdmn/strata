@@ -27,6 +27,11 @@ func newS3LayerFetcher() *s3LayerFetcher {
 	if err != nil {
 		return &s3LayerFetcher{cacheDir: defaultCacheDir}
 	}
+	// All Strata registry resources live in us-east-1. Fall back when the
+	// region cannot be resolved from the environment (e.g. early boot).
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
+	}
 	return &s3LayerFetcher{
 		s3:       s3.NewFromConfig(cfg),
 		cacheDir: defaultCacheDir,

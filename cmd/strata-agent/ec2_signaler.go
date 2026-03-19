@@ -37,6 +37,9 @@ func newEC2ReadySignaler() *ec2ReadySignaler {
 	if err != nil {
 		return &ec2ReadySignaler{imds: imdsClient}
 	}
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
+	}
 	return &ec2ReadySignaler{
 		imds: imdsClient,
 		ec2:  ec2.NewFromConfig(cfg),
@@ -52,7 +55,7 @@ func newEC2ReadySignalerWithAPIs(imdsClient imdsAPI, ec2Client ec2TagAPI) *ec2Re
 // getInstanceID fetches the current EC2 instance ID from IMDS.
 func (s *ec2ReadySignaler) getInstanceID(ctx context.Context) (string, error) {
 	out, err := s.imds.GetMetadata(ctx, &imds.GetMetadataInput{
-		Path: "meta-data/instance-id",
+		Path: "instance-id",
 	})
 	if err != nil {
 		return "", fmt.Errorf("ec2ReadySignaler: getting instance-id: %w", err)

@@ -45,6 +45,11 @@ func newMetadataLockfileSource() *metadataLockfileSource {
 		// S3 fallback unavailable; user-data path still works.
 		return &metadataLockfileSource{imds: imdsClient}
 	}
+	// All Strata registry resources live in us-east-1. Fall back when the
+	// region cannot be resolved from the environment (e.g. early boot).
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
+	}
 	return &metadataLockfileSource{
 		imds: imdsClient,
 		s3:   s3.NewFromConfig(cfg),

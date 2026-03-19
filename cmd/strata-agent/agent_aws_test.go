@@ -231,7 +231,7 @@ func testLockfile() *spec.LockFile {
 func TestSignalReady_Tags(t *testing.T) {
 	mockTags := &mockEC2Tag{tags: make(map[string]string)}
 	sig := newEC2ReadySignalerWithAPIs(
-		&mockIMDS{metadata: map[string]string{"meta-data/instance-id": "i-abc123"}},
+		&mockIMDS{metadata: map[string]string{"instance-id": "i-abc123"}},
 		mockTags,
 	)
 
@@ -249,7 +249,7 @@ func TestSignalReady_Tags(t *testing.T) {
 func TestSignalFailed_Tags(t *testing.T) {
 	mockTags := &mockEC2Tag{tags: make(map[string]string)}
 	sig := newEC2ReadySignalerWithAPIs(
-		&mockIMDS{metadata: map[string]string{"meta-data/instance-id": "i-abc123"}},
+		&mockIMDS{metadata: map[string]string{"instance-id": "i-abc123"}},
 		mockTags,
 	)
 
@@ -269,7 +269,7 @@ func TestSignalFailed_Tags(t *testing.T) {
 func TestSignalFailed_TruncatesLongReason(t *testing.T) {
 	mockTags := &mockEC2Tag{tags: make(map[string]string)}
 	sig := newEC2ReadySignalerWithAPIs(
-		&mockIMDS{metadata: map[string]string{"meta-data/instance-id": "i-abc123"}},
+		&mockIMDS{metadata: map[string]string{"instance-id": "i-abc123"}},
 		mockTags,
 	)
 

@@ -120,14 +120,20 @@ func layerManifest(name, version, arch, abi string) *spec.LayerManifest {
 	}
 }
 
+// putIndex is a test helper that stores a LayerIndex at index/layers.yaml.
+func putIndex(mock *mockS3, manifests ...*spec.LayerManifest) {
+	mock.put("index/layers.yaml", LayerIndex{Layers: manifests})
+}
+
 // ---- ResolveLayer -----------------------------------------------------------
 
 func TestResolveLayer_ReturnsNewest(t *testing.T) {
 	mock := newMockS3()
-	for _, ver := range []string{"3.11.7", "3.11.9", "3.11.8"} {
-		mock.put("layers/linux-gnu-2.34/x86_64/python/"+ver+"/manifest.yaml",
-			layerManifest("python", ver, "x86_64", "linux-gnu-2.34"))
-	}
+	putIndex(mock,
+		layerManifest("python", "3.11.7", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.11.9", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.11.8", "x86_64", "linux-gnu-2.34"),
+	)
 	c := newS3ClientWithAPI("bucket", mock)
 
 	m, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "linux-gnu-2.34")
@@ -141,10 +147,10 @@ func TestResolveLayer_ReturnsNewest(t *testing.T) {
 
 func TestResolveLayer_VersionPrefixFilter(t *testing.T) {
 	mock := newMockS3()
-	for _, ver := range []string{"3.11.9", "3.12.1"} {
-		mock.put("layers/linux-gnu-2.34/x86_64/python/"+ver+"/manifest.yaml",
-			layerManifest("python", ver, "x86_64", "linux-gnu-2.34"))
-	}
+	putIndex(mock,
+		layerManifest("python", "3.11.9", "x86_64", "linux-gnu-2.34"),
+		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"),
+	)
 	c := newS3ClientWithAPI("bucket", mock)
 
 	m, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "linux-gnu-2.34")
@@ -157,7 +163,9 @@ func TestResolveLayer_VersionPrefixFilter(t *testing.T) {
 }
 
 func TestResolveLayer_NotFound(t *testing.T) {
-	c := newS3ClientWithAPI("bucket", newMockS3())
+	mock := newMockS3()
+	putIndex(mock) // empty index
+	c := newS3ClientWithAPI("bucket", mock)
 	_, err := c.ResolveLayer(context.Background(), "python", "", "x86_64", "linux-gnu-2.34")
 	if !IsNotFound(err) {
 		t.Errorf("expected ErrNotFound, got %v", err)
@@ -166,8 +174,7 @@ func TestResolveLayer_NotFound(t *testing.T) {
 
 func TestResolveLayer_VersionPrefixNoMatch(t *testing.T) {
 	mock := newMockS3()
-	mock.put("layers/linux-gnu-2.34/x86_64/python/3.12.1/manifest.yaml",
-		layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"))
+	putIndex(mock, layerManifest("python", "3.12.1", "x86_64", "linux-gnu-2.34"))
 	c := newS3ClientWithAPI("bucket", mock)
 
 	_, err := c.ResolveLayer(context.Background(), "python", "3.11", "x86_64", "linux-gnu-2.34")
