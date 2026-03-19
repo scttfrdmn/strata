@@ -513,3 +513,26 @@ func (c *S3Client) RebuildIndex(ctx context.Context) error {
 	}
 	return nil
 }
+
+// PutLockfile stores the lockfile in S3 under locks/<environmentID>.yaml and
+// returns its S3 URI (e.g. "s3://strata-registry/locks/abc123.yaml").
+//
+// The returned URI can be set as EC2 instance tag strata:lockfile-s3-uri;
+// strata-agent reads the lockfile from S3 at boot using that tag.
+func (c *S3Client) PutLockfile(ctx context.Context, lockfile *spec.LockFile) (string, error) {
+	data, err := yaml.Marshal(lockfile)
+	if err != nil {
+		return "", fmt.Errorf("registry: marshalling lockfile: %w", err)
+	}
+	key := "locks/" + lockfile.EnvironmentID() + ".yaml"
+	_, err = c.s3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(c.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String("application/yaml"),
+	})
+	if err != nil {
+		return "", fmt.Errorf("registry: uploading lockfile: %w", err)
+	}
+	return "s3://" + c.bucket + "/" + key, nil
+}
