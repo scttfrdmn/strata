@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -15,10 +16,23 @@ import (
 
 const defaultCacheDir = "/strata/cache"
 
+// FetchStats summarises layer-fetch activity since the fetcher was created.
+// Callers use this to populate BootMetrics after all layers are fetched.
+type FetchStats struct {
+	CachedLayers     int
+	DownloadedLayers int
+	BytesDownloaded  int64
+}
+
 // s3LayerFetcher downloads squashfs layers from S3 to the local layer cache.
 type s3LayerFetcher struct {
 	s3       s3GetAPI
 	cacheDir string
+
+	// stats counters — updated atomically from parallel Fetch goroutines.
+	cachedLayers atomic.Int64
+	dlLayers     atomic.Int64
+	dlBytes      atomic.Int64
 }
 
 // newS3LayerFetcher creates an s3LayerFetcher backed by a real AWS S3 client.
@@ -44,6 +58,15 @@ func newS3LayerFetcherWithAPI(api s3GetAPI, cacheDir string) *s3LayerFetcher {
 	return &s3LayerFetcher{s3: api, cacheDir: cacheDir}
 }
 
+// Stats returns aggregate fetch statistics since the fetcher was created.
+func (f *s3LayerFetcher) Stats() FetchStats {
+	return FetchStats{
+		CachedLayers:     int(f.cachedLayers.Load()),
+		DownloadedLayers: int(f.dlLayers.Load()),
+		BytesDownloaded:  f.dlBytes.Load(),
+	}
+}
+
 // Fetch downloads layer to the local cache if not already present and
 // returns the local cache path. The agent verifies the SHA256 after Fetch returns.
 func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (string, error) {
@@ -51,6 +74,7 @@ func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (s
 
 	// 1. Cache hit: return immediately.
 	if _, err := os.Stat(cachePath); err == nil {
+		f.cachedLayers.Add(1)
 		return cachePath, nil
 	}
 
@@ -83,7 +107,8 @@ func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (s
 	}
 	tmpPath := tmp.Name()
 
-	if _, err := io.Copy(tmp, out.Body); err != nil {
+	n, err := io.Copy(tmp, out.Body)
+	if err != nil {
 		tmp.Close()        //nolint:errcheck
 		os.Remove(tmpPath) //nolint:errcheck
 		return "", fmt.Errorf("s3LayerFetcher: writing layer: %w", err)
@@ -98,5 +123,33 @@ func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (s
 		os.Remove(tmpPath) //nolint:errcheck
 		return "", fmt.Errorf("s3LayerFetcher: renaming to cache path: %w", err)
 	}
+
+	f.dlLayers.Add(1)
+	f.dlBytes.Add(n)
 	return cachePath, nil
+}
+
+// FetchBundleJSON downloads the Sigstore bundle JSON for a layer from the
+// registry and returns the raw bytes. Returns (nil, nil) when layer.Bundle is
+// empty. The caller parses the JSON with trust.ParseBundle.
+func (f *s3LayerFetcher) FetchBundleJSON(ctx context.Context, layer spec.ResolvedLayer) ([]byte, error) {
+	if layer.Bundle == "" {
+		return nil, nil
+	}
+	bucket, key, ok := parseS3URI(layer.Bundle)
+	if !ok {
+		return nil, fmt.Errorf("s3LayerFetcher: invalid bundle URI %q", layer.Bundle)
+	}
+	if f.s3 == nil {
+		return nil, fmt.Errorf("s3LayerFetcher: S3 client unavailable")
+	}
+	out, err := f.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3LayerFetcher: fetching bundle %q: %w", layer.Bundle, err)
+	}
+	defer out.Body.Close() //nolint:errcheck
+	return io.ReadAll(out.Body)
 }

@@ -197,6 +197,7 @@ func Run(
 	if err != nil {
 		return nil, fmt.Errorf("build: signing layer: %w", err)
 	}
+	manifest.SignedBy = job.KeyRef
 
 	bundleJSON, err := bundle.Marshal()
 	if err != nil {

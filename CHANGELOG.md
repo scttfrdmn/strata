@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-03-18
+
+### Added
+- **Boot metrics**: `internal/agent/metrics.go` — `BootMetrics` struct with
+  per-step timing (`lockfile_ms`, `fetch_ms`, `mount_ms`, `configure_ms`,
+  `total_ms`) and transfer stats (`fetch_bytes`, `cached_layers`,
+  `downloaded_layers`). `agent.Run()` now returns `(*BootMetrics, error)`.
+  On completion the agent logs JSON to stderr (`journalctl -u strata-agent`),
+  writes to `/etc/strata/boot-metrics.json`, and uploads best-effort to
+  `s3://strata-registry/metrics/<instance-id>/<iso8601>.json`.
+- **Cosign verifier wired**: `cmd/strata-agent/main.go` now calls
+  `newCosignVerifier(ctx)` which checks for the cosign binary on PATH and
+  downloads `s3://strata-registry/build/keys/cosign.pub` to a temp file.
+  Returns nil (skip verification) when either prerequisite is absent — agent
+  never fails on missing cosign; SHA256 integrity is always enforced.
+- **Bundle verification step**: `internal/agent/agent.go` — new `verifyBundles()`
+  called after layer fetch (step 3) when both `Verifier` and `BundleFetcher`
+  are non-nil. Runs in parallel, first error cancels. `BundleFetcher` interface
+  added to `agent.Config`; `s3LayerFetcher` satisfies it via `FetchBundleJSON`.
+- **`s3LayerFetcher.FetchBundleJSON`**: downloads bundle JSON from the S3 URI
+  in `layer.Bundle`; returns `(nil, nil)` for empty Bundle fields.
+- **Fetch statistics**: `s3LayerFetcher.Stats() FetchStats` returns aggregate
+  cache-hit/download/bytes counters tracked via `sync/atomic` during `Fetch`.
+- **`SignedBy` in manifests**: `internal/build/pipeline.go` now sets
+  `manifest.SignedBy = job.KeyRef` after signing. `Job.KeyRef` added to
+  `internal/build/recipe.go`; wired in `cmd/strata/build.go` from `--key` flag.
+
+### Fixed
+- **Lmod `init.sh` symlink**: `core/lmod/8.7.37/build.sh` now creates a
+  relative symlink (`lmod/lmod/init/bash`) instead of an absolute path baked
+  with the build tmpdir. The old absolute symlink was dangling at runtime after
+  squashfs mount. Rebuild lmod layers to pick up the fix.
+
+### Changed
+- `internal/agent/agent.go`: `Run()` signature changed from `error` to
+  `(*BootMetrics, error)` — all call sites updated (tests in `agent_test.go`,
+  `cmd/strata-agent/main.go`).
+
 ## [0.13.0] - 2026-03-09
 
 ### Added

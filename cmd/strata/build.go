@@ -48,6 +48,7 @@ executing any build steps or requiring AWS credentials.`,
 				RegistryURL: reg,
 				DryRun:      dryRun,
 				CacheDir:    cacheDir,
+				KeyRef:      key,
 			}
 			if err := job.Validate(); err != nil {
 				return err

@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/scttfrdmn/strata/internal/overlay"
 	"github.com/scttfrdmn/strata/internal/trust"
@@ -36,6 +37,14 @@ type LayerFetcher interface {
 	Fetch(ctx context.Context, layer spec.ResolvedLayer) (localPath string, err error)
 }
 
+// BundleFetcher downloads the Sigstore bundle JSON for a layer from the
+// registry. Used alongside Verifier to perform cryptographic signature
+// verification after layers are fetched. Implementations should return
+// (nil, nil) when layer.Bundle is empty.
+type BundleFetcher interface {
+	FetchBundleJSON(ctx context.Context, layer spec.ResolvedLayer) ([]byte, error)
+}
+
 // ReadySignaler reports success or failure to the outside world.
 // Implementations write EC2 instance tags, CloudWatch events, and call sd_notify.
 type ReadySignaler interface {
@@ -51,16 +60,18 @@ type Mounter interface {
 }
 
 // Config holds all dependencies for the Agent.
-// Verifier is optional; when nil, cryptographic bundle verification is skipped
-// (only SHA256 content integrity is checked). EnvRootDir defaults to "/" and
-// is overridden in tests to a temp directory.
+// Verifier and BundleFetcher are optional; both must be non-nil to perform
+// cosign bundle verification (only SHA256 content integrity is checked when
+// either is nil). EnvRootDir defaults to "/" and is overridden in tests to a
+// temp directory.
 type Config struct {
-	Source     LockfileSource
-	Fetcher    LayerFetcher
-	Verifier   trust.Verifier // optional; nil skips cosign bundle verification
-	Signaler   ReadySignaler
-	Mounter    Mounter // optional; defaults to overlay.Mount
-	EnvRootDir string  // defaults to "/" if empty
+	Source        LockfileSource
+	Fetcher       LayerFetcher
+	BundleFetcher BundleFetcher  // optional; nil skips cosign bundle verification
+	Verifier      trust.Verifier // optional; nil skips cosign bundle verification
+	Signaler      ReadySignaler
+	Mounter       Mounter // optional; defaults to overlay.Mount
+	EnvRootDir    string  // defaults to "/" if empty
 }
 
 // Agent orchestrates the boot sequence for a Strata instance.
@@ -97,42 +108,58 @@ func (overlayMounter) Mount(layers []overlay.LayerPath) (*overlay.Overlay, error
 // and the error is returned. On success, the overlay stays mounted until the
 // process exits.
 //
+// The returned *BootMetrics contains timing data for each step. FetchBytes,
+// CachedLayers, and DownloadedLayers are left at zero — callers that have
+// access to the LayerFetcher's stats should populate them after Run returns.
+//
 //  1. Acquire lockfile from instance metadata.
-//  2. Verify Sigstore bundles (when Verifier is configured).
-//  3. Fetch all layers in parallel and verify SHA256.
+//  2. Fetch all layers in parallel and verify SHA256.
+//  3. Verify Sigstore bundles (when Verifier and BundleFetcher are configured).
 //  4. Assemble the OverlayFS.
 //  5. Write environment config files.
 //  6. Signal readiness.
-func (a *Agent) Run(ctx context.Context) error {
-	fail := func(err error) error {
+func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
+	started := time.Now()
+	metrics := &BootMetrics{StartedAt: started}
+
+	fail := func(err error) (*BootMetrics, error) {
+		metrics.TotalMs = time.Since(started).Milliseconds()
 		_ = a.cfg.Signaler.SignalFailed(ctx, err)
-		return err
+		return metrics, err
 	}
 
 	// Step 1: acquire lockfile.
+	t0 := time.Now()
 	lf, err := a.cfg.Source.Acquire(ctx)
 	if err != nil {
 		return fail(fmt.Errorf("agent: acquiring lockfile: %w", err))
 	}
+	metrics.LockfileMs = time.Since(t0).Milliseconds()
+	metrics.LayerCount = len(lf.Layers)
 
-	// Step 2: verify Sigstore bundles (TODO: integrate with trust.VerifyLayers
-	// once the fetched paths are available; bundle paths in the registry are
-	// the authoritative source).
-	_ = a.cfg.Verifier // reserved for future use in this step
-
-	// Step 3: fetch and verify all layers in parallel.
+	// Step 2: fetch and verify all layers in parallel.
+	t0 = time.Now()
 	layerPaths, err := a.fetchAndVerifyLayers(ctx, lf)
 	if err != nil {
 		return fail(fmt.Errorf("agent: fetching layers: %w", err))
 	}
+	metrics.FetchMs = time.Since(t0).Milliseconds()
+
+	// Step 3: verify Sigstore bundles (requires fetched paths from step 2).
+	if err := a.verifyBundles(ctx, lf, layerPaths); err != nil {
+		return fail(fmt.Errorf("agent: verifying bundles: %w", err))
+	}
 
 	// Step 4: assemble the OverlayFS.
+	t0 = time.Now()
 	ov, err := a.cfg.Mounter.Mount(layerPaths)
 	if err != nil {
 		return fail(fmt.Errorf("agent: mounting overlay: %w", err))
 	}
+	metrics.MountMs = time.Since(t0).Milliseconds()
 
 	// Step 5: write environment config files.
+	t0 = time.Now()
 	rootDir := a.cfg.EnvRootDir
 	if rootDir == "" {
 		rootDir = "/"
@@ -141,14 +168,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		_ = ov.Cleanup()
 		return fail(fmt.Errorf("agent: configuring environment: %w", err))
 	}
+	metrics.ConfigureMs = time.Since(t0).Milliseconds()
+	metrics.TotalMs = time.Since(started).Milliseconds()
 
 	// Step 6: signal readiness. Overlay stays mounted on success.
 	if err := a.cfg.Signaler.SignalReady(ctx, lf); err != nil {
 		_ = ov.Cleanup()
-		return fmt.Errorf("agent: signaling ready: %w", err)
+		return metrics, fmt.Errorf("agent: signaling ready: %w", err)
 	}
 
-	return nil
+	return metrics, nil
 }
 
 // fetchAndVerifyLayers pulls all lockfile layers concurrently and verifies
@@ -215,6 +244,86 @@ func (a *Agent) fetchAndVerifyLayers(ctx context.Context, lf *spec.LockFile) ([]
 		paths = append(paths, r.path)
 	}
 	return paths, nil
+}
+
+// verifyBundles verifies the Sigstore cosign bundle for each layer in
+// parallel. Skipped when Verifier or BundleFetcher is nil, or when a layer
+// has no Bundle field. The first verification failure cancels the rest.
+func (a *Agent) verifyBundles(ctx context.Context, lf *spec.LockFile, paths []overlay.LayerPath) error {
+	if a.cfg.Verifier == nil || a.cfg.BundleFetcher == nil {
+		return nil
+	}
+
+	// Build map from layer ID to local sqfs path.
+	pathByID := make(map[string]string, len(paths))
+	for _, p := range paths {
+		pathByID[p.ID] = p.Path
+	}
+
+	type result struct {
+		err error
+	}
+
+	// Count layers that have both a local path and a bundle URI.
+	var toVerify []spec.ResolvedLayer
+	for _, layer := range lf.Layers {
+		if _, ok := pathByID[layer.ID]; ok && layer.Bundle != "" {
+			toVerify = append(toVerify, layer)
+		}
+	}
+	if len(toVerify) == 0 {
+		return nil
+	}
+
+	results := make(chan result, len(toVerify))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for _, layer := range toVerify {
+		layer := layer
+		localPath := pathByID[layer.ID]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			data, err := a.cfg.BundleFetcher.FetchBundleJSON(ctx, layer)
+			if err != nil {
+				results <- result{fmt.Errorf("fetching bundle for %q: %w", layer.ID, err)}
+				cancel()
+				return
+			}
+			if data == nil {
+				results <- result{} // no bundle data — skip
+				return
+			}
+
+			bundle, err := trust.ParseBundle(data)
+			if err != nil {
+				results <- result{fmt.Errorf("parsing bundle for %q: %w", layer.ID, err)}
+				cancel()
+				return
+			}
+
+			if err := a.cfg.Verifier.Verify(ctx, localPath, bundle); err != nil {
+				results <- result{fmt.Errorf("verifying layer %q: %w", layer.ID, err)}
+				cancel()
+				return
+			}
+
+			results <- result{}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	for r := range results {
+		if r.err != nil {
+			return r.err
+		}
+	}
+	return nil
 }
 
 // sha256File returns the hex-encoded SHA256 of the named file's contents.

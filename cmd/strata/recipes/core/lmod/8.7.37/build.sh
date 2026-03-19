@@ -22,6 +22,7 @@ cd "Lmod-${VERSION}"
 make -j"${STRATA_NCPUS}"
 make install
 
-# Lmod installs a shell init script; create a convenience symlink.
-ln -sf "${STRATA_INSTALL_PREFIX}/lmod/lmod/init/bash" \
+# Lmod installs a shell init script; create a relative symlink so it remains
+# valid when the squashfs is mounted at an arbitrary path at runtime.
+ln -sf "lmod/lmod/init/bash" \
     "${STRATA_INSTALL_PREFIX}/init.sh" 2>/dev/null || true

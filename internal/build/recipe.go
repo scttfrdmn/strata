@@ -251,6 +251,10 @@ type Job struct {
 	// CacheDir is the local directory for caching downloaded .sqfs files.
 	// Defaults to os.TempDir()/strata-build-cache when empty.
 	CacheDir string
+
+	// KeyRef is the signing key reference (file path or KMS URI) used to
+	// sign the layer. Stored as manifest.SignedBy for provenance tracking.
+	KeyRef string
 }
 
 // Validate checks that a Job is well-formed.

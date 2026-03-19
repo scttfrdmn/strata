@@ -77,7 +77,8 @@ func TestRun_HappyPath(t *testing.T) {
 		Mounter:  mounter,
 	})
 
-	if err := a.Run(ctx); err != nil {
+	metrics, err := a.Run(ctx)
+	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if !signaler.ReadyCalled {
@@ -85,6 +86,18 @@ func TestRun_HappyPath(t *testing.T) {
 	}
 	if signaler.FailedCalled {
 		t.Errorf("SignalFailed was called unexpectedly: %v", signaler.FailedReason)
+	}
+	if metrics == nil {
+		t.Fatal("Run should return non-nil BootMetrics")
+	}
+	if metrics.LayerCount != 2 {
+		t.Errorf("BootMetrics.LayerCount = %d, want 2", metrics.LayerCount)
+	}
+	if metrics.TotalMs < 0 {
+		t.Error("BootMetrics.TotalMs should be non-negative")
+	}
+	if metrics.StartedAt.IsZero() {
+		t.Error("BootMetrics.StartedAt should not be zero")
 	}
 }
 
@@ -102,7 +115,7 @@ func TestRun_NoLayers(t *testing.T) {
 		Mounter:  mounter,
 	})
 
-	if err := a.Run(ctx); err != nil {
+	if _, err := a.Run(ctx); err != nil {
 		t.Fatalf("Run with no layers: %v", err)
 	}
 	if !signaler.ReadyCalled {
@@ -122,7 +135,7 @@ func TestRun_AcquireFails(t *testing.T) {
 		Mounter:  &agent.FakeMounter{Result: &overlay.Overlay{}},
 	})
 
-	err := a.Run(ctx)
+	_, err := a.Run(ctx)
 	if err == nil {
 		t.Fatal("Run: expected error, got nil")
 	}
@@ -156,7 +169,7 @@ func TestRun_FetchFails(t *testing.T) {
 		Mounter:  &agent.FakeMounter{Result: &overlay.Overlay{}},
 	})
 
-	err := a.Run(ctx)
+	_, err := a.Run(ctx)
 	if err == nil {
 		t.Fatal("Run: expected error, got nil")
 	}
@@ -203,7 +216,7 @@ func TestRun_SHA256Mismatch(t *testing.T) {
 		Mounter:  &agent.FakeMounter{Result: &overlay.Overlay{}},
 	})
 
-	err = a.Run(ctx)
+	_, err = a.Run(ctx)
 	if err == nil {
 		t.Fatal("Run: expected SHA256 mismatch error, got nil")
 	}
@@ -232,7 +245,7 @@ func TestRun_MountFails(t *testing.T) {
 		Mounter:  &agent.FakeMounter{Err: overlay.ErrNotSupported},
 	})
 
-	err := a.Run(ctx)
+	_, err := a.Run(ctx)
 	if err == nil {
 		t.Fatal("Run: expected mount error, got nil")
 	}
