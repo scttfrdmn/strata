@@ -75,10 +75,34 @@ func ConfigureEnvironment(lockfile *spec.LockFile, ov *Overlay, rootDir string) 
 		return fmt.Errorf("overlay: creating profile.d: %w", err)
 	}
 
+	// Build per-layer PATH and LD_LIBRARY_PATH from lockfile layers.
+	// Flat-layout layers (glibc) install to / not /<name>/<version>/, so skip them.
+	var pathParts, ldParts []string
+	var lmodVersion string
+	for _, layer := range lockfile.Layers {
+		if layer.InstallLayout == "flat" {
+			continue
+		}
+		base := fmt.Sprintf("%s/%s/%s", mergedPath, layer.Name, layer.Version)
+		pathParts = append(pathParts, base+"/bin")
+		ldParts = append(ldParts, base+"/lib", base+"/lib64")
+		if layer.Name == "lmod" {
+			lmodVersion = layer.Version
+		}
+	}
+
 	var sh strings.Builder
 	sh.WriteString("# Strata environment — auto-generated, do not edit\n")
-	fmt.Fprintf(&sh, "export PATH=%s/usr/local/bin:%s/usr/bin:${PATH}\n", mergedPath, mergedPath)
-	fmt.Fprintf(&sh, "export LD_LIBRARY_PATH=%s/usr/lib:%s/usr/lib64:${LD_LIBRARY_PATH}\n", mergedPath, mergedPath)
+	if len(pathParts) > 0 {
+		fmt.Fprintf(&sh, "export PATH=%s:${PATH}\n", strings.Join(pathParts, ":"))
+	}
+	if len(ldParts) > 0 {
+		fmt.Fprintf(&sh, "export LD_LIBRARY_PATH=%s:${LD_LIBRARY_PATH:-}\n", strings.Join(ldParts, ":"))
+	}
+	if lmodVersion != "" {
+		initScript := fmt.Sprintf("%s/lmod/%s/lmod/lmod/init/bash", mergedPath, lmodVersion)
+		fmt.Fprintf(&sh, "[ -f %s ] && source %s\n", initScript, initScript)
+	}
 	fmt.Fprintf(&sh, "export STRATA_PROFILE=%s\n", shellQuote(lockfile.ProfileName))
 	fmt.Fprintf(&sh, "export STRATA_REKOR_ENTRY=%s\n", shellQuote(lockfile.RekorEntry))
 	for k, v := range lockfile.Env {
@@ -128,8 +152,12 @@ func ConfigureEnvironment(lockfile *spec.LockFile, ov *Overlay, rootDir string) 
 	}
 
 	var env strings.Builder
-	fmt.Fprintf(&env, "PATH=%s/usr/local/bin:%s/usr/bin\n", mergedPath, mergedPath)
-	fmt.Fprintf(&env, "LD_LIBRARY_PATH=%s/usr/lib:%s/usr/lib64\n", mergedPath, mergedPath)
+	if len(pathParts) > 0 {
+		fmt.Fprintf(&env, "PATH=%s\n", strings.Join(pathParts, ":"))
+	}
+	if len(ldParts) > 0 {
+		fmt.Fprintf(&env, "LD_LIBRARY_PATH=%s\n", strings.Join(ldParts, ":"))
+	}
 	fmt.Fprintf(&env, "STRATA_PROFILE=%s\n", lockfile.ProfileName)
 	fmt.Fprintf(&env, "STRATA_REKOR_ENTRY=%s\n", lockfile.RekorEntry)
 	for k, v := range lockfile.Env {

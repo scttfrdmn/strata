@@ -23,10 +23,22 @@ func testLockFile() *spec.LockFile {
 		Layers: []spec.ResolvedLayer{
 			{
 				LayerManifest: spec.LayerManifest{
-					ID:     "python-3.11-rhel-x86_64",
-					SHA256: "abc123",
+					ID:      "python-3.13.2-linux-gnu-2.34-x86_64",
+					Name:    "python",
+					Version: "3.13.2",
+					SHA256:  "abc123",
 				},
 				MountOrder: 1,
+			},
+			{
+				LayerManifest: spec.LayerManifest{
+					ID:            "glibc-2.34-linux-gnu-2.34-x86_64",
+					Name:          "glibc",
+					Version:       "2.34",
+					SHA256:        "def456",
+					InstallLayout: "flat",
+				},
+				MountOrder: 2,
 			},
 		},
 		Env: map[string]string{
@@ -64,13 +76,17 @@ func TestConfigureEnvironment_WritesFiles(t *testing.T) {
 		"STRATA_REKOR_ENTRY",
 		"MY_VAR",
 		"TOOL_HOME",
-		"/strata/env",
+		"/strata/env/python/3.13.2/bin", // per-layer versioned path
 		"test-profile",
 		"42",
 	} {
 		if !strings.Contains(sh, want) {
 			t.Errorf("strata.sh missing %q\ncontent:\n%s", want, sh)
 		}
+	}
+	// Flat-layout layers (glibc) must NOT appear in PATH.
+	if strings.Contains(sh, "/strata/env/glibc/") {
+		t.Error("strata.sh: flat-layout layer (glibc) must not appear in PATH")
 	}
 	if !strings.Contains(sh, "export PATH") {
 		t.Error("strata.sh: PATH not exported")
@@ -112,7 +128,7 @@ func TestConfigureEnvironment_WritesFiles(t *testing.T) {
 	if got.RekorEntry != lf.RekorEntry {
 		t.Errorf("rekor entry: got %q, want %q", got.RekorEntry, lf.RekorEntry)
 	}
-	if len(got.Layers) != 1 || got.Layers[0].ID != "python-3.11-rhel-x86_64" {
+	if len(got.Layers) != 2 || got.Layers[0].ID != "python-3.13.2-linux-gnu-2.34-x86_64" {
 		t.Errorf("layers not preserved in active.lock.yaml")
 	}
 }
