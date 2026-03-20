@@ -16,7 +16,8 @@ URL="https://github.com/conda-forge/miniforge/releases/download/${VERSION}/Minif
 curl -fsSL -o miniforge_installer.sh "${URL}"
 chmod +x miniforge_installer.sh
 
-# Install in batch mode to STRATA_PREFIX.
-./miniforge_installer.sh -b -p "${STRATA_PREFIX}"
+# Install in batch mode to STRATA_PREFIX. -u allows install into a pre-existing directory
+# (the build pipeline pre-creates STRATA_PREFIX before running the recipe).
+./miniforge_installer.sh -b -u -p "${STRATA_PREFIX}"
 
 rm miniforge_installer.sh

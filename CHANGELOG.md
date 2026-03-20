@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-03-19
+
+### Fixed
+- **Miniforge installer**: `build.sh` now passes `-u` to the installer so it
+  succeeds when `STRATA_PREFIX` already exists (the build pipeline pre-creates
+  the directory before invoking the recipe).
+- **Nested recipe layout**: `strata build-catalog` (and `discoverRecipes`) now
+  correctly handles the `<category>/<name>/<version>/` recipe tree introduced
+  in v0.13.0; previously only flat `<name>/<version>/` was recognised.
+- **EC2 build instances hang after success**: `ec2:TerminateInstances` was
+  missing from the `strata-builder` IAM inline policy. Instances tagged
+  `strata:build-status=success` but could not self-terminate, leaving them
+  running indefinitely. Policy updated; v0.14.1 Linux binaries re-uploaded to
+  `s3://strata-registry/build/bin/`.
+
 ## [0.14.0] - 2026-03-18
 
 ### Added
