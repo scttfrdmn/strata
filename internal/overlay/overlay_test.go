@@ -151,6 +151,58 @@ func TestConfigureEnvironment_NilOverlay(t *testing.T) {
 	}
 }
 
+func TestConfigureEnvironment_MultiVersionPath(t *testing.T) {
+	root := t.TempDir()
+	lf := &spec.LockFile{
+		ProfileName: "multi-test",
+		RekorEntry:  "1",
+		Layers: []spec.ResolvedLayer{
+			{
+				LayerManifest: spec.LayerManifest{
+					Name:    "python",
+					Version: "3.12.13",
+				},
+				MountOrder: 1,
+			},
+			{
+				LayerManifest: spec.LayerManifest{
+					Name:    "python",
+					Version: "3.13.2",
+				},
+				MountOrder: 2,
+			},
+			{
+				LayerManifest: spec.LayerManifest{
+					Name:    "gcc",
+					Version: "14.2.0",
+				},
+				MountOrder: 3,
+			},
+		},
+	}
+
+	if err := overlay.ConfigureEnvironment(lf, nil, root); err != nil {
+		t.Fatalf("ConfigureEnvironment: %v", err)
+	}
+	shData, err := os.ReadFile(filepath.Join(root, "etc", "profile.d", "strata.sh"))
+	if err != nil {
+		t.Fatalf("reading strata.sh: %v", err)
+	}
+	sh := string(shData)
+
+	// Only the last (highest mount_order) python version should appear in PATH.
+	if !strings.Contains(sh, "/strata/env/python/3.13.2/bin") {
+		t.Error("strata.sh: missing latest python version in PATH")
+	}
+	if strings.Contains(sh, "/strata/env/python/3.12.13/bin") {
+		t.Error("strata.sh: older python version must not appear in PATH (lmod handles switching)")
+	}
+	// Single-version gcc must still appear.
+	if !strings.Contains(sh, "/strata/env/gcc/14.2.0/bin") {
+		t.Error("strata.sh: missing gcc in PATH")
+	}
+}
+
 func TestMountReturnsErrNotSupportedOnNonLinux(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		t.Skip("stub not active on Linux")

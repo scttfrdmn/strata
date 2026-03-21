@@ -77,11 +77,24 @@ func ConfigureEnvironment(lockfile *spec.LockFile, ov *Overlay, rootDir string) 
 
 	// Build per-layer PATH and LD_LIBRARY_PATH from lockfile layers.
 	// Flat-layout layers (glibc) install to / not /<name>/<version>/, so skip them.
+	// For packages with multiple versions in the lockfile, only include the last
+	// (highest mount_order) version in PATH — lmod manages switching between versions
+	// via strata-defaults.sh and the module system. Including all versions statically
+	// would put an older version first in PATH when no module is loaded.
+	lastVersionOf := make(map[string]string) // name → version of last occurrence
+	for _, layer := range lockfile.Layers {
+		if layer.InstallLayout != "flat" {
+			lastVersionOf[layer.Name] = layer.Version
+		}
+	}
 	var pathParts, ldParts []string
 	var lmodVersion string
 	for _, layer := range lockfile.Layers {
 		if layer.InstallLayout == "flat" {
 			continue
+		}
+		if lastVersionOf[layer.Name] != layer.Version {
+			continue // older version of a multi-version package — lmod handles it
 		}
 		base := fmt.Sprintf("%s/%s/%s", mergedPath, layer.Name, layer.Version)
 		pathParts = append(pathParts, base+"/bin")
