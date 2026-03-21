@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -27,6 +28,7 @@ type s3API interface {
 	ListObjectsV2(ctx context.Context, in *s3.ListObjectsV2Input, opts ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
 	GetObject(ctx context.Context, in *s3.GetObjectInput, opts ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	PutObject(ctx context.Context, in *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	DeleteObjects(ctx context.Context, in *s3.DeleteObjectsInput, opts ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
 }
 
 // S3Client implements registry.Client against an S3-backed Strata registry.
@@ -504,6 +506,84 @@ func (c *S3Client) RebuildIndex(ctx context.Context) error {
 		return fmt.Errorf("registry: writing rebuilt index: %w", err)
 	}
 	return nil
+}
+
+// LockfileRecord pairs an S3 key with its parsed LockFile content.
+type LockfileRecord struct {
+	Key      string         // S3 key, e.g. "locks/abc123.yaml"
+	LockFile *spec.LockFile // parsed content
+}
+
+// DeleteLayer removes the three S3 objects for a layer (manifest.yaml,
+// layer.sqfs, bundle.json) using a single DeleteObjects call.
+// Tolerates already-absent objects — S3 DeleteObjects is idempotent.
+func (c *S3Client) DeleteLayer(ctx context.Context, manifest *spec.LayerManifest) error {
+	prefix := fmt.Sprintf("layers/%s/%s/%s/%s/",
+		manifest.ABI, manifest.Arch, manifest.Name, manifest.Version)
+	keys := []types.ObjectIdentifier{
+		{Key: aws.String(prefix + "manifest.yaml")},
+		{Key: aws.String(prefix + "layer.sqfs")},
+		{Key: aws.String(prefix + "bundle.json")},
+	}
+	_, err := c.s3.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: aws.String(c.bucket),
+		Delete: &types.Delete{Objects: keys, Quiet: aws.Bool(true)},
+	})
+	if err != nil {
+		return fmt.Errorf("registry: deleting layer %s/%s: %w", manifest.Name, manifest.Version, err)
+	}
+	return nil
+}
+
+// ListLockfiles fetches every lockfile stored under locks/ and returns them
+// as LockfileRecords. Fetches are issued in parallel. Returns nil slice (not
+// an error) when no lockfiles exist.
+func (c *S3Client) ListLockfiles(ctx context.Context) ([]LockfileRecord, error) {
+	// Collect all keys under locks/.
+	var keys []string
+	paginator := s3.NewListObjectsV2Paginator(c.s3, &s3.ListObjectsV2Input{
+		Bucket: aws.String(c.bucket),
+		Prefix: aws.String("locks/"),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("registry: listing lockfiles: %w", err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Key != nil && strings.HasSuffix(*obj.Key, ".yaml") {
+				keys = append(keys, *obj.Key)
+			}
+		}
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	// Fetch all lockfiles in parallel.
+	results := make([]LockfileRecord, len(keys))
+	errs := make([]error, len(keys))
+	var wg sync.WaitGroup
+	for i, key := range keys {
+		wg.Add(1)
+		go func(i int, key string) {
+			defer wg.Done()
+			var lf spec.LockFile
+			if err := c.getYAML(ctx, key, &lf); err != nil {
+				errs[i] = fmt.Errorf("registry: fetching lockfile %s: %w", key, err)
+				return
+			}
+			results[i] = LockfileRecord{Key: key, LockFile: &lf}
+		}(i, key)
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return results, nil
 }
 
 // PutLockfile stores the lockfile in S3 under locks/<environmentID>.yaml and

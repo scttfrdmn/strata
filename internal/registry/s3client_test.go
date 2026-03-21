@@ -110,6 +110,18 @@ func (m *mockS3) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*
 	return &s3.PutObjectOutput{}, nil
 }
 
+func (m *mockS3) DeleteObjects(_ context.Context, in *s3.DeleteObjectsInput, _ ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error) {
+	if in.Delete == nil {
+		return &s3.DeleteObjectsOutput{}, nil
+	}
+	for _, obj := range in.Delete.Objects {
+		if obj.Key != nil {
+			delete(m.objects, *obj.Key)
+		}
+	}
+	return &s3.DeleteObjectsOutput{}, nil
+}
+
 // layerManifest is a helper to build a *spec.LayerManifest for tests.
 func layerManifest(name, version, arch, abi string) *spec.LayerManifest {
 	return &spec.LayerManifest{
@@ -484,6 +496,94 @@ func TestRebuildIndex_EmptyRegistry(t *testing.T) {
 
 	if _, ok := mock.objects["index/layers.yaml"]; !ok {
 		t.Fatal("expected index/layers.yaml to be written even for empty registry")
+	}
+}
+
+// ---- DeleteLayer ------------------------------------------------------------
+
+func TestDeleteLayer_DeletesThreeKeys(t *testing.T) {
+	mock := newMockS3()
+	c := newS3ClientWithAPI("bucket", mock)
+
+	manifest := &spec.LayerManifest{
+		Name:    "python",
+		Version: "3.11.11",
+		Arch:    "x86_64",
+		ABI:     "linux-gnu-2.34",
+	}
+	prefix := "layers/linux-gnu-2.34/x86_64/python/3.11.11/"
+	mock.objects[prefix+"manifest.yaml"] = []byte("yaml")
+	mock.objects[prefix+"layer.sqfs"] = []byte("sqfs")
+	mock.objects[prefix+"bundle.json"] = []byte("json")
+
+	if err := c.DeleteLayer(context.Background(), manifest); err != nil {
+		t.Fatalf("DeleteLayer: %v", err)
+	}
+
+	for _, key := range []string{prefix + "manifest.yaml", prefix + "layer.sqfs", prefix + "bundle.json"} {
+		if _, ok := mock.objects[key]; ok {
+			t.Errorf("expected key %q to be deleted", key)
+		}
+	}
+}
+
+func TestDeleteLayer_ToleratesAbsentObjects(t *testing.T) {
+	mock := newMockS3()
+	c := newS3ClientWithAPI("bucket", mock)
+
+	manifest := &spec.LayerManifest{
+		Name:    "gcc",
+		Version: "13.2.0",
+		Arch:    "x86_64",
+		ABI:     "linux-gnu-2.34",
+	}
+	// Objects don't exist — should not return an error.
+	if err := c.DeleteLayer(context.Background(), manifest); err != nil {
+		t.Fatalf("DeleteLayer on absent keys: %v", err)
+	}
+}
+
+// ---- ListLockfiles ----------------------------------------------------------
+
+func TestListLockfiles_ReturnsParsedRecords(t *testing.T) {
+	mock := newMockS3()
+	c := newS3ClientWithAPI("bucket", mock)
+
+	lf1 := &spec.LockFile{ProfileName: "ml-workbench"}
+	lf2 := &spec.LockFile{ProfileName: "r-workstation"}
+	mock.put("locks/abc123.yaml", lf1)
+	mock.put("locks/def456.yaml", lf2)
+
+	records, err := c.ListLockfiles(context.Background())
+	if err != nil {
+		t.Fatalf("ListLockfiles: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+
+	seen := make(map[string]bool)
+	for _, r := range records {
+		seen[r.LockFile.ProfileName] = true
+		if !strings.HasPrefix(r.Key, "locks/") {
+			t.Errorf("unexpected key %q", r.Key)
+		}
+	}
+	if !seen["ml-workbench"] || !seen["r-workstation"] {
+		t.Errorf("missing expected profiles: %v", seen)
+	}
+}
+
+func TestListLockfiles_EmptyReturnsNil(t *testing.T) {
+	mock := newMockS3()
+	c := newS3ClientWithAPI("bucket", mock)
+
+	records, err := c.ListLockfiles(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if records != nil {
+		t.Errorf("expected nil records for empty registry, got %v", records)
 	}
 }
 
