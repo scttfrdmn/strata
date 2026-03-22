@@ -62,6 +62,20 @@ type LayerManifest struct {
 	BuiltWith         []LayerRef `yaml:"built_with,omitempty" json:"built_with,omitempty"`                 // Strata layers that formed the build env (Tier 0.5+)
 	BootstrapBuild    bool       `yaml:"bootstrap_build,omitempty" json:"bootstrap_build,omitempty"`       // true = Tier 0, built with OS system compiler
 	BootstrapCompiler string     `yaml:"bootstrap_compiler,omitempty" json:"bootstrap_compiler,omitempty"` // exact system compiler package, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
+
+	// CaptureSource records how this layer was created without a recipe.
+	// Values: "lmod", "conda", "filesystem", "fold". Empty for recipe-built layers.
+	CaptureSource string `yaml:"capture_source,omitempty" json:"capture_source,omitempty"`
+
+	// FoldedFrom lists SHA256 hashes of the source layers that were merged
+	// to produce this layer. Populated only for layers created by strata fold.
+	FoldedFrom []string `yaml:"folded_from,omitempty" json:"folded_from,omitempty"`
+
+	// OriginalPrefix is the install root from which the layer was captured.
+	OriginalPrefix string `yaml:"original_prefix,omitempty" json:"original_prefix,omitempty"`
+
+	// Normalized is true if absolute paths were rewritten during capture.
+	Normalized bool `yaml:"normalized,omitempty" json:"normalized,omitempty"`
 }
 
 // LayerRef is a compact reference to a specific layer used in a build environment.

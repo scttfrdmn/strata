@@ -62,6 +62,10 @@ func newRootCmd() *cobra.Command {
 		newCachePruneCmd(),
 		newFreezeLayerCmd(),
 		newSnapshotAMICmd(),
+		newScanCmd(),
+		newCaptureCmd(),
+		newStratifyCmd(),
+		newFoldCmd(),
 	)
 
 	return root
