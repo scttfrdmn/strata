@@ -111,7 +111,8 @@ func fetchPublicKey(ctx context.Context) string {
 	}
 	defer out.Body.Close() //nolint:errcheck
 
-	data, err := io.ReadAll(out.Body)
+	const maxPubKeyBytes = 4096 // cosign public keys are ~500 bytes; 4 KiB is generous
+	data, err := io.ReadAll(io.LimitReader(out.Body, maxPubKeyBytes))
 	if err != nil {
 		log.Printf("strata-agent: fetchPublicKey: reading key: %v", err)
 		return ""

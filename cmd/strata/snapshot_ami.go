@@ -208,8 +208,9 @@ func fetchInstanceIDFromIMDS(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetching IMDS token (not on EC2?): %w", err)
 	}
-	defer tokenResp.Body.Close() //nolint:errcheck
-	tokenBytes, err := io.ReadAll(tokenResp.Body)
+	defer tokenResp.Body.Close()   //nolint:errcheck
+	const maxIMDSTokenBytes = 4096 // IMDSv2 tokens are ~200 bytes; 4 KiB is generous
+	tokenBytes, err := io.ReadAll(io.LimitReader(tokenResp.Body, maxIMDSTokenBytes))
 	if err != nil {
 		return "", fmt.Errorf("reading IMDS token: %w", err)
 	}
@@ -230,7 +231,8 @@ func fetchInstanceIDFromIMDS(ctx context.Context) (string, error) {
 	if metaResp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("IMDS returned HTTP %d for instance-id", metaResp.StatusCode)
 	}
-	idBytes, err := io.ReadAll(metaResp.Body)
+	const maxInstanceIDBytes = 256 // EC2 instance IDs are 19 bytes; 256 is generous
+	idBytes, err := io.ReadAll(io.LimitReader(metaResp.Body, maxInstanceIDBytes))
 	if err != nil {
 		return "", fmt.Errorf("reading instance ID from IMDS: %w", err)
 	}

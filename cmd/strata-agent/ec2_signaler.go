@@ -60,8 +60,9 @@ func (s *ec2ReadySignaler) getInstanceID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("ec2ReadySignaler: getting instance-id: %w", err)
 	}
-	defer out.Content.Close() //nolint:errcheck
-	data, err := io.ReadAll(out.Content)
+	defer out.Content.Close()      //nolint:errcheck
+	const maxInstanceIDBytes = 256 // EC2 instance IDs are 19 bytes; 256 is generous
+	data, err := io.ReadAll(io.LimitReader(out.Content, maxInstanceIDBytes))
 	if err != nil {
 		return "", fmt.Errorf("ec2ReadySignaler: reading instance-id: %w", err)
 	}

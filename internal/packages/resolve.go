@@ -123,7 +123,8 @@ func (r *Resolver) resolvePip(ctx context.Context, entries []spec.PackageEntry) 
 		if err != nil {
 			return nil, fmt.Errorf("pip: fetching info for %q: %w", entry.Name, err)
 		}
-		body, readErr := io.ReadAll(resp.Body)
+		const maxRegistryBytes = 10 << 20 // 10 MiB; PyPI JSON responses are typically < 100 KiB
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRegistryBytes))
 		resp.Body.Close() //nolint:errcheck
 		if readErr != nil {
 			return nil, fmt.Errorf("pip: reading response for %q: %w", entry.Name, readErr)
@@ -186,7 +187,8 @@ func (r *Resolver) resolveCRAN(ctx context.Context, entries []spec.PackageEntry)
 		if err != nil {
 			return nil, fmt.Errorf("cran: fetching info for %q: %w", entry.Name, err)
 		}
-		body, readErr := io.ReadAll(resp.Body)
+		const maxRegistryBytes = 10 << 20 // 10 MiB; CRAN JSON responses are typically < 50 KiB
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRegistryBytes))
 		resp.Body.Close() //nolint:errcheck
 		if readErr != nil {
 			return nil, fmt.Errorf("cran: reading response for %q: %w", entry.Name, readErr)
