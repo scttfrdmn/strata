@@ -26,6 +26,25 @@ import (
 // assembly is not available.
 var ErrNotSupported = errors.New("overlay: OverlayFS assembly requires Linux")
 
+// MountStrategy performs the individual filesystem mount operations.
+// SyscallMountStrategy uses kernel mounts (requires CAP_SYS_ADMIN).
+// FUSEMountStrategy uses squashfuse + fuse-overlayfs (unprivileged).
+type MountStrategy interface {
+	MountSquashfs(sqfsPath, mountPoint string) error
+	MountTmpfs(mountPoint string) error
+	MountOverlay(lowerDirs []string, upper, work, merged string) error
+	Unmount(mountPoint string, lazy bool) error
+}
+
+// Config controls how MountWithConfig assembles the OverlayFS.
+// Zero values use production defaults (/strata/* paths, auto-detected strategy).
+type Config struct {
+	LayersDir string        // default: /strata/layers
+	RWDir     string        // default: /strata/rw
+	MergedDir string        // default: /strata/env
+	Strategy  MountStrategy // nil → selectMountStrategy() (Linux only)
+}
+
 // LayerPath is a pulled squashfs layer ready to be mounted.
 type LayerPath struct {
 	ID         string // layer ID, used for mount point naming
@@ -50,10 +69,14 @@ type Overlay struct {
 	// squashMountPoints holds the squashfs mount points in MountOrder
 	// (ascending). Cleanup unmounts them in reverse order.
 	squashMountPoints []string //nolint:unused // used in mount_linux.go
+
+	// strategy is the MountStrategy used to mount this overlay.
+	// nil means syscall mode (backward compat). Non-nil means FUSE mode.
+	strategy MountStrategy //nolint:unused // used in mount_linux.go
 }
 
-// Mount and Cleanup are declared here; implemented in mount_linux.go (Linux)
-// and mount_stub.go (all other platforms).
+// Mount and MountWithConfig are declared here; implemented in mount_linux.go
+// (Linux) and mount_stub.go (all other platforms).
 
 // ConfigureEnvironment writes the three environment files after a successful
 // mount. rootDir is the filesystem root prefix; use "/" in production and

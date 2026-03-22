@@ -213,6 +213,16 @@ func TestMountReturnsErrNotSupportedOnNonLinux(t *testing.T) {
 	}
 }
 
+func TestMountWithConfigReturnsErrNotSupportedOnNonLinux(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("stub not active on Linux")
+	}
+	_, err := overlay.MountWithConfig(nil, overlay.Config{})
+	if err != overlay.ErrNotSupported {
+		t.Errorf("MountWithConfig: got %v, want ErrNotSupported", err)
+	}
+}
+
 func TestCleanupReturnsErrNotSupportedOnNonLinux(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		t.Skip("stub not active on Linux")

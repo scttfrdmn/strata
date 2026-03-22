@@ -30,7 +30,7 @@ Intended for use on running Strata instances to free disk space.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&cacheDir, "cache-dir", "/strata/cache",
+	cmd.Flags().StringVar(&cacheDir, "cache-dir", defaultCacheDir(),
 		"directory containing cached .sqfs layer files")
 	cmd.Flags().StringVar(&lockfilePath, "lockfile", "/etc/strata/active.lock.yaml",
 		"path to the active lockfile")
