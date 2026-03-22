@@ -1,0 +1,6 @@
+{
+    "name": "numpy",
+    "version": "1.26.4",
+    "build": "py311hd",
+    "channel": "https://conda.anaconda.org/conda-forge/linux-64"
+}
