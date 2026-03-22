@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/scttfrdmn/strata/spec"
 )
@@ -37,6 +38,12 @@ func VerifyLayer(ctx context.Context, manifest *spec.LayerManifest, squashfsPath
 	// Step 2: authenticity — cosign bundle must validate against the file.
 	if manifest.Bundle == "" {
 		return fmt.Errorf("layer %q has no bundle path in manifest: unsigned layers will not mount", manifest.ID)
+	}
+	// Reject URIs (s3://, file://, http://) — Bundle must be a local file path.
+	// Registry manifests store s3:// URIs; callers must fetch the bundle to disk
+	// and update the field before calling VerifyLayer.
+	if strings.Contains(manifest.Bundle, "://") {
+		return fmt.Errorf("layer %q: Bundle must be a local file path, not a URI: %q", manifest.ID, manifest.Bundle)
 	}
 
 	bundleData, err := os.ReadFile(manifest.Bundle)
