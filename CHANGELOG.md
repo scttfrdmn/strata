@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-03-22
+
+### Added
+- **`strata export --format oci`**: converts a lockfile's squashfs layers into an
+  OCI Image Layout tar archive (`internal/export/oci.go`). Each layer is unpacked
+  with `unsquashfs`, re-packed as a deterministic tar (sorted paths, epoch-0
+  timestamps, no uid/gid), and assembled per OCI Image Layout 1.0. Requires
+  `unsquashfs` (squashfs-tools) in PATH; no root or FUSE required.
+- **Container ecosystem documentation** (`docs/container-ecosystem.md`): covers
+  privileged Docker, unprivileged Docker (`--device /dev/fuse`), rootless Podman
+  (no extra flags), Apptainer/Singularity, example multi-stage Containerfile, and
+  a comparison table of `strata run` vs `strata export` use cases.
+- **OCI provenance labels**: exported images carry
+  `org.opencontainers.image.revision` (EnvironmentID), `strata.layer.<name>.sha256`,
+  and `strata.layer.<name>.rekor_entry` in the image config.
+
+### Changed
+- **Container-aware mount strategy** (`internal/overlay/mount_linux.go`):
+  `selectMountStrategy()` now checks `$container` env var and `/run/.containerenv`
+  before attempting a kernel mount syscall — inside Podman/nspawn/Flatpak containers
+  the FUSE strategy is selected immediately without a blocking syscall attempt.
+
+## [0.16.0] - 2026-03-22
+
+### Added
+- **`strata run`** (`cmd/strata/run.go`): ephemeral environment execution without
+  the agent or systemd. Reads a lockfile, fetches layers to the user-local cache,
+  assembles OverlayFS using the auto-detected mount strategy, and execs the given
+  command with per-layer `PATH`/`LD_LIBRARY_PATH` set. Flags: `--lockfile`
+  (required), `--no-verify`, `--cache-dir`, `--env KEY=VAL`. Works on HPC login
+  nodes via FUSE and on privileged systems via kernel mounts.
+- **`MountStrategy` interface and `Config` struct** (`internal/overlay/overlay.go`):
+  `MountWithConfig(layers, cfg)` replaces the hardcoded `/strata/*` paths; `Mount()`
+  and `MountBuildEnv()` remain as backward-compatible wrappers. `Config.Strategy`
+  accepts a `MountStrategy` implementation or nil for auto-detection.
+- **`fuseMountStrategy`** (`internal/overlay/mount_fuse_linux.go`): unprivileged
+  overlay assembly using `squashfuse` (per-layer mounts) and `fuse-overlayfs`
+  (merged view); unmount via `fusermount3`/`fusermount`. Auto-selected when
+  CAP_SYS_ADMIN is unavailable and both FUSE tools are in PATH.
+- **User-local layer cache** (`cmd/strata/cache.go`): `defaultCacheDir()` follows
+  XDG Base Dir Spec — root gets `/strata/cache`; non-root gets
+  `$XDG_CACHE_HOME/strata/layers` or `~/.cache/strata/layers`. Used as the default
+  for `strata run`, `strata export`, and `strata cache-prune`.
+- **HPC/userspace documentation** (`docs/userspace.md`): covers FUSE requirements,
+  user-local layer cache, air-gapped operation with `--no-verify`, SLURM batch
+  script example, and interactive shell usage.
+
+### Changed
+- **`strata cache-prune`**: `--cache-dir` default changed from `/strata/cache` to
+  `defaultCacheDir()` so non-root users prune their own `~/.cache/strata/layers/`
+  by default.
+
+## [0.15.0] - 2026-03-22
+
+### Added
+- **Package spec** (`spec/packages.go`): `PackageSpec` (manager, entries),
+  `PackageEntry` (name, version, extras), `ResolvedPackageSet`, and
+  `ResolvedPackageEntry` (pinned version + SHA256 for pip). `LockFile.Packages`
+  and `Profile.Packages` fields. `LockFile.HasMutableLayer()` helper.
+- **Package resolution** (`internal/packages/resolve.go`): `ResolveAll()` resolves
+  `PackageSpec` slices to pinned versions — pip via PyPI REST API
+  (`/pypi/<name>/json`), CRAN via crandb.r-pkg.org, conda version-pinned as
+  declared. Injectable `Resolver` struct for hermetic testing.
+- **`strata freeze` resolves packages**: after resolving layers, `strata freeze`
+  now calls `packages.ResolveAll()` and writes pinned `packages:` into the lockfile.
+- **`PackageInstaller` interface** (`internal/agent/agent.go`): optional step 4.5
+  in the boot sequence — installs pinned packages from `lockfile.Packages` into
+  the overlay's merged path before configuring the environment.
+- **`ExecPackageInstaller`** (`internal/agent/package_installer.go`, Linux only):
+  runs `pip install name==version`, `conda install -y name=version`, and
+  `Rscript -e 'install.packages(...)'` using the overlay's bin directories.
+- **Local filesystem registry** (`internal/registry/localclient.go`):
+  `LocalClient` reads a directory tree of squashfs files and JSON manifests as a
+  registry — useful for CI, air-gapped builds, and offline development.
+- **Federated registry** (`internal/registry/federated.go`): `FederatedClient`
+  searches a priority-ordered list of `RegistryClient` implementations; first
+  hit wins. Wired into `strata freeze` and `strata resolve`.
+- **`strata freeze-layer`** (`cmd/strata/freeze_layer.go`): interactive Path B
+  command that prompts for a local squashfs file + metadata, computes SHA256,
+  and writes a manifest + lockfile entry.
+- **`strata snapshot-ami`** (`cmd/strata/snapshot_ami.go`): creates an AMI
+  snapshot from a running Strata environment via IMDSv2.
+- **Package management documentation** (`docs/package-management.md`).
+
 ## [0.14.1] - 2026-03-19
 
 ### Fixed
