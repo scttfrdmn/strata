@@ -12,9 +12,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/scttfrdmn/strata/spec"
 )
+
+// defaultHTTPClient is a shared client used when Resolver.Client is nil.
+// Timeout prevents hung requests to PyPI / CRAN registries.
+var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // Resolver resolves package declarations to pinned versions using public registries.
 // The zero value is ready to use (HTTP calls use http.DefaultClient).
@@ -33,7 +38,7 @@ func (r *Resolver) httpClient() *http.Client {
 	if r.Client != nil {
 		return r.Client
 	}
-	return http.DefaultClient
+	return defaultHTTPClient
 }
 
 func (r *Resolver) pypiURL(name, version string) string {

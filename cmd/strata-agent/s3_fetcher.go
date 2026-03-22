@@ -150,6 +150,7 @@ func (f *s3LayerFetcher) FetchBundleJSON(ctx context.Context, layer spec.Resolve
 	if err != nil {
 		return nil, fmt.Errorf("s3LayerFetcher: fetching bundle %q: %w", layer.Bundle, err)
 	}
-	defer out.Body.Close() //nolint:errcheck
-	return io.ReadAll(out.Body)
+	defer out.Body.Close()          //nolint:errcheck
+	const maxBundleBytes = 10 << 20 // 10 MiB — Sigstore bundles are small; cap for safety
+	return io.ReadAll(io.LimitReader(out.Body, maxBundleBytes))
 }

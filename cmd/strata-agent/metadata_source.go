@@ -69,8 +69,9 @@ func (s *metadataLockfileSource) Acquire(ctx context.Context) (*spec.LockFile, e
 	// 1. Try user-data.
 	udOut, err := s.imds.GetUserData(ctx, &imds.GetUserDataInput{})
 	if err == nil {
-		defer udOut.Content.Close() //nolint:errcheck
-		data, readErr := io.ReadAll(udOut.Content)
+		defer udOut.Content.Close()       //nolint:errcheck
+		const maxUserDataBytes = 64 << 10 // EC2 user-data limit is 16 KiB; allow 4x headroom
+		data, readErr := io.ReadAll(io.LimitReader(udOut.Content, maxUserDataBytes))
 		if readErr == nil {
 			var lf spec.LockFile
 			if decodeErr := yaml.Unmarshal(data, &lf); decodeErr == nil && lf.ProfileName != "" {
@@ -87,7 +88,8 @@ func (s *metadataLockfileSource) Acquire(ctx context.Context) (*spec.LockFile, e
 		return nil, fmt.Errorf("metadataLockfileSource: no lockfile in user-data or instance tags: %w", tagErr)
 	}
 	defer tagOut.Content.Close() //nolint:errcheck
-	uriBytes, err := io.ReadAll(tagOut.Content)
+	const maxTagBytes = 2 << 10  // S3 URIs are short; 2 KiB is generous
+	uriBytes, err := io.ReadAll(io.LimitReader(tagOut.Content, maxTagBytes))
 	if err != nil {
 		return nil, fmt.Errorf("metadataLockfileSource: reading tag: %w", err)
 	}
@@ -108,8 +110,9 @@ func (s *metadataLockfileSource) Acquire(ctx context.Context) (*spec.LockFile, e
 	if err != nil {
 		return nil, fmt.Errorf("metadataLockfileSource: fetching lockfile from %q: %w", uri, err)
 	}
-	defer out.Body.Close() //nolint:errcheck
-	data, err := io.ReadAll(out.Body)
+	defer out.Body.Close()            //nolint:errcheck
+	const maxLockfileBytes = 10 << 20 // 10 MiB — matches registry/s3client.go cap
+	data, err := io.ReadAll(io.LimitReader(out.Body, maxLockfileBytes))
 	if err != nil {
 		return nil, fmt.Errorf("metadataLockfileSource: reading S3 object: %w", err)
 	}
