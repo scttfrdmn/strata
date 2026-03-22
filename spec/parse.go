@@ -7,8 +7,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// maxSpecFileBytes is the maximum size accepted for profile and lockfile YAML.
+// Rejects unreasonably large files before deserializing.
+const maxSpecFileBytes = 10 << 20 // 10 MiB
+
 // ParseProfile reads and validates a Profile from a YAML file.
 func ParseProfile(path string) (*Profile, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading profile %q: %w", path, err)
+	}
+	if info.Size() > maxSpecFileBytes {
+		return nil, fmt.Errorf("profile file %q too large (%d bytes)", path, info.Size())
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading profile %q: %w", path, err)
@@ -57,6 +68,13 @@ func normalizeSoftwareRefs(p *Profile) error {
 
 // ParseLockFile reads a LockFile from a YAML file.
 func ParseLockFile(path string) (*LockFile, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading lockfile %q: %w", path, err)
+	}
+	if info.Size() > maxSpecFileBytes {
+		return nil, fmt.Errorf("lockfile %q too large (%d bytes)", path, info.Size())
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading lockfile %q: %w", path, err)

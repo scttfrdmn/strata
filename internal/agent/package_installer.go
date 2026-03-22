@@ -9,10 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/scttfrdmn/strata/spec"
 )
+
+// cranNameRe matches valid CRAN package names: letters, digits, dots, underscores, hyphens.
+// R package names must start with a letter, but we validate only the character set here
+// to prevent shell/R script injection.
+var cranNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // ExecPackageInstaller installs resolved package sets by executing pip,
 // conda, and Rscript from the overlay's merged bin directories.
@@ -118,6 +124,9 @@ func installConda(ctx context.Context, entries []spec.ResolvedPackageEntry, env 
 
 func installCRAN(ctx context.Context, entries []spec.ResolvedPackageEntry, pathEnv string) error {
 	for _, e := range entries {
+		if !cranNameRe.MatchString(e.Name) {
+			return fmt.Errorf("invalid CRAN package name %q", e.Name)
+		}
 		script := fmt.Sprintf(
 			`install.packages("%s", repos="https://cran.r-project.org", quiet=TRUE)`,
 			e.Name,

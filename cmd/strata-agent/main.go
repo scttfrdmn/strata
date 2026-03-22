@@ -27,6 +27,18 @@ import (
 	"github.com/scttfrdmn/strata/internal/trust"
 )
 
+// strataRegistryBucket is the S3 bucket used for the Strata registry, public
+// keys, and metrics. Configurable via STRATA_REGISTRY_BUCKET env var to
+// support non-default deployments.
+const defaultRegistryBucket = "strata-registry"
+
+func registryBucket() string {
+	if v := os.Getenv("STRATA_REGISTRY_BUCKET"); v != "" {
+		return v
+	}
+	return defaultRegistryBucket
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -88,10 +100,9 @@ func fetchPublicKey(ctx context.Context) string {
 	}
 	s3Client := s3.NewFromConfig(cfg)
 
-	const keyBucket = "strata-registry"
 	const keyObject = "build/keys/cosign.pub"
 	out, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(keyBucket),
+		Bucket: aws.String(registryBucket()),
 		Key:    aws.String(keyObject),
 	})
 	if err != nil {
@@ -156,7 +167,7 @@ func writeBootMetrics(ctx context.Context, m *agent.BootMetrics, signaler *ec2Re
 	ts := m.StartedAt.UTC().Format(time.RFC3339)
 	key := "metrics/" + instanceID + "/" + ts + ".json"
 	_, _ = s3Client.PutObject(ctx, &s3.PutObjectInput{ //nolint:errcheck
-		Bucket:      aws.String("strata-registry"),
+		Bucket:      aws.String(registryBucket()),
 		Key:         &key,
 		Body:        bytes.NewReader(data),
 		ContentType: aws.String("application/json"),

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -212,6 +213,17 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 		keyFlag = " --key " + r.cfg.KeyRef
 	}
 
+	// Validate fields that are interpolated into shell scripts.
+	for field, val := range map[string]string{
+		"RecipeName":    recipe.Meta.Name,
+		"RecipeVersion": recipe.Meta.Version,
+		"Arch":          job.Base.NormalizedArch(),
+	} {
+		if !safeNameRe.MatchString(val) {
+			return "", fmt.Errorf("buildUserData: %s %q contains unsafe characters", field, val)
+		}
+	}
+
 	data := struct {
 		Bucket        string
 		JobID         string
@@ -369,6 +381,10 @@ func parseObjectURI(uri string) (bucket, key string, ok bool) {
 // The EC2 API requires base64-encoded UserData.
 func encodeUserData(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
+// safeNameRe matches recipe names and versions that are safe for embedding
+// in shell scripts: letters, digits, dots, underscores, hyphens only.
+var safeNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 // ArchForEC2 returns the binary arch suffix for the strata binary filename.
 // x86_64 → "amd64", arm64 → "arm64".
 func ArchForEC2(normalizedArch string) string {
@@ -450,9 +466,9 @@ aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || f
 # Run build
 export COSIGN_PASSWORD=""
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
-    --registry {{.RegistryURL}}{{.KeyFlag}}; then
+    --registry '{{.RegistryURL}}'{{.KeyFlag}}; then
   # Rebuild registry index so the new layer is immediately discoverable.
-  strata index --registry {{.RegistryURL}} || true
+  strata index --registry '{{.RegistryURL}}' || true
   tag "success"
   # Self-terminate on success — no need to keep the instance.
   aws ec2 terminate-instances --region "$REGION" --instance-ids "$INSTANCE_ID"

@@ -5,7 +5,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 )
+
+// httpClient is a shared HTTP client with a timeout to prevent hung requests.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // postJSON sends a POST request with JSON body and returns the response.
 // The caller is responsible for closing resp.Body.
@@ -17,7 +21,7 @@ func postJSON(ctx context.Context, url string, body []byte) (*http.Response, err
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}
@@ -37,7 +41,7 @@ func getJSON(ctx context.Context, url string) (*http.Response, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}

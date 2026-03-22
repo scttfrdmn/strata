@@ -213,8 +213,9 @@ func (c *S3Client) getYAML(ctx context.Context, key string, dst any) error {
 		}
 		return fmt.Errorf("registry: fetching s3://%s/%s: %w", c.bucket, key, err)
 	}
-	defer out.Body.Close() //nolint:errcheck
-	data, err := io.ReadAll(out.Body)
+	defer out.Body.Close()        //nolint:errcheck
+	const maxYAMLBytes = 10 << 20 // 10 MiB
+	data, err := io.ReadAll(io.LimitReader(out.Body, maxYAMLBytes))
 	if err != nil {
 		return fmt.Errorf("registry: reading s3://%s/%s: %w", c.bucket, key, err)
 	}
@@ -429,7 +430,11 @@ func parseObjectURI(uri string) (bucket, key string, ok bool) {
 	if idx < 0 {
 		return "", "", false
 	}
-	return rest[:idx], rest[idx+1:], true
+	key = rest[idx+1:]
+	if key == "" {
+		return "", "", false
+	}
+	return rest[:idx], key, true
 }
 
 // SHA256HexFile returns the hex-encoded SHA256 of the named file.
