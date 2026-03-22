@@ -71,6 +71,8 @@ These are not design goals. They are enforced properties:
 
 ```
 1. Same profile + same registry state = identical environment, always
+   (qualifier: profiles with packages: or mutable_layer: are pinned by version string,
+   not content-addressed — same guarantee as a requirements.txt, not a squashfs SHA256)
 2. Conflicts are build-time errors, never runtime surprises
 3. The environment is fully described by the profile; no runtime state matters
 4. Every environment is auditable: cryptographic chain from profile → layers → files
@@ -249,6 +251,24 @@ OS family, architecture, system libraries. Capability probes are cached by AMI I
 declare their requirements against capabilities, not OS names — `glibc@>=2.34` not `al2023`.
 This means a single layer artifact runs on AL2023, Rocky 9, Rocky 10, and RHEL 9 without
 separate builds.
+
+### Package Management
+
+Strata supports three paths for building environments, each with different trade-offs:
+
+- **Path A** (full audit): Recipe → `strata build` → signed squashfs layer in registry.
+  Same SHA256 every time; full Rekor attestation; the right choice for published results.
+
+- **Path B** (interactive → layer): Interactive session on a persistent EBS upper →
+  `strata freeze-layer` → signed squashfs layer. Identical artifact to Path A after freeze.
+  Useful for exploratory work that needs to become reproducible.
+
+- **Path C** (package manager): `packages:` in profile → versions pinned at `strata freeze`
+  → agent installs at boot. No squashfs; version-pinned (not content-addressed). Fast
+  iteration for user-level packages on top of base layers.
+
+Full design, YAML examples, command reference, local registry (`file://`), and federated
+registry setup: see [docs/package-management.md](docs/package-management.md).
 
 ---
 
@@ -708,6 +728,83 @@ jupyter-gpu        cuda-python-ml + jupyterlab
   environment Strata assembled. They address different parts of the problem.
 - Not an on-premises HPC tool (designed for cloud ephemerality; Warewulf adaptation is future work)
 - Not a template system (you declare intent; the system composes — there are no templates to inherit or debug)
+
+---
+
+## Workflow Patterns
+
+### Pattern 1: Standard production environment (Path A)
+
+```yaml
+name: gromacs-simulation
+base:
+  os: al2023
+software:
+  - formation:foss-2024a     # gcc + openmpi + openblas + fftw
+  - gromacs@2024.1
+  - python@3.12
+instance:
+  type: c6i.32xlarge
+  spot: true
+```
+
+```sh
+strata resolve gromacs-simulation.yaml
+strata freeze  gromacs-simulation.yaml
+strata publish gromacs-simulation.lock.yaml --token $ZENODO_TOKEN
+# → doi:10.5281/zenodo.xxxxxxx in the paper's methods section
+```
+
+### Pattern 2: Interactive exploration → reproducible layer (Path B)
+
+```yaml
+name: torch-exploration
+base:
+  os: al2023
+software:
+  - python@3.12
+  - cuda@12.3
+mutable_layer:
+  name: torch-ml
+  version: 0.1.0
+  size_gb: 50
+```
+
+```sh
+# Launch, install interactively, then freeze:
+pip install torch==2.2.1 transformers==4.40.0 accelerate==0.30.0
+
+strata freeze-layer \
+  --upper /strata/upper \
+  --name torch-ml --version 0.1.0 \
+  --registry s3://my-lab-registry \
+  --provides torch=2.2.1,transformers=4.40.0
+```
+
+### Pattern 3: User packages on base layers (Path C)
+
+```yaml
+name: r-analysis
+base:
+  os: al2023
+software:
+  - R@4.5
+packages:
+  - manager: cran
+    packages:
+      - name: ggplot2
+        version: "3.5"
+      - name: dplyr
+      - name: Seurat
+  - manager: pip
+    packages:
+      - name: rpy2
+```
+
+```sh
+# strata freeze pins exact CRAN/PyPI versions into the lockfile.
+strata freeze r-analysis.yaml
+```
 
 ---
 

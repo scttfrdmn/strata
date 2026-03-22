@@ -34,11 +34,12 @@ func main() {
 	signaler := newEC2ReadySignaler()
 
 	a, err := agent.New(agent.Config{
-		Source:        newMetadataLockfileSource(),
-		Fetcher:       fetcher,
-		BundleFetcher: fetcher,
-		Verifier:      newCosignVerifier(ctx),
-		Signaler:      signaler,
+		Source:           newMetadataLockfileSource(),
+		Fetcher:          fetcher,
+		BundleFetcher:    fetcher,
+		Verifier:         newCosignVerifier(ctx),
+		Signaler:         signaler,
+		PackageInstaller: agent.ExecPackageInstaller{},
 	})
 	if err != nil {
 		log.Fatal(err)

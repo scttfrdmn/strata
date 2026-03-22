@@ -4,6 +4,8 @@
 //
 //	strata resolve        <profile.yaml> [-o output.lock.yaml] [--strata-version v]
 //	strata freeze         <profile.yaml> [-o output.lock.yaml]
+//	strata run            --lockfile <lock.yaml> -- <command> [args...]
+//	strata export         --lockfile <lock.yaml> --format oci --output <file.tar>
 //	strata search         [name] [--arch x86_64|arm64] [--family rhel|debian] [--formation]
 //	strata verify         <lock.yaml> [--rekor]
 //	strata publish        <lock.yaml> [--token TOKEN] [--sandbox]
@@ -47,6 +49,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(
 		newResolveCmd(),
 		newFreezeCmd(),
+		newRunCmd(),
+		newExportCmd(),
 		newSearchCmd(),
 		newVerifyCmd(),
 		newPublishCmd(),
@@ -56,6 +60,8 @@ func newRootCmd() *cobra.Command {
 		newIndexCmd(),
 		newRemoveCmd(),
 		newCachePruneCmd(),
+		newFreezeLayerCmd(),
+		newSnapshotAMICmd(),
 	)
 
 	return root

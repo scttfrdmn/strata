@@ -6,7 +6,29 @@ Strata — composable, reproducible, cryptographically attested compute environm
 for cloud-based research. Full design: [STRATA.md](STRATA.md).
 
 All work is tracked in [GitHub Issues](https://github.com/scttfrdmn/strata/issues)
-with labels and milestones. No standalone tracking files.
+with labels and milestones.
+
+**GitHub project hygiene rules — follow these every session:**
+
+1. **No standalone tracking files.** Never create `*_status.md`, `*_plan.md`,
+   `*_todo.md`, `strata-chat.md`, or any ad-hoc planning/status documents in the repo.
+   If it belongs in the project, open a GitHub Issue. If it belongs in docs, put it
+   in `docs/`. Everything else gets deleted.
+
+2. **Keep issues current.** When work on an issue begins, add a comment noting what
+   was done. When work is complete, close the issue. Do not leave issues open for
+   work that has already shipped.
+
+3. **Keep milestones current.** When all issues in a milestone are closed and the
+   version is tagged, close the milestone. Never leave a released version's milestone
+   open.
+
+4. **Open issues for new work.** Before starting non-trivial work that isn't tracked
+   by an existing issue, create one — with the right milestone and labels — so the
+   intent is visible before the implementation begins.
+
+5. **Labels and milestones on every issue.** Every issue needs at minimum one
+   `component:` label, one `priority:` label, and a milestone assignment.
 
 ## Go Conventions
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scttfrdmn/strata/internal/packages"
 	"github.com/scttfrdmn/strata/internal/resolver"
 )
 
@@ -23,7 +24,7 @@ SHA256s they must be built and pushed to the registry first.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			profile := loadProfile(args[0])
-			reg := buildRegistryClient()
+			reg := buildFederatedClient(profile.Registries)
 			probeClient := buildProbeClient()
 
 			r, err := resolver.New(resolver.Config{
@@ -57,6 +58,15 @@ SHA256s they must be built and pushed to the registry first.`,
 					fmt.Fprintln(os.Stderr, ")") //nolint:errcheck
 				}
 				return errors.New("") // already printed; suppress double-print in main
+			}
+
+			// Resolve package manager entries (pip/conda/cran) to pinned versions.
+			if len(profile.Packages) > 0 {
+				resolved, err := packages.ResolveAll(context.Background(), profile.Packages)
+				if err != nil {
+					return fmt.Errorf("freeze: resolving packages: %w", err)
+				}
+				lf.Packages = resolved
 			}
 
 			outPath := resolveOutputPath(args[0], output, ".lock.yaml")

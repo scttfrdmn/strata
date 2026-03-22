@@ -432,6 +432,12 @@ func parseObjectURI(uri string) (bucket, key string, ok bool) {
 	return rest[:idx], rest[idx+1:], true
 }
 
+// SHA256HexFile returns the hex-encoded SHA256 of the named file.
+// It is exported for use by commands that build or freeze layers.
+func SHA256HexFile(path string) (string, error) {
+	return hexSHA256File(path)
+}
+
 // hexSHA256File returns the hex-encoded SHA256 of the named file.
 func hexSHA256File(path string) (string, error) {
 	f, err := os.Open(path)

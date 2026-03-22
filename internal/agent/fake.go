@@ -73,3 +73,20 @@ type FakeMounter struct {
 func (f *FakeMounter) Mount(_ []overlay.LayerPath) (*overlay.Overlay, error) {
 	return f.Result, f.Err
 }
+
+// FakePackageInstaller records Install calls for assertion in tests.
+// It never returns an error unless Err is set.
+type FakePackageInstaller struct {
+	Called     bool
+	MergedPath string
+	Pkgs       []spec.ResolvedPackageSet
+	Err        error
+}
+
+// Install records the call and returns Err.
+func (f *FakePackageInstaller) Install(_ context.Context, pkgs []spec.ResolvedPackageSet, mergedPath string) error {
+	f.Called = true
+	f.MergedPath = mergedPath
+	f.Pkgs = pkgs
+	return f.Err
+}

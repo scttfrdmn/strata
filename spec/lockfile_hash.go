@@ -11,11 +11,14 @@ import (
 // Only fields that define environment content are included. Attestation fields
 // (RekorEntry, Bundle), timing fields (ResolvedAt), and identity fields
 // (ProfileName, StrataVersion) are excluded — they do not affect what runs.
+// MutableLayer is also excluded — it is metadata about the build process,
+// not the environment content itself (the upper is not content-addressed).
 type envHashInput struct {
-	BaseAMISHA256 string            `json:"base_ami_sha256"`
-	LayerSHA256s  []string          `json:"layer_sha256s"`
-	Env           map[string]string `json:"env,omitempty"`
-	OnReady       []string          `json:"on_ready,omitempty"`
+	BaseAMISHA256 string               `json:"base_ami_sha256"`
+	LayerSHA256s  []string             `json:"layer_sha256s"`
+	Env           map[string]string    `json:"env,omitempty"`
+	OnReady       []string             `json:"on_ready,omitempty"`
+	Packages      []ResolvedPackageSet `json:"packages,omitempty"`
 }
 
 // computeEnvironmentID returns a hex SHA256 of the lockfile's canonical
@@ -45,6 +48,7 @@ func computeEnvironmentID(l *LockFile) string {
 		LayerSHA256s:  sha256s,
 		Env:           l.Env,
 		OnReady:       l.OnReady,
+		Packages:      l.Packages,
 	}
 
 	// json.Marshal on a struct with string/map/slice fields is deterministic

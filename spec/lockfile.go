@@ -42,6 +42,17 @@ type LockFile struct {
 	// Defaults lists software modules to pre-load via Lmod at login.
 	// Copied from the profile; used by the agent to write strata-defaults.sh.
 	Defaults []SoftwareRef `yaml:"defaults,omitempty" json:"defaults,omitempty"`
+
+	// Packages holds the frozen (exactly pinned) package sets resolved from
+	// the profile's packages: section. Populated by strata freeze.
+	// The agent installs these at boot via pip/conda/cran.
+	Packages []ResolvedPackageSet `yaml:"packages,omitempty" json:"packages,omitempty"`
+
+	// MutableLayer records a persistent EBS upper specification copied from
+	// the profile. A lockfile with a non-nil MutableLayer is considered
+	// "dirty" and cannot be published until strata freeze-layer is called
+	// to convert the upper into a signed squashfs layer.
+	MutableLayer *MutableLayerSpec `yaml:"mutable_layer,omitempty" json:"mutable_layer,omitempty"`
 }
 
 // ResolvedBase is the fully resolved base for an environment.
@@ -104,6 +115,14 @@ func (l *LockFile) IsFrozen() bool {
 // LayerCount returns the number of layers in the lockfile.
 func (l *LockFile) LayerCount() int {
 	return len(l.Layers)
+}
+
+// HasMutableLayer reports whether this lockfile references an unfrozen
+// mutable EBS upper layer (Path B workflow). Such lockfiles cannot be
+// published until strata freeze-layer converts the upper into a signed
+// squashfs layer and removes this field.
+func (l *LockFile) HasMutableLayer() bool {
+	return l.MutableLayer != nil
 }
 
 // EnvironmentID returns a stable identifier for this environment.

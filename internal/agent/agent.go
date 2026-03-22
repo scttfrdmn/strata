@@ -59,19 +59,28 @@ type Mounter interface {
 	Mount(layers []overlay.LayerPath) (*overlay.Overlay, error)
 }
 
+// PackageInstaller installs resolved package sets into the mounted overlay.
+// The mergedPath argument is the OverlayFS merged view (e.g. /strata/env).
+// A nil PackageInstaller skips installation; callers should check whether
+// the lockfile has any Packages before wiring a non-nil installer.
+type PackageInstaller interface {
+	Install(ctx context.Context, pkgs []spec.ResolvedPackageSet, mergedPath string) error
+}
+
 // Config holds all dependencies for the Agent.
 // Verifier and BundleFetcher are optional; both must be non-nil to perform
 // cosign bundle verification (only SHA256 content integrity is checked when
 // either is nil). EnvRootDir defaults to "/" and is overridden in tests to a
 // temp directory.
 type Config struct {
-	Source        LockfileSource
-	Fetcher       LayerFetcher
-	BundleFetcher BundleFetcher  // optional; nil skips cosign bundle verification
-	Verifier      trust.Verifier // optional; nil skips cosign bundle verification
-	Signaler      ReadySignaler
-	Mounter       Mounter // optional; defaults to overlay.Mount
-	EnvRootDir    string  // defaults to "/" if empty
+	Source           LockfileSource
+	Fetcher          LayerFetcher
+	BundleFetcher    BundleFetcher  // optional; nil skips cosign bundle verification
+	Verifier         trust.Verifier // optional; nil skips cosign bundle verification
+	Signaler         ReadySignaler
+	Mounter          Mounter          // optional; defaults to overlay.Mount
+	PackageInstaller PackageInstaller // optional; nil skips package installation
+	EnvRootDir       string           // defaults to "/" if empty
 }
 
 // Agent orchestrates the boot sequence for a Strata instance.
@@ -157,6 +166,14 @@ func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
 		return fail(fmt.Errorf("agent: mounting overlay: %w", err))
 	}
 	metrics.MountMs = time.Since(t0).Milliseconds()
+
+	// Step 4.5: install packages from lockfile.Packages (if any).
+	if len(lf.Packages) > 0 && a.cfg.PackageInstaller != nil {
+		if err := a.cfg.PackageInstaller.Install(ctx, lf.Packages, ov.MergedPath); err != nil {
+			_ = ov.Cleanup()
+			return fail(fmt.Errorf("agent: installing packages: %w", err))
+		}
+	}
 
 	// Step 5: write environment config files.
 	t0 = time.Now()

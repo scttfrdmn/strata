@@ -51,6 +51,23 @@ type Profile struct {
 	// Each entry should name a package in the Software list.
 	// Example: [{name: gcc, version: "14.2.0"}, {name: python, version: "3.12.13"}]
 	Defaults []SoftwareRef `yaml:"defaults,omitempty" json:"defaults,omitempty"`
+
+	// Packages declares user-level package sets to install on top of base
+	// layers at boot time (Path C workflow). These are installed by the agent
+	// using the appropriate package manager (pip, conda, cran) and are pinned
+	// to exact versions in the lockfile by strata freeze.
+	//
+	// Unlike squashfs layers, packages are not content-addressed — the same
+	// version string may correspond to different bits on different dates if
+	// the package index changes. Use Path A (strata build) for full audit.
+	Packages []PackageSpec `yaml:"packages,omitempty" json:"packages,omitempty"`
+
+	// MutableLayer declares a persistent EBS upper directory for interactive
+	// session use (Path B workflow). The agent mounts this volume as the
+	// OverlayFS upper, allowing installs that persist across reboots.
+	// Call strata freeze-layer when ready to convert the upper into a signed
+	// squashfs layer in the registry.
+	MutableLayer *MutableLayerSpec `yaml:"mutable_layer,omitempty" json:"mutable_layer,omitempty"`
 }
 
 // BaseRef identifies the target OS and architecture for environment assembly.
@@ -241,12 +258,24 @@ func (p Profile) Validate() error {
 	if err := p.Base.Validate(); err != nil {
 		return fmt.Errorf("base: %w", err)
 	}
-	if len(p.Software) == 0 {
-		return fmt.Errorf("software list is required and must not be empty")
+	// Allow empty Software list when Packages are declared — a packages-only
+	// profile installs everything at boot via the agent (Path C workflow).
+	if len(p.Software) == 0 && len(p.Packages) == 0 {
+		return fmt.Errorf("at least one of software or packages must be declared")
 	}
 	for i, sw := range p.Software {
 		if err := sw.Validate(); err != nil {
 			return fmt.Errorf("software[%d]: %w", i, err)
+		}
+	}
+	for i, pkg := range p.Packages {
+		if err := ValidatePackageSpec(pkg); err != nil {
+			return fmt.Errorf("packages[%d]: %w", i, err)
+		}
+	}
+	if p.MutableLayer != nil {
+		if err := p.MutableLayer.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil

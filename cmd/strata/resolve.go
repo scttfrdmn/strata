@@ -16,6 +16,31 @@ import (
 	"github.com/scttfrdmn/strata/spec"
 )
 
+// buildFederatedClient builds a registry.Client from the profile's registries
+// list, falling back to STRATA_REGISTRY_URL / the embedded catalog when the
+// list is empty. The public Strata registry is always appended last so that
+// private registries shadow public ones.
+func buildFederatedClient(refs []spec.RegistryRef) registry.Client {
+	if len(refs) == 0 {
+		return buildRegistryClient() // existing single-registry path
+	}
+	var clients []registry.Client
+	for _, ref := range refs {
+		c, err := newClientForURL(ref.URL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: registry %q unavailable: %v\n", ref.URL, err) //nolint:errcheck
+			continue
+		}
+		clients = append(clients, c)
+	}
+	// Public registry always last — private registries take priority.
+	clients = append(clients, buildRegistryClient())
+	if len(clients) == 1 {
+		return clients[0]
+	}
+	return registry.NewFederatedClient(clients)
+}
+
 func newResolveCmd() *cobra.Command {
 	var output, strataVer string
 
@@ -28,7 +53,7 @@ registry; otherwise the embedded Tier 0 catalog is used.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			profile := loadProfile(args[0])
-			reg := buildRegistryClient()
+			reg := buildFederatedClient(profile.Registries)
 			probeClient := buildProbeClient()
 
 			r, err := resolver.New(resolver.Config{
