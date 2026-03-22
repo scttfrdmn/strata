@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/scttfrdmn/strata/spec"
 )
@@ -70,11 +71,18 @@ func VerifyLayers(ctx context.Context, lockfile *spec.LockFile, squashfsDir stri
 		err     error
 	}
 
+	// Use a child context so that returning on first error cancels any
+	// still-running verification goroutines promptly.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	results := make(chan result, len(lockfile.Layers))
 	for _, layer := range lockfile.Layers {
 		layer := layer // capture
 		go func() {
-			path := squashfsDir + "/" + layer.ID + ".sqfs"
+			// filepath.Join normalises the path, preventing a layer.ID
+			// containing ".." sequences from escaping squashfsDir.
+			path := filepath.Join(squashfsDir, layer.ID+".sqfs")
 			err := VerifyLayer(ctx, &layer.LayerManifest, path, v)
 			results <- result{layerID: layer.ID, err: err}
 		}()
