@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-03-22
+
+### Security
+- **HTTP timeouts**: replaced `http.DefaultClient` (no timeout) with a 30-second
+  timeout client in `internal/trust/http.go` and `internal/packages/resolve.go` to
+  prevent hung requests to Sigstore/Rekor, PyPI, and CRAN registries.
+- **CRAN injection**: added `^[A-Za-z0-9._-]+$` validation before interpolating
+  package names into R scripts in `internal/agent/package_installer.go`.
+- **EC2 UserData shell injection**: validated `RecipeName`, `RecipeVersion`, and
+  `Arch` against a safe-character regex; single-quoted `RegistryURL` in the bash
+  template in `internal/build/ec2runner.go`.
+- **Unbounded reads**: applied `io.LimitReader` to every network and S3 `io.ReadAll`
+  call across `internal/registry/s3client.go`, `cmd/strata-agent/metadata_source.go`,
+  `cmd/strata-agent/s3_fetcher.go`, `cmd/strata-agent/main.go`,
+  `cmd/strata/snapshot_ami.go`, `cmd/strata-agent/ec2_signaler.go`, and
+  `internal/packages/resolve.go`. Caps range from 256 B (instance-id) to 10 MiB
+  (lockfiles, bundles, YAML indexes).
+- **File size guard**: `spec/parse.go` now stats files before `os.ReadFile` and
+  rejects anything over 10 MiB before deserializing YAML.
+- **S3 URI validation**: `parseObjectURI` in `internal/registry/s3client.go` now
+  returns false for empty keys (`s3://bucket/`).
+- **Hardcoded bucket**: `cmd/strata-agent/main.go` replaced hardcoded
+  `"strata-registry"` with `registryBucket()`, overridable via
+  `STRATA_REGISTRY_BUCKET` env var.
+- **Path traversal**: `cmd/strata/run.go` rejects `file://` layer sources containing
+  `..` components.
+- **Symlink escape**: `internal/fold/eject.go` `copyTree` skips absolute symlinks
+  that resolve outside the output root.
+- **VerifyLayer URI guard**: `internal/trust/verify.go` now explicitly rejects URI
+  schemes (`s3://`, `file://`, `http://`) in `manifest.Bundle` before passing to
+  `os.ReadFile`, enforcing the local-path contract of the `VerifyLayer` API.
+- **VerifyLayers hardening**: added `context.WithCancel` so the first verification
+  failure cancels remaining goroutines promptly; replaced string concat with
+  `filepath.Join` for cache paths to prevent `..` escape via crafted layer IDs.
+
 ## [0.17.0] - 2026-03-22
 
 ### Added
