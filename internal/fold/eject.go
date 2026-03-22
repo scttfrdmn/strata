@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,6 +128,17 @@ func copyTree(ctx context.Context, src, dst string) error {
 			linkTarget, err := os.Readlink(path)
 			if err != nil {
 				return err
+			}
+			// Guard against absolute symlinks that escape the output root.
+			// Relative symlinks are safe (they're relative to the symlink's own
+			// location in the ejected tree). Absolute symlinks pointing outside
+			// dst would follow host system paths, which is a security risk.
+			if filepath.IsAbs(linkTarget) {
+				clean := filepath.Clean(linkTarget)
+				if !strings.HasPrefix(clean, dst) {
+					log.Printf("fold: skipping absolute symlink %q -> %q (escapes output root)", rel, linkTarget)
+					return nil
+				}
 			}
 			_ = os.Remove(destPath)
 			return os.Symlink(linkTarget, destPath)

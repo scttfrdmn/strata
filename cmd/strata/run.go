@@ -243,7 +243,14 @@ func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) 
 				return nil, fmt.Errorf("downloading layer %q: %w", layer.ID, err)
 			}
 		} else if strings.HasPrefix(layer.Source, "file://") {
-			src := strings.TrimPrefix(layer.Source, "file://")
+			src := filepath.Clean(strings.TrimPrefix(layer.Source, "file://"))
+			// Reject traversal sequences so a crafted lockfile cannot read
+			// arbitrary host files (e.g. file://../../../etc/passwd).
+			for _, part := range strings.Split(src, string(filepath.Separator)) {
+				if part == ".." {
+					return nil, fmt.Errorf("layer %q: file:// source contains path traversal: %q", layer.ID, layer.Source)
+				}
+			}
 			if err := copyFile(src, cachePath); err != nil {
 				return nil, fmt.Errorf("copying layer %q: %w", layer.ID, err)
 			}
