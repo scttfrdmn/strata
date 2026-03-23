@@ -132,7 +132,7 @@ func installCRAN(ctx context.Context, entries []spec.ResolvedPackageEntry, pathE
 			e.Name,
 		)
 		if err := runCmd(ctx, pathEnv, "Rscript", "-e", script); err != nil {
-			return fmt.Errorf("Rscript install %q: %w", e.Name, err)
+			return fmt.Errorf("rscript install %q: %w", e.Name, err)
 		}
 	}
 	return nil

@@ -47,20 +47,51 @@ type Result struct {
 	RegistryURI string
 }
 
+// validateCaptureConfig checks required fields and mutually-exclusive flags.
+func validateCaptureConfig(cfg Config) error {
+	if cfg.Name == "" {
+		return fmt.Errorf("capture: name is required")
+	}
+	if cfg.Version == "" {
+		return fmt.Errorf("capture: version is required")
+	}
+	if cfg.Prefix == "" && !cfg.DryRun {
+		return fmt.Errorf("capture: prefix is required")
+	}
+	if !cfg.DryRun && cfg.Registry == nil {
+		return fmt.Errorf("capture: registry is required unless --dry-run")
+	}
+	return nil
+}
+
+// signLayer signs sqfsPath and updates manifest with the Rekor entry.
+// Returns the serialised bundle JSON (nil when cfg.Signer is nil).
+func signLayer(ctx context.Context, cfg Config, sqfsPath string, manifest *spec.LayerManifest) ([]byte, error) {
+	if cfg.Signer == nil {
+		return nil, nil
+	}
+	bundle, err := cfg.Signer.Sign(ctx, sqfsPath, map[string]string{
+		"strata.layer.name":    cfg.Name,
+		"strata.layer.version": cfg.Version,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("capture: signing: %w", err)
+	}
+	bundleJSON, err := bundle.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("capture: marshaling bundle: %w", err)
+	}
+	if idx, ok := bundle.RekorLogIndex(); ok {
+		manifest.RekorEntry = fmt.Sprintf("%d", idx)
+	}
+	return bundleJSON, nil
+}
+
 // Capture snapshots an installed prefix into a signed squashfs layer and
 // pushes it to the registry.
 func Capture(ctx context.Context, cfg Config) (*Result, error) {
-	if cfg.Name == "" {
-		return nil, fmt.Errorf("capture: name is required")
-	}
-	if cfg.Version == "" {
-		return nil, fmt.Errorf("capture: version is required")
-	}
-	if cfg.Prefix == "" && !cfg.DryRun {
-		return nil, fmt.Errorf("capture: prefix is required")
-	}
-	if !cfg.DryRun && cfg.Registry == nil {
-		return nil, fmt.Errorf("capture: registry is required unless --dry-run")
+	if err := validateCaptureConfig(cfg); err != nil {
+		return nil, err
 	}
 
 	// Auto-detect ABI and arch.
@@ -116,16 +147,12 @@ func Capture(ctx context.Context, cfg Config) (*Result, error) {
 
 	// Create staging directory with <name>/<version>/ layout.
 	tempDir := cfg.TempDir
-	ownTempDir := false
 	if tempDir == "" {
 		var err error
 		tempDir, err = os.MkdirTemp("", "strata-capture-*")
 		if err != nil {
 			return nil, fmt.Errorf("capture: creating temp dir: %w", err)
 		}
-		ownTempDir = true
-	}
-	if ownTempDir {
 		defer os.RemoveAll(tempDir) //nolint:errcheck
 	}
 
@@ -196,22 +223,9 @@ func Capture(ctx context.Context, cfg Config) (*Result, error) {
 	manifest.Size = stat.Size()
 
 	// Sign if signer provided.
-	var bundleJSON []byte
-	if cfg.Signer != nil {
-		bundle, err := cfg.Signer.Sign(ctx, sqfsPath, map[string]string{
-			"strata.layer.name":    cfg.Name,
-			"strata.layer.version": cfg.Version,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("capture: signing: %w", err)
-		}
-		bundleJSON, err = bundle.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("capture: marshaling bundle: %w", err)
-		}
-		if idx, ok := bundle.RekorLogIndex(); ok {
-			manifest.RekorEntry = fmt.Sprintf("%d", idx)
-		}
+	bundleJSON, err := signLayer(ctx, cfg, sqfsPath, manifest)
+	if err != nil {
+		return nil, err
 	}
 
 	// Push to registry.
