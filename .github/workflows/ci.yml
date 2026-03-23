@@ -24,11 +24,11 @@ jobs:
       - name: Test (race + coverage)
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          name: coverage
-          path: coverage.out
+          files: coverage.out
+          fail_ci_if_error: false
 
   lint:
     name: Lint

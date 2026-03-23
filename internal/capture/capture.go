@@ -27,13 +27,13 @@ type PushRegistry interface {
 
 // Config holds the configuration for a capture operation.
 type Config struct {
-	Name, Version, Prefix string // all required
-	ABI, Arch             string // auto-detected if empty
-	Normalize             bool   // rewrite paths (default: preserve-prefix)
-	CaptureSource         string // "lmod", "conda", "filesystem", ""
-	OriginalPrefix        string // = Prefix unless Normalize applied
-	Signer                trust.Signer  // nil = no signing
-	Registry              PushRegistry  // required unless DryRun
+	Name, Version, Prefix string       // all required
+	ABI, Arch             string       // auto-detected if empty
+	Normalize             bool         // rewrite paths (default: preserve-prefix)
+	CaptureSource         string       // "lmod", "conda", "filesystem", ""
+	OriginalPrefix        string       // = Prefix unless Normalize applied
+	Signer                trust.Signer // nil = no signing
+	Registry              PushRegistry // required unless DryRun
 	DryRun                bool
 	TempDir               string
 	Provides              []spec.Capability
