@@ -6,14 +6,10 @@ package capture
 
 import (
 	"context"
-	"errors"
 
 	"github.com/scttfrdmn/strata/internal/trust"
 	"github.com/scttfrdmn/strata/spec"
 )
-
-// ErrNotSupported is returned on non-Linux platforms.
-var ErrNotSupported = errors.New("capture: strata capture requires Linux")
 
 // PushRegistry is the narrow interface capture needs from the registry.
 // Satisfied by *registry.S3Client and *registry.LocalClient.
