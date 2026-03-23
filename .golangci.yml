@@ -22,14 +22,13 @@ linters:
           severity: warning
     godot:
       scope: declarations
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - godot
+          - gocyclo
 
 formatters:
   enable:
     - gofmt
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - godot
-        - gocyclo
