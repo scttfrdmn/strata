@@ -11,22 +11,21 @@ linters:
     - misspell
     - gocyclo
     - godot
+  settings:
+    gocyclo:
+      min-complexity: 30
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: var-naming
+          severity: warning
+    godot:
+      scope: declarations
 
 formatters:
   enable:
     - gofmt
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
-  godot:
-    scope: declarations
 
 issues:
   exclude-rules:
