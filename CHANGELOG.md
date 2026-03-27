@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-03-27
+
+### Added
+- **`strata diff`**: new command compares two lockfiles and reports added, removed,
+  changed, and unchanged layers; base (AMI/ABI) diffs; environment variable diffs;
+  and package diffs. Exit code 0 = identical, 1 = differences found, 2 = error.
+- **`requires_host` spec field**: `Profile` and `LockFile` now carry an optional
+  `requires_host: [{key: cuda-driver, value: ">=525"}]` list declaring ambient host
+  capabilities. Advisory in v0.21.0 — the resolver emits a warning but does not
+  enforce. Probe integration is deferred to a future release.
+- **Resolver warnings**: `resolver.Config` gains an optional `Warnings io.Writer`.
+  When set, the resolver emits non-fatal diagnostics (unattested formations,
+  `requires_host` entries) instead of silently discarding them. `strata freeze` and
+  `strata resolve` now pass `os.Stderr`.
+- **Formation attestation warning**: `stage2ExpandFormations` warns when a formation
+  carries `rekor_entry: "pending-initial-build"` — environment reproducibility cannot
+  be cryptographically verified until the formation is signed.
+- **`strata run` packages warning**: warns at runtime when the lockfile contains
+  `packages:` entries, since those are installed by `strata-agent` at boot, not by
+  `strata run`.
+- **`--root-volume-gb` flag** on `strata build --ec2`: overrides root EBS volume size
+  (default 60 GiB). Required for DLAMIs that mandate ≥65 GiB.
+- **`--security-group` flag** on `strata build --ec2`: overrides the default security
+  group, enabling builds in AWS accounts other than the strata infrastructure account.
+
+### Changed
+- **Formation catalog refreshed to 2026.03**: all six embedded formations
+  (`hpc-mpi`, `cuda-python-ml`, `bio-seq`, `genomics-python`, `jupyter-gpu`,
+  `r-research`) updated to current layer versions (gcc/14.2.0, openmpi/5.0.10,
+  python/3.13.2, R/4.5.2, cuda/12.6.0, samtools/1.23, quarto/1.4.555,
+  jupyterlab/4.2.0). Miniforge removed (not yet in registry).
+- **CUDA arm64 build scripts**: all three CUDA versions (11.8.0, 12.3.2, 12.6.0) now
+  use the `linux_sbsa.run` installer on arm64 (Server Base System Architecture for
+  AWS Graviton / g5g instances). The previous `linux_aarch64.run` pattern is for
+  Jetson/embedded and returns 404 on NVIDIA's CDN for server builds.
+
+### Registry
+- CUDA arm64 layers built and pushed for 11.8.0, 12.3.2, 12.6.0 (built on
+  g5g.4xlarge with Deep Learning ARM64 Base OSS Nvidia Driver AMI).
+
 ## [0.20.2] - 2026-03-23
 
 ### Fixed
