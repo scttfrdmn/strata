@@ -77,25 +77,41 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 		fmt.Fprintln(os.Stderr, "run: warning: lockfile has no Rekor entry — not signed")
 	}
 
-	// 3. Ensure cache dir exists.
+	// 3. Warn if the lockfile has package entries — packages are installed by
+	//    strata-agent at instance boot, not by strata run.
+	if len(lf.Packages) > 0 {
+		total := 0
+		for _, ps := range lf.Packages {
+			total += len(ps.Packages)
+		}
+		noun := "entries"
+		if total == 1 {
+			noun = "entry"
+		}
+		fmt.Fprintf(os.Stderr,
+			"run: warning: lockfile has %d package %s (pip/conda/cran) — packages are installed by strata-agent at boot, not by strata run; the mounted environment will not include these packages\n",
+			total, noun)
+	}
+
+	// 4. Ensure cache dir exists.
 	if err := os.MkdirAll(cacheDir, 0700); err != nil {
 		return fmt.Errorf("run: creating cache dir: %w", err)
 	}
 
-	// 4. Fetch layers to cache.
+	// 5. Fetch layers to cache.
 	layerPaths, err := fetchLayersToCache(ctx, lf, cacheDir)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 
-	// 5. Create temp working directory.
+	// 6. Create temp working directory.
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("strata-%d-*", os.Getpid()))
 	if err != nil {
 		return fmt.Errorf("run: creating work dir: %w", err)
 	}
 	defer os.RemoveAll(workDir) //nolint:errcheck
 
-	// 6. Mount overlay with user-local paths and auto-detected strategy.
+	// 7. Mount overlay with user-local paths and auto-detected strategy.
 	cfg := overlay.Config{
 		LayersDir: filepath.Join(workDir, "layers"),
 		RWDir:     filepath.Join(workDir, "rw"),
@@ -111,10 +127,10 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	defer stop()
 	defer ov.Cleanup() //nolint:errcheck
 
-	// 7. Build environment for the child process.
+	// 8. Build environment for the child process.
 	env := buildRunEnv(&lf, ov.MergedPath, envOverrides)
 
-	// 8. Execute the command.
+	// 9. Execute the command.
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Env = env
 	cmd.Stdin = os.Stdin

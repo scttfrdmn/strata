@@ -1,0 +1,22 @@
+name: genomics-python
+version: "2026.03"
+description: "Python + SAMtools — genomics and bioinformatics baseline."
+layers:
+  - name: python
+    version: "3.13.2"
+  - name: samtools
+    version: "1.23"
+provides:
+  - name: python
+    version: "3.13.2"
+  - name: samtools
+    version: "1.23.0"
+  - name: htslib
+    version: "1.23.0"
+validated_on:
+  - al2023/x86_64
+  - al2023/arm64
+rekor_entry: "pending-initial-build"
+bundle: "pending-initial-build"
+signed_by: "strata-maintainer@strata.dev"
+built_at: 2026-03-27T00:00:00Z

@@ -68,6 +68,12 @@ func (r *Resolver) stage2ExpandFormations(
 			return nil, nil, errRekorEntryMissing("formation:" + ref.Formation)
 		}
 
+		const pendingPlaceholder = "pending-initial-build"
+		if formation.RekorEntry == pendingPlaceholder || formation.Bundle == pendingPlaceholder {
+			r.warn("formation %q has no Rekor attestation (rekor_entry: %q) — environment reproducibility cannot be cryptographically verified",
+				ref.Formation, formation.RekorEntry)
+		}
+
 		for _, layerRef := range formation.Layers {
 			if layerRef.IsFormation() {
 				return nil, nil, &ResolutionError{
@@ -398,6 +404,11 @@ func (r *Resolver) stage8Assemble(
 		}
 	}
 
+	for _, req := range profile.RequiresHost {
+		r.warn("requires_host %q: %q — host capability not verified (probe integration pending)",
+			req.Key, req.Value)
+	}
+
 	return &spec.LockFile{
 		ProfileName:   profile.Name,
 		ProfileSHA256: profileSHA256,
@@ -408,9 +419,10 @@ func (r *Resolver) stage8Assemble(
 			AMIID:        base.AMIID,
 			Capabilities: *base.Capabilities,
 		},
-		Layers:   resolvedLayers,
-		Env:      profile.Env,
-		OnReady:  profile.OnReady,
-		Defaults: profile.Defaults,
+		Layers:       resolvedLayers,
+		Env:          profile.Env,
+		OnReady:      profile.OnReady,
+		Defaults:     profile.Defaults,
+		RequiresHost: profile.RequiresHost,
 	}
 }

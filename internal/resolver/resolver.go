@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 
 	"gopkg.in/yaml.v3"
 
@@ -38,6 +39,10 @@ type Config struct {
 
 	// StrataVersion is written into the resolved LockFile.
 	StrataVersion string
+
+	// Warnings is an optional writer for non-fatal diagnostic messages.
+	// If nil, warnings are silently discarded.
+	Warnings io.Writer
 }
 
 // Resolver transforms a *spec.Profile into a *spec.LockFile via an
@@ -55,6 +60,14 @@ func New(cfg Config) (*Resolver, error) {
 		return nil, fmt.Errorf("resolver: Probe is required")
 	}
 	return &Resolver{cfg: cfg}, nil
+}
+
+// warn writes a warning message to cfg.Warnings if it is set.
+func (r *Resolver) warn(format string, args ...any) {
+	if r.cfg.Warnings == nil {
+		return
+	}
+	fmt.Fprintf(r.cfg.Warnings, "warning: "+format+"\n", args...) //nolint:errcheck
 }
 
 // resolvedLayer is the internal accumulator for a single resolved layer.

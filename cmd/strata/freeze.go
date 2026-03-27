@@ -31,6 +31,7 @@ SHA256s they must be built and pushed to the registry first.`,
 				Registry:      reg,
 				Probe:         probeClient,
 				StrataVersion: version,
+				Warnings:      os.Stderr,
 			})
 			if err != nil {
 				return fmt.Errorf("freeze: %w", err)

@@ -66,6 +66,7 @@ func newRootCmd() *cobra.Command {
 		newCaptureCmd(),
 		newStratifyCmd(),
 		newFoldCmd(),
+		newDiffCmd(),
 	)
 
 	return root

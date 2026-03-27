@@ -53,6 +53,11 @@ type LockFile struct {
 	// "dirty" and cannot be published until strata freeze-layer is called
 	// to convert the upper into a signed squashfs layer.
 	MutableLayer *MutableLayerSpec `yaml:"mutable_layer,omitempty" json:"mutable_layer,omitempty"`
+
+	// RequiresHost is copied from the profile for reference. Lists ambient
+	// host capabilities (GPU driver, EFA, etc.) the environment depends on
+	// but that Strata does not install. Advisory only in v0.21.0.
+	RequiresHost []HostRequirement `yaml:"requires_host,omitempty" json:"requires_host,omitempty"`
 }
 
 // ResolvedBase is the fully resolved base for an environment.

@@ -60,6 +60,7 @@ registry; otherwise the embedded Tier 0 catalog is used.`,
 				Registry:      reg,
 				Probe:         probeClient,
 				StrataVersion: strataVer,
+				Warnings:      os.Stderr,
 			})
 			if err != nil {
 				return fmt.Errorf("resolve: %w", err)

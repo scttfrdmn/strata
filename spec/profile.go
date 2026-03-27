@@ -68,6 +68,21 @@ type Profile struct {
 	// Call strata freeze-layer when ready to convert the upper into a signed
 	// squashfs layer in the registry.
 	MutableLayer *MutableLayerSpec `yaml:"mutable_layer,omitempty" json:"mutable_layer,omitempty"`
+
+	// RequiresHost declares ambient host capabilities this environment depends
+	// on but that Strata neither installs nor manages — for example, a GPU
+	// driver version or an EFA fabric module. In v0.21.0 these are advisory:
+	// the resolver emits a warning but does not fail if the capability cannot
+	// be verified.
+	RequiresHost []HostRequirement `yaml:"requires_host,omitempty" json:"requires_host,omitempty"`
+}
+
+// HostRequirement declares a single ambient host capability requirement.
+// Key is the capability name (e.g. "cuda-driver", "efa").
+// Value is a version constraint or boolean string (e.g. ">=525", "true").
+type HostRequirement struct {
+	Key   string `yaml:"key" json:"key"`
+	Value string `yaml:"value" json:"value"`
 }
 
 // BaseRef identifies the target OS and architecture for environment assembly.
