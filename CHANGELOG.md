@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-03-27
+
+### Added
+- **`strata update`**: new command re-resolves a profile against the current registry,
+  prints a diff to stderr (reusing `strata diff` helpers), and writes an updated
+  lockfile. Prints "Already up to date." and exits cleanly when nothing changes.
+  `-o/--output` flag mirrors `strata freeze`.
+- **`strata verify --packages`**: opt-in flag that validates pip SHA256 pins in the
+  lockfile against the PyPI JSON API. Reports mismatches with lockfile vs. PyPI values.
+  Entries with empty SHA256 are skipped. Success message reports package count.
+- **Rust 1.82.0 recipe** (`core/rust/1.82.0`): installs via `rustup` with `CARGO_HOME`
+  and `RUSTUP_HOME` pointed at the install prefix. Minimal profile (rustc, cargo,
+  rust-std, rustfmt, clippy). `modulefile_env` wires `CARGO_HOME`/`RUSTUP_HOME` into
+  the generated Lmod modulefile.
+- **BCFtools 1.21 recipe** (`application/bcftools/1.21`): compiles from source with
+  bundled htslib. Configured with `--enable-libgsl=no --enable-perl-filters=no` for
+  a self-contained build on plain AL2023. Provides `bcftools@1.21` and `htslib@1.21`.
+
+### Registry
+- Rust 1.82.0 layers built and pushed for x86_64 and arm64 (c5.4xlarge / c6g.4xlarge,
+  AL2023 AMI).
+- BCFtools 1.21 layers built and pushed for x86_64 and arm64.
+
 ## [0.21.0] - 2026-03-27
 
 ### Added
