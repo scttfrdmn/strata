@@ -15,7 +15,8 @@ import (
 )
 
 func newBuildCmd() *cobra.Command {
-	var osFlag, arch, reg, key, amiID, instanceType, cacheDir string
+	var osFlag, arch, reg, key, amiID, instanceType, cacheDir, securityGroupID string
+	var rootVolumeGB int
 	var dryRun, ec2Flag, noWait bool
 
 	cmd := &cobra.Command{
@@ -74,7 +75,7 @@ executing any build steps or requiring AWS credentials.`,
 
 			// EC2 mode: upload recipe, launch instance (poll if !noWait).
 			if ec2Flag && !dryRun {
-				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType, noWait)
+				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType, securityGroupID, int32(rootVolumeGB), noWait)
 			}
 
 			var executor build.Executor
@@ -110,12 +111,14 @@ executing any build steps or requiring AWS credentials.`,
 	cmd.Flags().BoolVar(&noWait, "no-wait", false, "with --ec2: launch instance and return immediately without polling")
 	cmd.Flags().StringVar(&amiID, "ami", "", "EC2 AMI ID for the build instance (required with --ec2)")
 	cmd.Flags().StringVar(&instanceType, "instance-type", "", "EC2 instance type (default: c5.4xlarge for x86_64, c6g.4xlarge for arm64)")
+	cmd.Flags().StringVar(&securityGroupID, "security-group", "", "with --ec2: security group ID (default: strata-account sg-0fca02f58fafcdad1)")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "local cache dir for downloaded build env layers (default: $TMPDIR/strata-build-cache)")
+	cmd.Flags().IntVar(&rootVolumeGB, "root-volume-gb", 0, "with --ec2: root EBS volume size in GiB (default: 60; use 100+ for DLAMIs)")
 	return cmd
 }
 
 // runBuildEC2 orchestrates a build on an EC2 instance.
-func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType string, noWait bool) error {
+func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType, securityGroupID string, rootVolumeGB int32, noWait bool) error {
 	if amiID == "" {
 		return fmt.Errorf("--ami is required for --ec2 builds")
 	}
@@ -129,16 +132,22 @@ func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg,
 		}
 	}
 
-	// Default security group and IAM profile from well-known strata-builder config.
+	// Default security group to the strata-account SG; override with --security-group
+	// when launching in a different AWS account.
+	sg := "sg-0fca02f58fafcdad1"
+	if securityGroupID != "" {
+		sg = securityGroupID
+	}
 	cfg := build.EC2Config{
 		Region:          "us-east-1",
 		AMIID:           amiID,
 		InstanceType:    instanceType,
-		SecurityGroupID: "sg-0fca02f58fafcdad1",
+		SecurityGroupID: sg,
 		IAMProfile:      "strata-builder",
 		BucketURL:       reg,
 		BinaryArch:      build.ArchForEC2(normalizedArch),
 		KeyRef:          key,
+		RootVolumeGB:    rootVolumeGB,
 	}
 
 	runner, err := build.NewEC2Runner(cfg)

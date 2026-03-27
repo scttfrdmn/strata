@@ -11,7 +11,8 @@ case "${STRATA_ARCH:-x86_64}" in
         RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux.run"
         ;;
     arm64|aarch64)
-        RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux_aarch64.run"
+        # CUDA on aarch64 server (AWS Graviton etc.) uses the sbsa runfile.
+        RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux_sbsa.run"
         ;;
     *)
         echo "unsupported arch: ${STRATA_ARCH}" >&2

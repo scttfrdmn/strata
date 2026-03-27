@@ -11,7 +11,9 @@ case "${STRATA_ARCH:-x86_64}" in
         RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux.run"
         ;;
     arm64|aarch64)
-        RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux_aarch64.run"
+        # CUDA 12.x on aarch64 server uses the sbsa (Server Base System
+        # Architecture) runfile, not linux_aarch64.run (which is for Jetson).
+        RUNFILE="cuda_${VERSION}_${DRIVER_VER}_linux_sbsa.run"
         ;;
     *)
         echo "unsupported arch: ${STRATA_ARCH}" >&2

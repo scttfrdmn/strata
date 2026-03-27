@@ -54,6 +54,10 @@ type EC2Config struct {
 	// e.g. "v3.0.5". Defaults to "v3.0.5".
 	CosignVersion string
 
+	// RootVolumeGB overrides the root EBS volume size in GiB.
+	// Default 60. Some AMIs (e.g. DLAMIs) require a larger minimum.
+	RootVolumeGB int32
+
 	// PollInterval is how often to poll for build completion. Default 30s.
 	PollInterval time.Duration
 }
@@ -109,6 +113,14 @@ func newEC2RunnerWithAPIs(cfg EC2Config, ec2API ec2LaunchAPI, s3API s3PutAPI) *E
 		cfg.PollInterval = 30 * time.Second
 	}
 	return &EC2Runner{cfg: cfg, ec2: ec2API, s3: s3API}
+}
+
+// rootVolumeGB returns the configured root volume size, defaulting to 60 GiB.
+func (r *EC2Runner) rootVolumeGB() int32 {
+	if r.cfg.RootVolumeGB > 0 {
+		return r.cfg.RootVolumeGB
+	}
+	return 60
 }
 
 // LaunchBuildEC2 uploads the recipe to S3 and launches an EC2 build instance,
@@ -289,7 +301,7 @@ func (r *EC2Runner) launchInstance(ctx context.Context, userData string, recipe 
 			{
 				DeviceName: aws.String("/dev/xvda"),
 				Ebs: &ec2types.EbsBlockDevice{
-					VolumeSize:          aws.Int32(60),
+					VolumeSize:          aws.Int32(r.rootVolumeGB()),
 					VolumeType:          ec2types.VolumeTypeGp3,
 					DeleteOnTermination: aws.Bool(true),
 				},
