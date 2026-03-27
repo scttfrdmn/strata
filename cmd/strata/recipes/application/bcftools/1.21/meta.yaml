@@ -1,0 +1,13 @@
+name: bcftools
+version: "1.21"
+tier: application
+description: "BCFtools 1.21 — variant calling and manipulation of VCF/BCF files."
+abi: linux-gnu-2.34
+provides:
+  - name: bcftools
+    version: "1.21"
+  - name: htslib
+    version: "1.21"
+runtime_requires:
+  - name: glibc
+    min_version: "2.34"

@@ -7,7 +7,8 @@
 //	strata run            --lockfile <lock.yaml> -- <command> [args...]
 //	strata export         --lockfile <lock.yaml> --format oci --output <file.tar>
 //	strata search         [name] [--arch x86_64|arm64] [--family rhel|debian] [--formation]
-//	strata verify         <lock.yaml> [--rekor]
+//	strata update         <profile.yaml> [-o output.lock.yaml]
+//	strata verify         <lock.yaml> [--rekor] [--packages]
 //	strata publish        <lock.yaml> [--token TOKEN] [--sandbox]
 //	strata probe          <os> <arch> [--registry s3://...]
 //	strata build          <recipe-dir> [options]
@@ -67,6 +68,7 @@ func newRootCmd() *cobra.Command {
 		newStratifyCmd(),
 		newFoldCmd(),
 		newDiffCmd(),
+		newUpdateCmd(),
 	)
 
 	return root

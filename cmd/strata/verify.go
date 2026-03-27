@@ -10,12 +10,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scttfrdmn/strata/internal/packages"
 	"github.com/scttfrdmn/strata/internal/trust"
 	"github.com/scttfrdmn/strata/spec"
 )
 
 func newVerifyCmd() *cobra.Command {
-	var rekorFlag bool
+	var rekorFlag, packagesFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "verify <lock.yaml>",
@@ -25,7 +26,10 @@ non-empty Bundle and RekorEntry fields and the lockfile itself must be signed.
 All failures are collected and reported together.
 
 With --rekor, each layer's RekorEntry is verified against the live Rekor
-transparency log. Requires network access to rekor.sigstore.dev.`,
+transparency log. Requires network access to rekor.sigstore.dev.
+
+With --packages, each pip package's SHA256 pin is verified against PyPI.
+Requires network access to pypi.org.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			lf, err := spec.ParseLockFile(args[0])
@@ -39,6 +43,10 @@ transparency log. Requires network access to rekor.sigstore.dev.`,
 				failures = append(failures, verifyRekorEntries(context.Background(), lf)...)
 			}
 
+			if packagesFlag && len(lf.Packages) > 0 {
+				failures = append(failures, packages.VerifyPipHashes(context.Background(), lf.Packages)...)
+			}
+
 			if len(failures) > 0 {
 				fmt.Fprintf(os.Stderr, "strata verify: %d failure(s):\n", len(failures)) //nolint:errcheck
 				for _, f := range failures {
@@ -47,12 +55,21 @@ transparency log. Requires network access to rekor.sigstore.dev.`,
 				return errors.New("") // already printed; suppress double-print in main
 			}
 
-			fmt.Printf("ok: %s (%d layer(s) verified)\n", args[0], len(lf.Layers))
+			pkgCount := 0
+			for _, ps := range lf.Packages {
+				pkgCount += len(ps.Packages)
+			}
+			if packagesFlag && pkgCount > 0 {
+				fmt.Printf("ok: %s (%d layer(s), %d package(s) verified)\n", args[0], len(lf.Layers), pkgCount)
+			} else {
+				fmt.Printf("ok: %s (%d layer(s) verified)\n", args[0], len(lf.Layers))
+			}
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&rekorFlag, "rekor", false, "verify each layer's Rekor entry against the live transparency log")
+	cmd.Flags().BoolVar(&packagesFlag, "packages", false, "verify pip SHA256 pins against PyPI (requires network)")
 	return cmd
 }
 

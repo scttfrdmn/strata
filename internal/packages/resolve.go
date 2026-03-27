@@ -225,6 +225,72 @@ func (r *Resolver) resolveCRAN(ctx context.Context, entries []spec.PackageEntry)
 	return resolved, nil
 }
 
+// fetchPipSHA256 queries PyPI for the SHA256 of the sdist for name==version.
+// Returns empty string if no sdist is listed (not an error).
+func (r *Resolver) fetchPipSHA256(ctx context.Context, name, version string) (string, error) {
+	url := r.pypiURL(name, version)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request: %w", err)
+	}
+	resp, err := r.httpClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetching: %w", err)
+	}
+	const maxBytes = 10 << 20
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	resp.Body.Close() //nolint:errcheck
+	if readErr != nil {
+		return "", fmt.Errorf("reading response: %w", readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+	var info pypiInfoResponse
+	if err := json.Unmarshal(body, &info); err != nil {
+		return "", fmt.Errorf("parsing response: %w", err)
+	}
+	for _, u := range info.URLs {
+		if u.PackageType == "sdist" {
+			return u.Digests["sha256"], nil
+		}
+	}
+	return "", nil // no sdist; not an error
+}
+
+// VerifyPipHashes queries PyPI for each pip package in sets and returns
+// a slice of human-readable error strings for any SHA256 mismatches.
+// Entries with an empty SHA256 in the lockfile are skipped.
+func VerifyPipHashes(ctx context.Context, sets []spec.ResolvedPackageSet) []string {
+	r := &Resolver{}
+	var failures []string
+	for _, ps := range sets {
+		if ps.Manager != spec.PackageManagerPip {
+			continue
+		}
+		for _, pkg := range ps.Packages {
+			if pkg.SHA256 == "" {
+				continue
+			}
+			current, err := r.fetchPipSHA256(ctx, pkg.Name, pkg.Version)
+			if err != nil {
+				failures = append(failures, fmt.Sprintf(
+					"package %s==%s: PyPI lookup failed: %v", pkg.Name, pkg.Version, err))
+				continue
+			}
+			if current == "" {
+				continue // no sdist on PyPI; can't verify
+			}
+			if current != pkg.SHA256 {
+				failures = append(failures, fmt.Sprintf(
+					"package %s==%s: SHA256 mismatch\n    lockfile: %s\n    PyPI:     %s",
+					pkg.Name, pkg.Version, pkg.SHA256, current))
+			}
+		}
+	}
+	return failures
+}
+
 // resolveConda pins versions as-declared. No public REST API exists for
 // conda-forge that returns stable content addresses, so conda packages are
 // version-pinned only. The agent installs them via `conda install` at boot.
