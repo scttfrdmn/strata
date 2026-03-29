@@ -1,7 +1,6 @@
 # Strata
 
-[![CI](https://github.com/scttfrdmn/strata/actions/workflows/ci.yml/badge.svg)](https://github.com/scttfrdmn/strata/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/strata)](https://goreportcard.com/report/github.com/scttfrdmn/strata)
+[![CI](https://github.com/scttfrdmn/strata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/scttfrdmn/strata/actions/workflows/ci.yml)
 
 Composable, reproducible, cryptographically attested compute environments for cloud-based research.
 
