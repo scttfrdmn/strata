@@ -1,0 +1,6 @@
+STRATA TEST FIXTURE LAYER — NOT A REAL SQUASHFS IMAGE
+layer: jupyterlab-4.2.0-linux-gnu-2.34-x86_64
+This file exists so the fixture registry's manifest SHA256 values are real and
+verifiable offline. It is deliberately not a squashfs image: any code path that
+mounts a layer must fail loudly on it rather than appear to succeed.
+See internal/testregistry/testregistry.go.

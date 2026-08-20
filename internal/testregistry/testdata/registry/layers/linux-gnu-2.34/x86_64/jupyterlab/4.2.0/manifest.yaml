@@ -1,0 +1,34 @@
+# Fixture layer manifest. Requires python, which no base OS provides, so this
+# layer only resolves when the python fixture layer resolves alongside it —
+# that cross-layer edge is what gives stage 6 a non-trivial topological order.
+id: jupyterlab-4.2.0-linux-gnu-2.34-x86_64
+name: jupyterlab
+version: 4.2.0
+source: ""
+sha256: cbe9d80c70c37ff52943e17c324655ea9e37243dd10f8b68b4d1d17482322e93
+size: 373
+content_manifest:
+  /opt/strata/jupyterlab/4.2.0/bin/jupyter: a388035603ff3d32e6634df4a3180a11a7a7b6eeb0890838fcd82c0551caca31
+  /opt/strata/share/strata-fixture/LICENSE: 44baabe7776eff447026502a05fcf2950dd5de0729329ebb6788529b2a538daa
+rekor_entry: "148923472"
+bundle: ""
+signed_by: strata-fixture@invalid.test
+cosign_version: v3.0.5
+provides:
+  - name: jupyterlab
+    version: 4.2.0
+requires:
+  - name: glibc
+    min_version: "2.34"
+  - name: python
+    min_version: "3.11"
+arch: x86_64
+abi: linux-gnu-2.34
+built_at: 2026-08-01T00:00:00Z
+user_selectable: true
+install_layout: versioned
+has_modulefile: true
+recipe_sha256: 0000000000000000000000000000000000000000000000000000000000000000
+build_env_lock_id: strata-fixture-bootstrap
+bootstrap_build: true
+bootstrap_compiler: gcc-11.4.1-2.amzn2023.0.1.x86_64

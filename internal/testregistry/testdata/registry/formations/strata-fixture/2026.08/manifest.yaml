@@ -1,0 +1,24 @@
+# Fixture formation. bundle is filled in by testregistry.Materialize with the
+# absolute file:// URI of bundle.json in this directory. rekor_entry is a
+# numeric string on purpose: stage 7 parses it with strconv.ParseInt whenever a
+# Rekor client is configured, so "pending-initial-build" would not survive that
+# path (see #61).
+name: strata-fixture
+version: "2026.08"
+description: Fixture formation — python + jupyterlab, for offline resolution tests.
+layers:
+  - name: python
+    version: 3.13.2
+  - name: jupyterlab
+    version: 4.2.0
+provides:
+  - name: python
+    version: 3.13.2
+  - name: jupyterlab
+    version: 4.2.0
+validated_on:
+  - al2023/x86_64
+rekor_entry: "148923470"
+bundle: ""
+signed_by: strata-fixture@invalid.test
+built_at: 2026-08-01T00:00:00Z

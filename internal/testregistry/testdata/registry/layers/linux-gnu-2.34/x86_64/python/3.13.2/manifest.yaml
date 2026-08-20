@@ -1,0 +1,33 @@
+# Fixture layer manifest. source and bundle are left empty on purpose: they are
+# absolute file:// URIs and are filled in by testregistry.Materialize, which also
+# checks sha256 and size against the committed layer.sqfs bytes.
+id: python-3.13.2-linux-gnu-2.34-x86_64
+name: python
+version: 3.13.2
+source: ""
+sha256: 9d3cfb55120e076ace0be4abeada5bda4e27d0580b7e45efe8aaa1b76a313059
+size: 370
+content_manifest:
+  /opt/strata/python/3.13.2/bin/python3: acb0ec226a8922341b1d6178ebdf6884db2ebe154b9ea63cadda1d917813b1b5
+  /opt/strata/python/3.13.2/lib/libpython3.13.so: b5d218eaa9698d6261b9af4a65e83fafebb275de375e12bc1d2a4ce0b7f0450f
+  /opt/strata/share/strata-fixture/LICENSE: 44baabe7776eff447026502a05fcf2950dd5de0729329ebb6788529b2a538daa
+rekor_entry: "148923471"
+bundle: ""
+signed_by: strata-fixture@invalid.test
+cosign_version: v3.0.5
+provides:
+  - name: python
+    version: 3.13.2
+requires:
+  - name: glibc
+    min_version: "2.34"
+arch: x86_64
+abi: linux-gnu-2.34
+built_at: 2026-08-01T00:00:00Z
+user_selectable: true
+install_layout: versioned
+has_modulefile: true
+recipe_sha256: 0000000000000000000000000000000000000000000000000000000000000000
+build_env_lock_id: strata-fixture-bootstrap
+bootstrap_build: true
+bootstrap_compiler: gcc-11.4.1-2.amzn2023.0.1.x86_64

@@ -1,0 +1,26 @@
+{
+  "_strata_fixture": "NOT A VALID SIGSTORE BUNDLE — no signature over this content exists. messageDigest is the real SHA-256 of layer.sqfs; every other field is synthetic. See internal/testregistry/testregistry.go.",
+  "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+  "verificationMaterial": {
+    "tlogEntries": [
+      {
+        "logIndex": "148923471",
+        "logId": {
+          "keyId": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="
+        },
+        "kindVersion": {
+          "kind": "hashedrekord",
+          "version": "0.0.1"
+        },
+        "integratedTime": "1785283200"
+      }
+    ]
+  },
+  "messageSignature": {
+    "messageDigest": {
+      "algorithm": "SHA2_256",
+      "digest": "nTz7VRIOB2rOC+Sr6tpb2k4n0FgLfkXv6Kqht2oxMFk="
+    },
+    "signature": "c3RyYXRhLWZpeHR1cmUtbm90LWEtcmVhbC1zaWduYXR1cmU="
+  }
+}
