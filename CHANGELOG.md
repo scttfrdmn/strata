@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Offline resolution reaches stage 8** (#54). `STRATA_REGISTRY_URL=file:///...`
+  was passed to `registry.NewS3Client` regardless of scheme, so it failed the
+  `s3://` check and `strata resolve`/`strata freeze` fell back to the embedded
+  recipe catalog with a warning on stderr. That catalog carries no `bundle` or
+  `rekor_entry` — nothing has been built from it — so resolution died in stage 7
+  with `BUNDLE_MISSING` for every profile, and a clone with no AWS credentials
+  could not produce a lockfile at all. Both paths now dispatch by scheme through
+  `newClientForURL`. A `file://` registry also no longer reaches for SSM when
+  probing the base OS, which would have traded the missing lockfile for an IMDS
+  timeout. Completes the two work items left unchecked in #36.
+
+### Added
+- **`internal/testregistry`**: repo-resident `file://` fixture registry that
+  makes resolution reach stage 8 with no AWS credentials, no network, and no
+  prior build — two layers with a real dependency edge, real `sha256` over real
+  bytes, bundles that exist on disk, and numeric `rekor_entry` values. Usable
+  from a test (`testregistry.New(t)`) or a shell
+  (`go run ./internal/testregistry/mkregistry <dir>`). `Materialize` verifies
+  each committed digest against the committed bytes, so a drifted fixture fails
+  with the manifest path rather than rotting silently.
+- **`make offline-resolve`**: materializes the fixture registry and resolves a
+  profile through it end to end. A new CI job runs the same sequence with the
+  real binary and blank `AWS_*`, so "a fresh clone can produce a lockfile" is
+  checked on every pull request rather than asserted.
+- README: the `STRATA_REGISTRY_URL=file:///var/strata-local` offline workflow,
+  including which commands accept a `file://` registry and which are still
+  S3-only, and why the embedded catalog cannot resolve on its own.
+
 ## [0.22.0] - 2026-03-27
 
 ### Added
