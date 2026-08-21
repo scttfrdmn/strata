@@ -38,14 +38,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     for every layer in a realistic lockfile while verifying none of them.
     Fetching remote bundles so `--rekor` works against an s3-backed lockfile is
     #60. Without `--rekor`, `strata verify` is unchanged.
-  - `internal/resolver` stage 7 (`stages.go:386`) — no observable change today,
-    because no shipped code path sets `resolver.Config.Rekor` (all four
-    constructions leave it nil), so the branch is unreachable outside tests.
-    Where it becomes reachable, the direction changes: stage 7 holds a bundle
-    *URI* and never bundle bytes, so a configured client now receives no bundle
-    and resolution **fails closed** with `ErrNoBundle` instead of passing on the
-    strength of "something was logged at that index". Reaching real verification
-    from stage 7 requires fetching the bundle first — #55/#60.
+  - `internal/resolver` stage 7 (`stages.go:386`) — a behaviour change with no
+    reachable consumer today, which is the kind that arrives unannounced, so it
+    is stated here rather than left to the code. Where a Rekor client *is*
+    configured, the direction reverses: stage 7 holds a bundle *URI* and never
+    bundle bytes, so the client now receives no bundle and resolution **fails
+    closed** with `ErrNoBundle` where it previously passed on the strength of
+    "something was logged at that index". Configuring a client therefore turns
+    resolution from working into failing for every layer — correct, but total.
+
+    Nothing reaches it today, and for a stronger reason than "no caller does it":
+    `resolver.Config` lives in `internal/resolver`, so **no out-of-module
+    consumer can set `Rekor` at all**, and `pkg/strata` — the public API — does
+    not expose the knob. In-tree, all four `resolver.Config{}` constructions
+    leave it nil. So the branch runs only in tests.
+
+    Reaching real verification from stage 7 requires fetching the bundle first
+    (#55/#60); which way to take it is the decision filed as #85.
   - `internal/trust` as an API — `RekorClient.VerifyEntry`'s contract now requires
     a non-nil bundle. Any out-of-tree implementation that ignored the argument was
     conforming to the old documentation and no longer conforms to the new one.
