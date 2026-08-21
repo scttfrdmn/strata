@@ -230,9 +230,10 @@ type softwareRefFields SoftwareRef
 //   - formation:bio-seq@2026.03      → {Formation: "bio-seq@2026.03"}
 //   - {name: python, version: "3.13"} → {Name: "python", Version: "3.13"}
 //
-// A null entry never reaches this method: yaml.v3 stops at a null node before
-// consulting an unmarshaller, so "- ~" still decodes to the zero SoftwareRef
-// and is rejected by Validate, exactly as it was before this method existed.
+// A null entry never reaches this method. yaml.v3 stops at a null node before
+// consulting an unmarshaller, and then drops the element from the sequence
+// rather than zeroing it, so "- ~" is silently discarded — before this method
+// existed and still. That is #79, not something a branch here could fix.
 func (s *SoftwareRef) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
