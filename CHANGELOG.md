@@ -8,6 +8,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`strata-agent` refuses to boot when it cannot verify layer authenticity**
+  (#56). `newCosignVerifier` returned a nil `trust.Verifier` when cosign was not
+  on `PATH` or the public key could not be fetched from S3, and
+  `internal/agent.verifyBundles` treats a nil verifier as nothing to do — so an
+  EC2 instance silently downgraded from authenticity checking to hash checking.
+  "cosign is not installed" and "the operator accepted the risk" were the same
+  value, and the second was never asked for.
+
+  `newCosignVerifier` now returns `(trust.Verifier, error)` and names the missing
+  prerequisite. The boot stops, signalling failure to EC2 first so the instance
+  is diagnosable rather than looking hung. The opt-out is explicit and defaults
+  to closed: `STRATA_AGENT_ALLOW_UNVERIFIED=1` boots without authenticity
+  verification and logs that it has done so. Unrecognised values — including
+  typos like `ture` — leave verification on.
+
+  A nil verifier is now returned **only** with the opt-out set. That pairing, not
+  "never nil", is the invariant, and it is what the new tests assert.
+
+  What is given up by opting out is *authenticity*, not integrity: SHA-256
+  against the lockfile is still enforced on every path. The distinction matters
+  because a lockfile is exactly the artifact an attacker would supply, so it
+  cannot vouch for who produced the layers it pins.
+
+  **What changes per consumer**, enumerated from
+  `grep -rn 'agent.Config{' --include='*.go' .` and
+  `grep -rn 'internal/agent' --include='*.go' . | grep -v '^./internal/agent'`:
+  - **`strata-agent` on an instance without cosign, or without registry access
+    to `build/keys/cosign.pub`, now fails to boot** where it previously booted
+    with authenticity checking off. This is the intended breaking change.
+    Operators who relied on the old degradation must set
+    `STRATA_AGENT_ALLOW_UNVERIFIED=1`. The AMI build is the place to check: if
+    cosign is not baked in, every instance was taking the old path.
+  - `internal/agent` is **unchanged** — deliberately. `verifyBundles`'s
+    `Verifier == nil` guard is still fail-open, and inverting it fails three
+    inherited tests in `internal/agent/agent_test.go` that construct a boot with
+    verification disabled and call it a happy path. That is a reviewed decision,
+    not a fix to slip in, and it is filed as such (#92, #93). What *is* closed is
+    one deployed path in: `internal/agent` is an internal package with exactly one
+    non-test `agent.Config` construction (`cmd/strata-agent/main.go`), where
+    `BundleFetcher` is never nil, so after this change no shipped caller reaches
+    the **nil-verifier** fail-open at `agent.go:270`.
+
+    That is narrower than it first read, and the difference matters to anyone
+    deploying this. `verifyBundles` fails open a **second** way, which the
+    enumeration above does not touch and cannot: a layer whose `Bundle` field is
+    empty is dropped from the verify set (`agent.go:285-293`), and an empty verify
+    set returns nil. Its trigger is a property of the lockfile rather than of the
+    wiring, so it fires with a fully configured verifier and bundle fetcher and
+    **is reachable in production, with and without this change**. A publisher who
+    omits `Bundle`, or an attacker who strips it, still gets a clean boot. Tracked
+    as #92 (decision) and #93 (fix); not closed here.
+  - `STRATA.md`'s layer-verification section claimed verification "is
+    unconditional — there is no flag to skip verification". That was false in the
+    worse direction: verification was skippable without a flag. It now documents
+    both explicit opt-outs.
+  - `pkg/strata` and every other command are **unchanged**: nothing outside
+    `cmd/strata-agent` imports `internal/agent`.
 - **`strata run` verifies every layer before mounting it, and `--no-verify` now
   disables something** (#55). `strata run` accepted a `--no-verify` flag and
   never verified a signature in either state: the flag's only effect was to

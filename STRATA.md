@@ -286,7 +286,27 @@ entry commits the layer's identity to a public, append-only log.
 
 The agent verifies the cosign bundle against the Rekor transparency log before mounting
 any layer. SHA256 of the pulled squashfs is verified against the manifest. Unsigned layers
-will not mount. This is unconditional — there is no flag to skip verification.
+will not mount.
+
+Verification is required, not unconditional, and the difference is worth stating because
+this paragraph previously claimed the stronger thing. Two escape hatches exist, and both
+are explicit:
+
+- `strata run` requires `--key` and refuses to mount without it; `--no-verify` mounts
+  unverified layers and says so on stderr (#55).
+- `strata-agent` refuses to boot when cosign or the public key is unavailable. Setting
+  `STRATA_AGENT_ALLOW_UNVERIFIED=1` in the instance's user-data or unit file lets it boot
+  without authenticity verification, logging that it has done so (#56).
+
+What the earlier "there is no flag to skip verification" sentence obscured is that
+verification was skippable *without* a flag: the agent returned a nil verifier whenever
+cosign was missing, and the library treated a nil verifier as nothing to do. A documented
+opt-out that defaults to closed is a weaker claim than the one this paragraph used to make
+and a stronger property than the code used to have.
+
+In every case SHA256 integrity against the lockfile is still enforced. What an opt-out
+gives up is *authenticity* — evidence about who produced the layers — which is precisely
+what a supplied lockfile cannot vouch for on its own.
 
 ### Lockfile signing
 
