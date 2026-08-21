@@ -94,6 +94,13 @@ func (c *FakeRekorClient) Log(_ context.Context, bundle *Bundle) (int64, error) 
 }
 
 // VerifyEntry always succeeds for testing purposes.
+//
+// It ignores the bundle, including a nil one, which RekorHTTPClient rejects with
+// ErrNoBundle since #59. So a test that drives a call site through this fake
+// cannot observe whether that site passes a bundle at all — which is how the
+// stage-7 resolver call site stayed unmeasured while VerifyEntry discarded its
+// bundle. A test that means to assert what a call site passes needs a recording
+// client, not this one.
 func (c *FakeRekorClient) VerifyEntry(_ context.Context, _ int64, _ *Bundle) error {
 	return nil
 }

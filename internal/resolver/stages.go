@@ -374,6 +374,16 @@ func (r *Resolver) verifyBundle(ctx context.Context, rl resolvedLayer) error {
 					rl.manifest.ID, rl.manifest.RekorEntry, err),
 			}
 		}
+		// Stage 7 holds a bundle *URI* (manifest.Bundle), never bundle bytes:
+		// resolution runs before anything is downloaded, and fetching is the
+		// caller's job everywhere else in this codebase (trust.VerifyLayer
+		// refuses URIs outright). So no bundle can be passed here, and since
+		// #59 a RekorClient that is given none returns trust.ErrNoBundle —
+		// configuring a real client makes resolution fail closed rather than
+		// pass on the strength of "something was logged at that index".
+		// Reaching real verification from stage 7 means fetching the bundle
+		// first; that is #55/#60's work, not this call's. The decision about
+		// which way to take it is #85.
 		if err := r.cfg.Rekor.VerifyEntry(ctx, logIndex, nil); err != nil {
 			return &ResolutionError{
 				Stage:   "stage7",
