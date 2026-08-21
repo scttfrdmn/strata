@@ -14,10 +14,10 @@ Provenance for every measurement in this document unless stated otherwise:
 
 | | |
 |---|---|
-| commit | `339329fb08f2876c5d08405d25f40540f1609268` |
-| tree | `457cd8e5350336aa2fe197eed388162f267b10a2` |
-| working tree | clean at that commit; this branch adds this file, `internal/propdoc/` and `cmd/propgen/`, and changes nothing else |
-| re-derive | `git rev-parse HEAD; git rev-parse HEAD^{tree}; git status --porcelain` |
+| measured at | `339329fb08f2876c5d08405d25f40540f1609268`, tree `457cd8e5350336aa2fe197eed388162f267b10a2` |
+| refreshed for | #104, which moves `internal/agent/agent.go` — see §7 items 33–36 |
+| citations into files #104 changes | updated where they support a **live** property, pinned in the past tense to `339329fb` where they are the evidence for a **discharged** refutation |
+| re-derive | `git rev-parse HEAD; git rev-parse HEAD^{tree}; git status --porcelain`, and `go run ./cmd/propgen` for the Status column |
 
 Note on self-reference: this document is inside the tree it measures, so a
 repository-wide `grep` run after it lands will match its own prose. Every grep
@@ -143,22 +143,24 @@ is present and malformed. Propositions must be evaluated against composed
 adversaries, not one capability at a time.
 
 That nomination is no longer a prediction. `internal/agent/agent.go:285-293`
-drops any layer whose `Bundle` field is empty from the set to be verified, and an
-empty set returns success — so A1 (write the manifest) plus A5 (omit the bundle
-field) produces a clean boot with a fully configured verifier that is never
-consulted. The probe is on #92.
+**at `339329fb`** dropped any layer whose `Bundle` field was empty from the set to
+be verified, and an empty set returned success — so A1 (write the manifest) plus
+A5 (omit the bundle field) produced a clean boot with a fully configured verifier
+that was never consulted. The probe is on #92.
 
-Line numbers here and in T1/T5 are as of the commit in the provenance header.
-#104 inverts both sites and deletes `:285-293`, so this citation names the tree
-this document measures rather than the tree that will exist after that PR merges;
-§7 enumerates what to refresh, and in which order.
+**Closed by #104.** That block no longer exists; `internal/agent/agent.go:310-323`
+now collects every bundle-less layer and refuses, naming all of them. The citation
+above is retained in the past tense and pinned to the commit where the measurement
+was made, because a refutation's evidence is the tree it was taken on — renumbering
+it to a line that now refuses would make the counterexample unreproducible. §7
+records the refresh.
 
 ### 1.4 What the model cannot express — and the class that fills the gap
 
 **Five of the six fail-open paths found in this codebase need no adversary at
-all.** `internal/agent/agent.go:270` skips verification when the caller supplied
-no verifier; the historical `strata run --no-verify` disabled a check that was
-never performed (#55). No capability in §1.1 describes "the deployment's default
+all.** `internal/agent/agent.go:285` skips verification when the caller supplied
+no verifier — still open, tracked by #93; the historical `strata run --no-verify`
+disabled a check that was never performed (#55). No capability in §1.1 describes "the deployment's default
 is weaker than the operator believes", because that is not something an attacker
 *does*.
 
@@ -227,9 +229,11 @@ tier being mistaken for available.
 6. **A test that does not execute the property's site is not E1 for that
    property.** Rule 4 asks whether the *test* runs. Rule 6 asks whether the
    *line* runs. Both have been violated here. Inverting
-   `internal/agent/agent.go:285-293` leaves all seven tests in the package green
-   with zero coverage hits on the inverted statements (measurement on #93): the
-   suite is green and the change is unexecuted. Reachability is shown with a
+   `internal/agent/agent.go:285-293` **at `339329fb`** left all seven tests in the
+   package green with zero coverage hits on the inverted statements (measurement on
+   #93): the suite was green and the change unexecuted. #104 both deletes that
+   block and supplies the missing tests, so the measurement is no longer
+   reproducible on `main` — which is the point of pinning it. Reachability is shown with a
    coverage delta on the lines the property is about, not with a passing suite.
    (Added 2026-08-21; see §7.)
 7. **A documented claim that is false is not E0 — it is a refutation, and the
@@ -320,8 +324,8 @@ in §4 is many-to-many.
 
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
-| **I1** | *Mount integrity.* Every byte made visible in an assembled environment belongs to a layer whose content hashes to the digest recorded for it in the lockfile. | **TOO STRONG** | withdrawn — I1′, I6 | WITHDRAWN (superseded by I1′, I6) | Satisfying I1 as a universal claim over every visible byte requires abandoning two things Strata deliberately does: `packages:` installs (`internal/agent/agent.go:172`) put bytes from PyPI, conda and CRAN into the merged overlay, and Path B mounts a writable EBS upper (`MutableLayerSpec`). Neither set of bytes belongs to any layer. I1 is therefore restricted to layer-derived bytes, and I6 below covers the remainder. |
-| **I1′** | *(restriction of I1)* Every byte made visible **from a layer** hashes to that layer's recorded digest. | SOUND | E1 — `cmd/strata/layer_cache_integrity_test.go:74,123,185,249`, `internal/agent/agent_test.go:181` | ENFORCED E1 | `strata run` route: `cmd/strata/run.go:426` builds the cache path only through `spec.LayerCachePath`, and both return paths hash the file against the declared digest first (`:436`, `:481`). Witnessed by `cmd/strata/layer_cache_integrity_test.go:74 TestLayerCacheAcceptsHonestLayers` (the control, showing the harness can pass) with `:185 TestLayerCacheRejectsPlantedCacheHit`, `:123 TestLayerCacheRejectsTraversalDigest`, `:249 TestLayerCacheRejectsEmptyDigest`. Agent route: `internal/agent/agent.go:231-241` hashes every path `Fetch` returns and compares unconditionally, with no `!= ""` guard; witnessed by `internal/agent/agent_test.go:181 TestRun_SHA256Mismatch`. Domain: these two routes. |
+| **I1** | *Mount integrity.* Every byte made visible in an assembled environment belongs to a layer whose content hashes to the digest recorded for it in the lockfile. | **TOO STRONG** | withdrawn — I1′, I6 | WITHDRAWN (superseded by I1′, I6) | Satisfying I1 as a universal claim over every visible byte requires abandoning two things Strata deliberately does: `packages:` installs (`internal/agent/agent.go:178`) put bytes from PyPI, conda and CRAN into the merged overlay, and Path B mounts a writable EBS upper (`MutableLayerSpec`). Neither set of bytes belongs to any layer. I1 is therefore restricted to layer-derived bytes, and I6 below covers the remainder. |
+| **I1′** | *(restriction of I1)* Every byte made visible **from a layer** hashes to that layer's recorded digest. | SOUND | E1 — `cmd/strata/layer_cache_integrity_test.go:74,123,185,249`, `internal/agent/agent_test.go:181` | ENFORCED E1 | `strata run` route: `cmd/strata/run.go:426` builds the cache path only through `spec.LayerCachePath`, and both return paths hash the file against the declared digest first (`:436`, `:481`). Witnessed by `cmd/strata/layer_cache_integrity_test.go:74 TestLayerCacheAcceptsHonestLayers` (the control, showing the harness can pass) with `:185 TestLayerCacheRejectsPlantedCacheHit`, `:123 TestLayerCacheRejectsTraversalDigest`, `:249 TestLayerCacheRejectsEmptyDigest`. Agent route: `internal/agent/agent.go:237-247` hashes every path `Fetch` returns and compares unconditionally, with no `!= ""` guard; witnessed by `internal/agent/agent_test.go:181 TestRun_SHA256Mismatch`. Domain: these two routes. |
 | **I2** | *Cache soundness.* Content obtained from a local cache is used only after its bytes have been hashed and compared against the declared digest, on every use. Under **A2** this must hold for cache hits, not only for fresh downloads. | SOUND | E1 — `cmd/strata/layer_cache_integrity_test.go:74,185` | ENFORCED E1 | Three cache-hit sites, all routed through validation: `cmd/strata/run.go:426` + `spec.VerifyFileDigest`, `internal/registry/s3client.go:366-371`, `internal/registry/localclient.go:268-273`. Witnessed by `TestLayerCacheRejectsPlantedCacheHit` (plants different content under a correct digest and requires refusal) against `TestLayerCacheAcceptsHonestLayers` as the control. `#83` records the standing cost objection — re-hashing every hit is O(environment size) per invocation — and is a design question, not a refutation. |
 | **I3** | *Digest well-formedness.* Any value used as a digest — in a comparison, a filesystem path, or a cache key — is syntactically a SHA-256 digest before it is so used. Absent and malformed are both rejected (**A5**). | SOUND | E1 — `spec/digest_test.go:16`, `spec/digest_test.go:53` | REFUTED (2 of 3 live) | The rule exists and is enforced where it is called: `spec/digest.go:30-47 ValidateLayerDigest` requires exactly 64 lowercase hex and rejects empty explicitly, witnessed at `spec/digest_test.go:16 TestValidateLayerDigest` and `:53 TestLayerCachePathRejectsEscape`. Two sites do not call it. (a) `cmd/strata-agent/s3_fetcher.go:73` builds `filepath.Join(f.cacheDir, layer.SHA256+".sqfs")` from an unvalidated digest and `os.Rename`s into it — #81. (b) `LockFile.IsFrozen()` and `EnvironmentID()` treat any non-empty string as a digest: the repository's own `spec/spec_test.go:544` passes `SHA256: "bbbbbb"` and `internal/resolver/resolver_test.go:597` passes `AMISHA256: "sha256-ami-test123456789"`, and both tests pass. So "frozen" is satisfied by a lockfile with no digests in it. (b) (b) untracked → filed as #96. |
 | **I4** | *Path confinement.* No field of a lockfile or manifest can cause a filesystem operation outside the directory designated for it, for any field value. | SOUND | E1 — `spec/digest_test.go:53` | REFUTED (3 of 4 live) | The mechanism is understood and stated correctly in one place — `spec/digest.go:52-55`: *"`filepath.Join` calls `Clean`, which resolves `..` rather than rejecting it, so joining an unvalidated digest can name a file outside `cacheDir`. Every site that builds a layer cache path must go through here."* Executed confirmation: `filepath.Join("/var/cache/strata/layers", "../../../../etc/cron.d/evil.sqfs")` → `/etc/cron.d/evil.sqfs`. Four sites build a path from an unvalidated lockfile field: `internal/trust/verify.go:92` (`layer.ID`, and its own comment at `:90-91` asserts the opposite — #58); `internal/overlay/mount_linux.go:141` (`layer.ID` into `os.MkdirAll` then `MountSquashfs` — a **write** primitive, untracked); `internal/export/oci.go:60` (`"layer-"+lp.ID`, untracked); `cmd/strata-agent/s3_fetcher.go:73` (`layer.SHA256`, #81). Untracked pair → filed as #97. |
@@ -334,13 +338,13 @@ This group is the core of Strata's differentiating claim.
 
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
-| **T1** | *No unverified mount.* There exists no execution path from *layer declared in a lockfile* to *layer mounted in an assembled environment* that does not pass a successful signature verification under the trust policy in force. | **TOO WEAK** | E1 — `cmd/strata/run_verify_test.go:370,519` | REFUTED (2 of 4 live) | *The most important finding in this review.* Broken-but-satisfying implementation: ship an agent whose default policy is `allow-unverified`, and route every layer through a verifier that returns success when a layer names no bundle. Every mount then "passes a successful verification under the trust policy in force" and T1 holds — which is precisely the shape of the five fail-opens this document was written about. T1 defers its content to "the policy in force" and never says what the policy is when the operator selects nothing. It is only worth having when read together with T5's second sentence, and it should be restated to quantify over the *default* configuration (see H1, §1.4). Status under that reading: refuted at `internal/agent/agent.go:270` (nil verifier ⇒ skip) and `:285-293` (layer with `Bundle: ""` dropped from the set; empty set ⇒ success) — #92, #93. Probe 3 on #92 boots READY with a verifier that refuses every artifact, `VerifierCalled=false`. Closed on the `strata run` route by #55: `cmd/strata/run_verify_test.go:519 TestRunRun_MissingKeyIsARefusalNotASkip`, `:370 TestVerifyRunLayers_ReportsEveryFailure`. |
+| **T1** | *No unverified mount.* There exists no execution path from *layer declared in a lockfile* to *layer mounted in an assembled environment* that does not pass a successful signature verification under the trust policy in force. | **TOO WEAK** | E1 — `cmd/strata/run_verify_test.go:370,519` | REFUTED (1 of 4 live) | *The most important finding in this review.* Broken-but-satisfying implementation: ship an agent whose default policy is `allow-unverified`, and route every layer through a verifier that returns success when a layer names no bundle. Every mount then "passes a successful verification under the trust policy in force" and T1 holds — which is precisely the shape of the five fail-opens this document was written about. T1 defers its content to "the policy in force" and never says what the policy is when the operator selects nothing. It is only worth having when read together with T5's second sentence, and it should be restated to quantify over the *default* configuration (see H1, §1.4). Status under that reading: refuted at `internal/agent/agent.go:285` (nil verifier ⇒ skip — still open, #93) and, at `339329fb`, `:285-293` (layer with `Bundle: ""` dropped from the set; empty set ⇒ success — #92, **closed by #104**, which replaces the filter with a refusal naming every bundle-less layer at `:310-323`; witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`). Probe 3 on #92 boots READY with a verifier that refuses every artifact, `VerifierCalled=false`. Closed on the `strata run` route by #55: `cmd/strata/run_verify_test.go:519 TestRunRun_MissingKeyIsARefusalNotASkip`, `:370 TestVerifyRunLayers_ReportsEveryFailure`. |
 | **T2** | *Verification soundness.* Verification succeeds for a layer only if a signature exists, by an identity admitted by the trust policy, over the digest of the exact bytes that will be mounted. | SOUND | E1 — `cmd/strata/run_verify_test.go:466` | REFUTED | The "exact bytes" clause is the load-bearing part and it is satisfied deliberately: `cmd/strata/run.go` adds a check absent from `trust.VerifyLayer` — that the bundle attests *this lockfile's* digest — with the reason stated in its doc comment (*"a missing cosign must not be the difference between 'wrong layer's bundle' and 'accepted'"*). Witnessed by `cmd/strata/run_verify_test.go:466 TestRunRun_RefusesLayerWhoseBundleAttestsAnotherArtifact`. For the *lockfile*, no signature verification exists at all (#60), so T2 does not hold of the artifact that names the layer set. Weakness worth recording: "an identity admitted by the trust policy" is satisfied here by possession of one `--key`; there is no identity policy to admit or refuse anything. |
 | **T3** | *Transparency binding.* A transparency-log entry accepted as evidence for artifact *A* has a body that corresponds to *A*'s attestation. Under **A4**, the existence of the referenced entry is not itself evidence about *A*. | SOUND | E1 — `cmd/strata/verify_rekor_test.go:80,147,217` | REFUTED (2 of 3 live) | Discharged for the verify command by #59, which replaced a log-index existence check that discarded the bundle: `cmd/strata/verify_rekor_test.go:80 TestVerifyRekorEntries_PassesTheBundle`, with `:217 TestVerifyRekorEntries_BadIndexIsNotVerified` and `:147 TestVerifyRekorEntries_UnfetchableBundleIsAFailure` as the failing controls. Refuted on the resolver path: stage 7 holds a bundle *URI*, not bundle bytes, so it cannot compare anything (#85). Two open objections to the *evidence*, not to the proposition: #88 — the `hashedrekord` body shape is inferred from our own `Log`, so writer and verifier can be wrong together, which is rule 3's tautology at the level of a design; #86 — `TestStage7_RekorVerification` asserts a negative case its body never exercises, which is rule 6. |
 | **T4** | *Trust-anchor independence.* The root of trust used to verify artifacts is not obtained from the authority that serves those artifacts. Under **A1**, an attacker who can replace an artifact cannot also replace the material that decides who may sign it. | SOUND | none | REFUTED (2 of 2 live) | #62 — the agent fetches its cosign public key from the same S3 bucket that serves the layers, so A1 alone replaces both. #63 — `ec2runner` downloads the cosign binary itself with no checksum or signature check, which is the §1.2 clause "obtaining the verification binary is in scope under A3" paying out. |
-| **T5** | *Fail-closed.* Any inability to complete verification — absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material — results in refusal. Degradation to a weaker check occurs only when a weaker policy has been explicitly selected by the operator. | SOUND | E1 — `cmd/strata/run_verify_test.go:264`, `cmd/strata-agent/cosign_verifier_test.go:127,187,249` | REFUTED (2 of 4 live) | The strongest proposition in this document: it names absence alongside invalidity, so A5 cannot slip past it, and it fixes the default in its second sentence, which is what T1 fails to do. Refuted at `internal/agent/agent.go:270` and `:285-293` (#92, #93) — an absent bundle is a skip, not a refusal. Enforced at E1 on the routes already fixed: `cmd/strata/run_verify_test.go:264 TestNewRunVerifier_NeverReturnsANilVerifier` (#55) and `cmd/strata-agent/cosign_verifier_test.go:127 TestResolveVerifier_NilVerifierOnlyWithAnExplicitOptOut`, `:187 TestAllowUnverified_DefaultsToClosed`, `:249 TestProductionPrereqs_ClosedByDefault` (#56). |
+| **T5** | *Fail-closed.* Any inability to complete verification — absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material — results in refusal. Degradation to a weaker check occurs only when a weaker policy has been explicitly selected by the operator. | SOUND | E1 — `cmd/strata/run_verify_test.go:264`, `cmd/strata-agent/cosign_verifier_test.go:127,187,249` | REFUTED (1 of 4 live) | The strongest proposition in this document: it names absence alongside invalidity, so A5 cannot slip past it, and it fixes the default in its second sentence, which is what T1 fails to do. Refuted at `internal/agent/agent.go:285` (#93, still open) and, at `339329fb`, `:285-293` (#92) — an absent bundle was a skip, not a refusal. **#104 closes the #92 half**: absence is now refused at `:310-323`, witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`. Enforced at E1 on the routes already fixed: `cmd/strata/run_verify_test.go:264 TestNewRunVerifier_NeverReturnsANilVerifier` (#55) and `cmd/strata-agent/cosign_verifier_test.go:127 TestResolveVerifier_NilVerifierOnlyWithAnExplicitOptOut`, `:187 TestAllowUnverified_DefaultsToClosed`, `:249 TestProductionPrereqs_ClosedByDefault` (#56). |
 | **T6** | *Policy explicitness.* The trust policy under which a result was produced is recorded alongside that result, so that a verification outcome is interpretable without knowledge of the invoking environment. | **ILL-FORMED** | none | REFUTED | "Recorded alongside that result" names neither an artifact nor a lifetime. A line on stderr satisfies it on one reading and no durable record satisfies it on another, so as written it cannot be failed. Falsifiable form: *the lockfile, or an attestation deposited with it, carries a field naming the trust policy in force, and a consumer reading only the artifact can determine what was checked.* Under that form: refuted by absence. `grep -rn 'TrustPolicy\|VerifiedAt' --include='*.go' . \| grep -v _test.go` returns 0 lines, and no lockfile field records what was checked. Filed as #100. |
-| **T7** | *Command-name honesty.* A command's name and documented behaviour do not claim a stronger check than it performs. A flag that purports to disable a check disables a check that was otherwise performed. | **TOO WEAK** | E1 — `cmd/strata/run_verify_test.go:350,497` | REFUTED (1 of 4 live) | Broken-but-satisfying implementation: keep the fail-open and fix the *documentation*. T7 constrains names and docs, so the cheapest way to satisfy it is to document the weakness while leaving the command called `verify` and the behaviour unchanged — the operator's attention is displaced exactly as before. Repair: pair T7 with a requirement that a weaker check announces itself **at use time**, not only in prose. `strata run --no-verify` already meets the repaired form (`cmd/strata/run.go:184` prints the warning; `cmd/strata/run_verify_test.go:350 TestVerifyRunLayers_NoVerifyAnnouncesTheSkip` with `:497 TestRunRun_NoVerifyReachesTheMount` as its pair), and so does `STRATA_AGENT_ALLOW_UNVERIFIED` (#56). `strata verify` does not: without `--rekor` it performs presence checks only (`cmd/strata/verify.go:82-98 collectPresenceFailures`) under a name that claims verification — #60. And `verifyBundles`'s doc comment stated the skip as intended design (`internal/agent/agent.go:266-268`) — T7's broken-but-satisfying implementation occurring in the wild rather than as a hypothetical: the weakness was documented accurately and the behaviour left alone, so T7 as written was *satisfied* by the artifact that recorded the fail-open. #104 rewrites the comment and inverts the behaviour together, which is the only combination that discharges anything. |
+| **T7** | *Command-name honesty.* A command's name and documented behaviour do not claim a stronger check than it performs. A flag that purports to disable a check disables a check that was otherwise performed. | **TOO WEAK** | E1 — `cmd/strata/run_verify_test.go:350,497` | REFUTED (1 of 4 live) | Broken-but-satisfying implementation: keep the fail-open and fix the *documentation*. T7 constrains names and docs, so the cheapest way to satisfy it is to document the weakness while leaving the command called `verify` and the behaviour unchanged — the operator's attention is displaced exactly as before. Repair: pair T7 with a requirement that a weaker check announces itself **at use time**, not only in prose. `strata run --no-verify` already meets the repaired form (`cmd/strata/run.go:184` prints the warning; `cmd/strata/run_verify_test.go:350 TestVerifyRunLayers_NoVerifyAnnouncesTheSkip` with `:497 TestRunRun_NoVerifyReachesTheMount` as its pair), and so does `STRATA_AGENT_ALLOW_UNVERIFIED` (#56). `strata verify` does not: without `--rekor` it performs presence checks only (`cmd/strata/verify.go:82-98 collectPresenceFailures`) under a name that claims verification — #60. And `verifyBundles`'s doc comment stated the skip as intended design (`internal/agent/agent.go:272-283`) — T7's broken-but-satisfying implementation occurring in the wild rather than as a hypothetical: the weakness was documented accurately and the behaviour left alone, so T7 as written was *satisfied* by the artifact that recorded the fail-open. #104 rewrites the comment and inverts the behaviour together, which is the only combination that discharges anything. |
 | **T8** | *(new)* *Freshness.* A verifier can determine that the artifact set it has been given is the current one, and refuses a set that is older than a stated bound. | SOUND | none | REFUTED | Added 2026-08-21 (§7). §5 asked for group T to be checked against TUF's taxonomy; **A6 was in the model and no proposition used it.** Doing the check: nothing records a freshness threshold, an expiry, or a timestamp/snapshot role, so rollback and freeze both succeed against a genuinely signed old artifact, and `strata update` moves forward only when a human runs it. Filed as #101. |
 | **T9** | *(new)* *Set integrity.* The layer set is verified as a set, not layer by layer: a verifier refuses a combination of individually valid layers that was never attested together. | SOUND | none | REFUTED (2 of 2 live) | Added 2026-08-21 (§7). This is TUF's mix-and-match attack. The lockfile is the artifact that names the set, and no lockfile-level signature verification exists (#60), so under A1 an attacker composes any set of genuinely signed layers. |
 
@@ -464,8 +468,8 @@ moves the status of every proposition it names; nothing else does.
 | X3 | The inline software-ref form `- python@3.13` was documented and did not parse | H1 | #53 | Yes — E1, `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` |
 | X3 | All three shipped examples name formation versions the catalog does not contain, and `go test ./examples/` passes | H1 | #70 | No |
 | R4, R5 | Stage 4 validates against one provider, stage 6 wires the edge to another; stage 4 is itself first-match | H1 | #67 | No |
-| T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #92 (decision), #93 (fix) | No |
-| T1, T5 | `BundleFetcher`'s godoc **specified** the fail-open: implementations were told to return `(nil, nil)` for a layer naming no bundle, and `verifyBundles` treated no bytes as nothing to verify. The shipped `s3LayerFetcher` conforms. A defect in an interface's *specification* is inherited by every conforming implementation, so no amount of testing the implementations finds it | H1 | #92 | No — inverted at both sites on `fix/agent-absent-bundle` (#104) with E1 evidence at `internal/agent/verify_bundles_test.go:291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`, which is not this document's merge target; see §7 |
+| T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #92 (decision), #93 (fix) | Partially — the absent-bundle half is closed by #104 at `internal/agent/agent.go:310-323`, E1 at `internal/agent/verify_bundles_test.go:187,252`; the nil-verifier half at `:285` is open under #93. `Partially` counts as live, so T1 and T5 stay refuted |
+| T1, T5 | `BundleFetcher`'s godoc **specified** the fail-open: implementations were told to return `(nil, nil)` for a layer naming no bundle, and `verifyBundles` treated no bytes as nothing to verify. The shipped `s3LayerFetcher` conforms. A defect in an interface's *specification* is inherited by every conforming implementation, so no amount of testing the implementations finds it | H1 | #92 | Yes — E1, `internal/agent/verify_bundles_test.go:291` (empty bytes refused) and `cmd/strata-agent/s3_bundle_contract_test.go:22` (the shipped `s3LayerFetcher` held to the corrected contract). #104 rewrote the godoc and inverted the behaviour together |
 | T2, T7, T9 | `strata verify` and `IsSigned()` are presence checks; no lockfile verification exists | A1 | #60 | No |
 | T4 | Agent fetches its cosign public key from the bucket that serves the layers | A1 | #62 | No |
 | T4 | `ec2runner` downloads the cosign binary with no checksum or signature | A3 | #63 | No |
@@ -882,6 +886,72 @@ structurally wrong. Both are recorded here.
     `cmd/strata-agent/s3_bundle_contract_test.go:22`. The `#92 (decision), #93
     (fix)` row stays `No`: #93's nil-verifier fail-open is untouched. If #104
     merges first, the same list applies to this document before it lands.
+
+### 2026-08-21 — #103 merged; the refresh executed, and the enumeration scored
+
+#103 merged first (`3206ca4`), then this refresh, then #104. The prediction in
+item 32 above is left as written so it can be scored; it was **incomplete in one
+class and wrong in one detail**.
+
+33. **The enumeration missed every citation that shifts merely because the file
+    grew.** Item 32 listed the citations *about* the fail-open and none of the
+    four that simply live in the same file below the insertion point: I1's
+    `agent.go:172` → `:178`, I1′'s `agent.go:231-241` → `:237-247`, and two
+    historical entries in this log. Nothing in item 32's reasoning would have
+    found them, because it reasoned from *what the PR changes* rather than from
+    *what cites the file it changes*. The correct query is mechanical:
+
+    ```
+    for f in $(git diff --name-only <base>...HEAD); do
+      grep -c "$(basename $f):" PROPERTIES.md; done
+    ```
+
+    which reports 10 citations into `agent.go`, not the 4 item 32 anticipated. It
+    also surfaced 3 citations into `cmd/strata-agent/s3_fetcher.go`, a file #104
+    also edits — those turned out to need no change, because the edit is at `:130`
+    and the citations are at `:73`, but *that* was established by checking rather
+    than by assuming. This is the relocated-rule failure in its documentation
+    form: I enumerated the sites I had been thinking about, not the sites that
+    refer to what moved.
+
+34. **`:314-325` was wrong; the refusal is at `:310-323`.** Predicted by arithmetic
+    on a diff, corrected by reading the merged file. `:325` lands inside the
+    comment for the *next* branch — the no-fetched-layers case, which is
+    explicitly not the absent-bundle case — so the prediction cited a boundary
+    that would have argued against the point it was cited for.
+
+35. **Three citations were pinned in the past tense rather than renumbered**, in
+    §1.3, §2 rule 6, and T1/T5: `agent.go:285-293` at `339329fb`. A refutation's
+    evidence is the tree it was taken on, and renumbering it to the line that now
+    *refuses* would make the counterexample unreproducible — the reader would go
+    looking for a fail-open at a refusal and conclude the register was wrong. Rule
+    for future refreshes: **a citation supporting a discharged refutation is
+    pinned, not updated; a citation supporting a live property is updated.**
+
+36. **T1 and T5 each dropped one live row**, so their statuses moved from
+    `REFUTED (2 of 4 live)` to `REFUTED (1 of 4 live)` — regenerated with
+    `go run ./cmd/propgen -write`, not typed. This is the movement that was
+    invisible in the first population and is the reason the column was made
+    generated at all: the propositions correctly stay `REFUTED` (#93's
+    nil-verifier fail-open is untouched, and its row stays `No`), and the progress
+    is nonetheless legible in the column.
+
+    #104 is therefore the first change in this repository whose claimed
+    proposition movements were **checked by CI rather than reviewed by eye** — with
+    the scope of that check stated precisely, because it is narrower than it
+    sounds. Two independent mechanisms, not one:
+
+    - **The bookkeeping** is bound. Reverting the `Yes` in the `BundleFetcher` row
+      to `No`, changing nothing else, makes `propgen` report drift on T1 and T5 and
+      `TestPropertiesStatusColumnIsDerived` fail. Probed, not assumed.
+    - **The behaviour** is bound separately, by `internal/agent`'s tests.
+
+    What CI still does **not** check is that a citation names a test which actually
+    *exercises* the property — a plausible-looking `_test.go:NNN` in an evidence
+    cell is accepted as long as the suite is green. That is rule 6's question, and
+    it is answered by a coverage delta on the line, by hand, per refutation. The
+    generator removed the drift between two columns; it did not remove the need to
+    show reachability.
 
 **Placement.** This file sits at the repository root beside `STRATA.md` rather
 than under `docs/`. `CLAUDE.md` hygiene rule 1 sends documentation to `docs/`;
