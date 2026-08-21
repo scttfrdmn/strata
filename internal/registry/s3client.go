@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -358,12 +357,20 @@ func (c *S3Client) upsertLayerIndex(ctx context.Context, manifest *spec.LayerMan
 }
 
 // FetchLayerSqfs downloads the squashfs file for manifest to cacheDir.
-// If cacheDir already contains a file named <sha256>.sqfs it is returned
-// immediately without re-downloading. The downloaded file is verified against
-// manifest.SHA256 before it is committed to the cache.
+// manifest.SHA256 must be a well-formed digest; it is validated before any path
+// is built from it. If cacheDir already contains a file named <sha256>.sqfs it
+// is reused, but only after it hashes to that digest — the filename is not
+// evidence of the contents. A downloaded file is verified before it is
+// committed to the cache.
 func (c *S3Client) FetchLayerSqfs(ctx context.Context, manifest *spec.LayerManifest, cacheDir string) (string, error) {
-	cachePath := filepath.Join(cacheDir, manifest.SHA256+".sqfs")
-	if _, err := os.Stat(cachePath); err == nil {
+	cachePath, err := spec.LayerCachePath(cacheDir, manifest.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("registry: layer %q: %w", manifest.ID, err)
+	}
+	if _, statErr := os.Stat(cachePath); statErr == nil {
+		if err := spec.VerifyFileDigest(cachePath, manifest.SHA256); err != nil {
+			return "", fmt.Errorf("registry: cached layer %q: %w (remove the file to re-download it)", manifest.ID, err)
+		}
 		return cachePath, nil
 	}
 

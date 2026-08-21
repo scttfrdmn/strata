@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -218,8 +216,16 @@ func setEnvVar(env []string, key, val string) []string {
 	return append(env, prefix+val)
 }
 
-// fetchLayersToCache downloads all layers in the lockfile to cacheDir,
-// verifying SHA256 after download. Layers already in cache are reused.
+// fetchLayersToCache downloads all layers in the lockfile to cacheDir and
+// returns their paths. Layers already in cache are reused.
+//
+// The invariant is single: nothing is returned from here that has not been
+// hashed against a well-formed declared digest. That means the digest is
+// validated before it is used to build a path, a cache hit is hashed before it
+// is reused, and a layer with no digest is rejected rather than passed through
+// unverified. Callers (strata run, strata export, strata fold) hand these paths
+// straight to overlay assembly, so a path returned from here is content the
+// process is about to execute.
 func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) ([]overlay.LayerPath, error) {
 	if len(lf.Layers) == 0 {
 		return nil, nil
@@ -230,10 +236,23 @@ func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) 
 
 	paths := make([]overlay.LayerPath, 0, len(lf.Layers))
 	for _, layer := range lf.Layers {
-		cachePath := filepath.Join(cacheDir, layer.SHA256+".sqfs")
+		// Validate the digest before anything is built from it. filepath.Join
+		// Cleans rather than rejects, so an unvalidated digest of "../x" names a
+		// file outside cacheDir, and an empty one names the same ".sqfs" for
+		// every hashless layer in every lockfile.
+		cachePath, err := spec.LayerCachePath(cacheDir, layer.SHA256)
+		if err != nil {
+			return nil, fmt.Errorf("layer %q: %w", layer.ID, err)
+		}
 
-		// Cache hit.
-		if _, err := os.Stat(cachePath); err == nil {
+		// Cache hit — hash it. The filename is not evidence of the contents:
+		// the cache directory is shared, long-lived, and writable by whatever
+		// else runs as this user, so a file at a well-formed name still has to
+		// prove it is the layer the lockfile asked for.
+		if _, statErr := os.Stat(cachePath); statErr == nil {
+			if err := spec.VerifyFileDigest(cachePath, layer.SHA256); err != nil {
+				return nil, fmt.Errorf("cached layer %q: %w (remove the file to re-download it)", layer.ID, err)
+			}
 			paths = append(paths, overlay.LayerPath{
 				ID:         layer.ID,
 				SHA256:     layer.SHA256,
@@ -274,16 +293,11 @@ func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) 
 			return nil, fmt.Errorf("layer %q: unsupported source scheme in %q", layer.ID, layer.Source)
 		}
 
-		// Verify SHA256 after download.
-		if layer.SHA256 != "" {
-			actual, err := sha256File(cachePath)
-			if err != nil {
-				return nil, fmt.Errorf("hashing layer %q: %w", layer.ID, err)
-			}
-			if actual != layer.SHA256 {
-				os.Remove(cachePath) //nolint:errcheck
-				return nil, fmt.Errorf("layer %q SHA256 mismatch: manifest=%q file=%q", layer.ID, layer.SHA256, actual)
-			}
+		// Verify SHA256 after download. Unconditional: the digest was validated
+		// above, so there is no hashless case left to skip.
+		if err := spec.VerifyFileDigest(cachePath, layer.SHA256); err != nil {
+			os.Remove(cachePath) //nolint:errcheck
+			return nil, fmt.Errorf("layer %q: %w", layer.ID, err)
 		}
 
 		paths = append(paths, overlay.LayerPath{
@@ -357,20 +371,6 @@ func copyFile(src, dest string) error {
 		return err
 	}
 	return os.Rename(tmpPath, dest)
-}
-
-// sha256File computes the hex-encoded SHA256 of the named file.
-func sha256File(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close() //nolint:errcheck
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // parseS3URIRun parses "s3://bucket/key" → (bucket, key, true).
