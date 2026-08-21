@@ -50,6 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fixing it requires correcting two tests that assert the current behaviour.
 
 ### Fixed
+- **The inline software-ref form parses** (#53). `- python@3.13` — the form every
+  documented example uses, including the README's flagship profile — did not
+  parse at all. `SoftwareRef` had no `UnmarshalYAML`, so `gopkg.in/yaml.v3`
+  rejected a scalar sequence entry before any post-processing ran, which meant
+  `ParseSoftwareRef` and the `normalizeSoftwareRefs` loop that called it were
+  unreachable for the case they existed to serve, and the comment claiming both
+  forms were supported was false. The rule now lives on the type, so both forms
+  work anywhere a `SoftwareRef` appears — a profile's `software`,
+  `Profile.Defaults`, `LockFile.Defaults` and `Formation.Layers` — rather than in
+  a post-pass that walked `Profile.Software` alone. `MarshalYAML` emits the
+  inline form only when it provably reads back equal, so writing a profile cannot
+  produce a document that reads back different from what was written.
+  Mapping-form parsing inside a profile is unchanged; the two changes outside one
+  are under Changed below.
 - **Offline resolution reaches stage 8** (#54). `STRATA_REGISTRY_URL=file:///...`
   was passed to `registry.NewS3Client` regardless of scheme, so it failed the
   `s3://` check and `strata resolve`/`strata freeze` fell back to the embedded
@@ -61,7 +75,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probing the base OS, which would have traded the missing lockfile for an IMDS
   timeout. Completes the two work items left unchecked in #36.
 
+### Changed
+- **A software ref's `name` carrying inline syntax is now re-parsed everywhere a
+  `SoftwareRef` appears** (#53), not only in a profile's `software` list. A
+  formation manifest or lockfile entry written as `- name: "cuda@12.3"` now means
+  `{name: cuda, version: 12.3}`, where before it meant a package literally named
+  `cuda@12.3`. This is a semantic change, not a bug fix, so it is recorded here
+  rather than under Fixed — but note that a literal name containing `@` or `:` was
+  never a legal `SoftwareRef`: `Validate` rejects those characters in a name. A
+  profile already re-parsed such a name, via the post-pass this release replaces;
+  `Profile.Defaults`, `LockFile.Defaults` and `Formation.Layers` did not, and
+  nothing validates those three, so the literal reading survived to the consumer
+  and broke there. **What to expect on upgrade**, by field:
+  - `Formation.Layers` — a manifest entry written that way stops failing registry
+    lookup as "not found" and starts resolving to the package the name describes.
+  - `Defaults` — `/etc/profile.d/strata-defaults.sh` is generated from `Name` and
+    `Version` separately (`internal/overlay/overlay.go:172`), so
+    `- name: "python@3.13"` emitted `module load python@3.13`, which no Lmod tree
+    can satisfy, and now emits `module load python/3.13`.
+
+  Nothing in this repository uses the form, so no committed file changes meaning;
+  a local artifact might.
+- **The error text for an invalid mapping-form software name now names the line**
+  and comes from profile validation rather than from a normalizing pass (#53):
+  `invalid profile: software[0]: invalid software name "bad name"` where 0.22.0
+  said `normalizing software refs: software[0] "bad name": …`. Same rejection,
+  same exit status.
+
 ### Added
+- **Documented profile snippets are checked mechanically** (#53). Every fenced
+  YAML block in the repository's markdown with a top-level `software:` or
+  `defaults:` key must unmarshal as a profile. Blocks are matched by shape rather
+  than by filename, so a new document is covered the day it is written. The
+  inline form was taught in seven places while the parser rejected it, and
+  nothing noticed, because the only profiles under test were written in the one
+  form that worked.
 - **`spec.ValidateLayerDigest`, `spec.LayerCachePath`, `spec.FileDigest`,
   `spec.VerifyFileDigest`** (#57): one place that decides what a layer digest is
   allowed to look like and what a cache filename may be built from. The same

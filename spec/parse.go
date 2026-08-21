@@ -30,15 +30,12 @@ func ParseProfile(path string) (*Profile, error) {
 // ParseProfileBytes parses and validates a Profile from YAML bytes.
 func ParseProfileBytes(data []byte) (*Profile, error) {
 	var p Profile
+	// Both software-ref forms — inline "cuda@12.3" and the name/version mapping
+	// — are handled by SoftwareRef.UnmarshalYAML, so they need no post-pass
+	// here, and they work anywhere a SoftwareRef appears rather than only in a
+	// profile's software list.
 	if err := yaml.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("parsing profile YAML: %w", err)
-	}
-
-	// Post-process: handle inline "cuda@12.3" style entries.
-	// YAML can represent software refs as plain strings or as structs.
-	// We support both forms for user convenience.
-	if err := normalizeSoftwareRefs(&p); err != nil {
-		return nil, fmt.Errorf("normalizing software refs: %w", err)
 	}
 
 	if err := p.Validate(); err != nil {
@@ -46,24 +43,6 @@ func ParseProfileBytes(data []byte) (*Profile, error) {
 	}
 
 	return &p, nil
-}
-
-// normalizeSoftwareRefs ensures all SoftwareRefs in the profile are
-// properly populated. Handles the case where a software ref was
-// deserialized from a plain string.
-func normalizeSoftwareRefs(p *Profile) error {
-	for i, sw := range p.Software {
-		// If only Name is set and it looks like an inline string ref
-		// ("cuda@12.3" or "formation:..."), re-parse it.
-		if sw.Version == "" && sw.Formation == "" && sw.Name != "" {
-			parsed, err := ParseSoftwareRef(sw.Name)
-			if err != nil {
-				return fmt.Errorf("software[%d] %q: %w", i, sw.Name, err)
-			}
-			p.Software[i] = parsed
-		}
-	}
-	return nil
 }
 
 // ParseLockFile reads a LockFile from a YAML file.

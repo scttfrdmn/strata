@@ -6,6 +6,8 @@ package spec
 import (
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Profile is what users write. A declaration of intent: which software,
@@ -214,6 +216,82 @@ func ParseSoftwareRef(s string) (SoftwareRef, error) {
 	}
 
 	return ref, nil
+}
+
+// softwareRefFields carries SoftwareRef's fields and none of its methods.
+// Decoding into it, or encoding from it, does not re-enter the UnmarshalYAML
+// and MarshalYAML below — which would recurse until the stack ran out.
+type softwareRefFields SoftwareRef
+
+// UnmarshalYAML decodes both documented forms of a software ref: the inline
+// scalar form and the mapping form.
+//
+//   - python@3.13                    → {Name: "python", Version: "3.13"}
+//   - formation:bio-seq@2026.03      → {Formation: "bio-seq@2026.03"}
+//   - {name: python, version: "3.13"} → {Name: "python", Version: "3.13"}
+//
+// A null entry never reaches this method. yaml.v3 stops at a null node before
+// consulting an unmarshaller, and then drops the element from the sequence
+// rather than zeroing it, so "- ~" is silently discarded — before this method
+// existed and still. That is #79, not something a branch here could fix.
+func (s *SoftwareRef) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		ref, err := ParseSoftwareRef(node.Value)
+		if err != nil {
+			return fmt.Errorf("line %d: %w", node.Line, err)
+		}
+		*s = ref
+		return nil
+
+	case yaml.MappingNode:
+		var f softwareRefFields
+		// Returned unwrapped: a *yaml.TypeError is collected with the other
+		// type errors in the document, and wrapping it would make it fatal.
+		if err := node.Decode(&f); err != nil {
+			return err
+		}
+		ref := SoftwareRef(f)
+		// The mapping form has always accepted an inline ref in the name field
+		// — `name: "formation:cuda-python-ml@2024.03"`. Carried over from the
+		// normalizeSoftwareRefs pass this method replaces, so that mapping-form
+		// parsing is unchanged by the arrival of the scalar form.
+		//
+		// Narrower than that pass in one respect, deliberately: it re-parses
+		// only a name that carries inline syntax. normalizeSoftwareRefs re-parsed
+		// every version-less name, which also made it validate them — and since
+		// it ran on Profile.Software alone, widening that to every []SoftwareRef
+		// would newly reject a persisted lockfile or formation manifest whose
+		// Defaults or Layers carry a name no one ever validated. Rejecting
+		// documents that used to load is not this issue's business.
+		if ref.Version == "" && ref.Formation == "" && strings.ContainsAny(ref.Name, "@:") {
+			parsed, err := ParseSoftwareRef(ref.Name)
+			if err != nil {
+				return fmt.Errorf("line %d: %w", node.Line, err)
+			}
+			ref = parsed
+		}
+		*s = ref
+		return nil
+
+	default:
+		return fmt.Errorf("line %d: software ref must be a string such as "+
+			`"python@3.13" or a mapping with name and version keys`, node.Line)
+	}
+}
+
+// MarshalYAML emits the inline scalar form when that form reads back as an
+// equal value, and the mapping form when it would not. A ref whose canonical
+// string does not survive ParseSoftwareRef — a formation carrying surrounding
+// whitespace, say — is written as a mapping rather than as a scalar that would
+// read back different from what was written.
+func (s SoftwareRef) MarshalYAML() (interface{}, error) {
+	if inline := s.String(); inline != "" {
+		if back, err := ParseSoftwareRef(inline); err == nil && back == s {
+			return inline, nil
+		}
+	}
+	return softwareRefFields(s), nil
 }
 
 // RegistryRef declares a layer registry and how to trust it.

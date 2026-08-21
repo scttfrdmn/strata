@@ -108,6 +108,11 @@ const (
 	// exercising stage 2.
 	ProfileFormation = "offline-formation.yaml"
 
+	// ProfileInline resolves the same two layers as ProfileMinimal, declared in
+	// the inline string form ("- python@3.13") that the documentation teaches
+	// and that did not parse before #53.
+	ProfileInline = "offline-inline.yaml"
+
 	// FormationRef is the formation ProfileFormation refers to.
 	FormationRef = "strata-fixture@2026.08"
 
@@ -360,5 +365,5 @@ func ProfileBytes(name string) ([]byte, error) {
 
 // ProfileNames lists every fixture profile.
 func ProfileNames() []string {
-	return []string{ProfileMinimal, ProfileFormation}
+	return []string{ProfileMinimal, ProfileFormation, ProfileInline}
 }
