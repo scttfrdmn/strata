@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **The layer cache no longer mounts content it has not hashed** (#57). Three
+  defects composed into an arbitrary-content mount: the cache path was built from
+  an unvalidated lockfile field (`filepath.Join` *Cleans* `..` rather than
+  rejecting it, so `sha256: "../escaped"` named a file outside `--cache-dir`), a
+  cache hit was returned without being hashed, and an empty `sha256` both
+  disabled the post-download check and collided every hashless layer onto the
+  single filename `.sqfs`. Fixing any one of them left the bypass open, so they
+  are fixed as one invariant: **nothing is returned from the layer cache that has
+  not been hashed against a well-formed declared digest.** A digest must now be
+  exactly 64 lowercase hex characters, it is validated before any path is built
+  from it, and a cache hit is hashed before it is reused.
+
+  **What changes per consumer**, all four of them, since `fetchLayersToCache` is
+  shared:
+  - `strata run`, `strata export`, `strata fold` (`run.go:102`, `export.go:76`,
+    `fold.go:122`, `fold.go:172`) — a lockfile with a layer whose `sha256` is
+    absent, short, uppercase, `sha256:`-prefixed or path-like now fails before
+    any download, naming the layer and the digest, where it previously either
+    downloaded and failed on mismatch or, in the empty case, mounted unverified.
+    A lockfile that has not been through `strata freeze` therefore no longer runs
+    at all rather than running unverified — the check the three `IsFrozen()`
+    callers make at `publish.go:73`, `freeze.go:45` and `update.go:60` now also
+    holds at the boundary where layers are actually consumed.
+  - `strata run`/`export`/`fold` with a warm cache — a cached layer is hashed on
+    every use. This is a real cost on large environments and it reverses an
+    explicit acceptance criterion of closed #40 ("no re-download, no re-verify"),
+    whose stated premise was that "SHA256 verification prevents corruption
+    regardless of path". It does not: the verification was on the download path
+    only, and the path component was attacker-controlled, so the filename was
+    never evidence of the contents. A mismatch is a hard error naming both
+    digests; the file is left in place as evidence and the error says to remove
+    it to re-download.
+  - `internal/registry` `FetchLayerSqfs` on both the S3 and local clients, used
+    by `internal/build` to assemble a build environment — same two changes:
+    digest validated before the path is built, cache hit hashed before reuse.
+  - `strata-agent` is **unchanged** and was never exposed to the composition,
+    because `internal/agent/agent.go:231` hashes every fetched path
+    unconditionally. Its cache path is still built from an unvalidated digest,
+    which can still misplace a *write*; that is #81, filed separately because
+    fixing it requires correcting two tests that assert the current behaviour.
+
 ### Fixed
 - **Offline resolution reaches stage 8** (#54). `STRATA_REGISTRY_URL=file:///...`
   was passed to `registry.NewS3Client` regardless of scheme, so it failed the
@@ -20,6 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Added
+- **`spec.ValidateLayerDigest`, `spec.LayerCachePath`, `spec.FileDigest`,
+  `spec.VerifyFileDigest`** (#57): one place that decides what a layer digest is
+  allowed to look like and what a cache filename may be built from. The same
+  `filepath.Join(cacheDir, sha256+".sqfs")` construction appeared at four sites;
+  a rule that has to be restated four times is a rule that will be missed at one
+  of them. `VerifyFileDigest` returns a typed `*spec.DigestMismatchError` so a
+  caller can tell "these bytes are not that layer" from "that digest is not a
+  digest".
 - **`internal/testregistry`**: repo-resident `file://` fixture registry that
   makes resolution reach stage 8 with no AWS credentials, no network, and no
   prior build — two layers with a real dependency edge, real `sha256` over real
