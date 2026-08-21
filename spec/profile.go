@@ -253,10 +253,18 @@ func (s *SoftwareRef) UnmarshalYAML(node *yaml.Node) error {
 		}
 		ref := SoftwareRef(f)
 		// The mapping form has always accepted an inline ref in the name field
-		// — `name: "formation:cuda-python-ml@2024.03"`. Carried over verbatim
-		// from the normalizeSoftwareRefs pass this method replaces, so that
-		// mapping-form parsing is unchanged by the arrival of the scalar form.
-		if ref.Version == "" && ref.Formation == "" && ref.Name != "" {
+		// — `name: "formation:cuda-python-ml@2024.03"`. Carried over from the
+		// normalizeSoftwareRefs pass this method replaces, so that mapping-form
+		// parsing is unchanged by the arrival of the scalar form.
+		//
+		// Narrower than that pass in one respect, deliberately: it re-parses
+		// only a name that carries inline syntax. normalizeSoftwareRefs re-parsed
+		// every version-less name, which also made it validate them — and since
+		// it ran on Profile.Software alone, widening that to every []SoftwareRef
+		// would newly reject a persisted lockfile or formation manifest whose
+		// Defaults or Layers carry a name no one ever validated. Rejecting
+		// documents that used to load is not this issue's business.
+		if ref.Version == "" && ref.Formation == "" && strings.ContainsAny(ref.Name, "@:") {
 			parsed, err := ParseSoftwareRef(ref.Name)
 			if err != nil {
 				return fmt.Errorf("line %d: %w", node.Line, err)

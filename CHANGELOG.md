@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The inline software-ref form parses** (#53). `- python@3.13` — the form every
+  documented example uses, including the README's flagship profile — did not
+  parse at all. `SoftwareRef` had no `UnmarshalYAML`, so `gopkg.in/yaml.v3`
+  rejected a scalar sequence entry before any post-processing ran, which meant
+  `ParseSoftwareRef` and the `normalizeSoftwareRefs` loop that called it were
+  unreachable for the case they existed to serve, and the comment claiming both
+  forms were supported was false. The rule now lives on the type, so both forms
+  work anywhere a `SoftwareRef` appears — a profile's `software`,
+  `Profile.Defaults`, `LockFile.Defaults` and `Formation.Layers` — rather than in
+  a post-pass that walked `Profile.Software` alone. `MarshalYAML` emits the
+  inline form only when it provably reads back equal, so writing a profile cannot
+  produce a document that reads back different from what was written.
+  Mapping-form parsing is unchanged inside a profile; the two behaviour changes
+  outside one are recorded in the pull request.
 - **Offline resolution reaches stage 8** (#54). `STRATA_REGISTRY_URL=file:///...`
   was passed to `registry.NewS3Client` regardless of scheme, so it failed the
   `s3://` check and `strata resolve`/`strata freeze` fell back to the embedded
@@ -20,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Added
+- **Documented profile snippets are checked mechanically** (#53). Every fenced
+  YAML block in the repository's markdown with a top-level `software:` or
+  `defaults:` key must unmarshal as a profile. Blocks are matched by shape rather
+  than by filename, so a new document is covered the day it is written. The
+  inline form was taught in seven places while the parser rejected it, and
+  nothing noticed, because the only profiles under test were written in the one
+  form that worked.
 - **`internal/testregistry`**: repo-resident `file://` fixture registry that
   makes resolution reach stage 8 with no AWS credentials, no network, and no
   prior build — two layers with a real dependency edge, real `sha256` over real

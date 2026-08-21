@@ -145,6 +145,30 @@ func TestSoftwareRefNullOrEmptyEntries(t *testing.T) {
 		}
 	})
 
+	// The mapping branch re-parses only a name carrying inline syntax, so a name
+	// that is merely invalid is left alone rather than newly rejected. It has to
+	// be: LockFile.Defaults and Formation.Layers are persisted artifacts whose
+	// entries no version of this code ever validated, and normalizeSoftwareRefs
+	// ran on Profile.Software alone. A profile still rejects it, one step later,
+	// in Validate.
+	t.Run("invalid name in a bare list is not newly rejected", func(t *testing.T) {
+		var got []SoftwareRef
+		if err := yaml.Unmarshal([]byte(`- name: "bad name"`+"\n"), &got); err != nil {
+			t.Fatalf("yaml.Unmarshal error: %v — a name outside a profile was accepted before and must still be", err)
+		}
+		if len(got) != 1 || got[0] != (SoftwareRef{Name: "bad name"}) {
+			t.Fatalf("got %+v, want the name passed through untouched", got)
+		}
+
+		_, err := ParseProfileBytes([]byte("name: t\nbase:\n  os: al2023\nsoftware:\n  - name: \"bad name\"\n"))
+		if err == nil {
+			t.Fatal("ParseProfileBytes accepted an invalid software name, want a validation error")
+		}
+		if !strings.Contains(err.Error(), `invalid software name "bad name"`) {
+			t.Errorf("error = %q, want it to name the invalid software name", err)
+		}
+	})
+
 	t.Run("bare formation key is a mapping, not a scalar", func(t *testing.T) {
 		var got []SoftwareRef
 		if err := yaml.Unmarshal([]byte("- formation:\n"), &got); err != nil {
