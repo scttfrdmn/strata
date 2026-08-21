@@ -299,10 +299,14 @@ are explicit:
   without authenticity verification, logging that it has done so (#56).
 
 What the earlier "there is no flag to skip verification" sentence obscured is that
-verification was skippable *without* a flag: the agent returned a nil verifier whenever
-cosign was missing, and the library treated a nil verifier as nothing to do. A documented
-opt-out that defaults to closed is a weaker claim than the one this paragraph used to make
-and a stronger property than the code used to have.
+verification was skippable *without* a flag, by two separate routes. The agent returned a
+nil verifier whenever cosign was missing, and the library treated a nil verifier as nothing
+to do (#56). Independently of that, a layer whose `bundle` field was empty was dropped from
+the verify set, and an empty verify set was reported as success — so omitting one field
+bought a clean boot past a fully configured verifier (#92). Both routes are now closed: the
+second refuses the layer and names it, as does a bundle fetch that yields no bytes for a
+layer that names one. A documented opt-out that defaults to closed is a weaker claim than
+the one this paragraph used to make and a stronger property than the code used to have.
 
 In every case SHA256 integrity against the lockfile is still enforced. What an opt-out
 gives up is *authenticity* — evidence about who produced the layers — which is precisely

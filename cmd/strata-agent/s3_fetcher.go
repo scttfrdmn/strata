@@ -130,8 +130,12 @@ func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (s
 }
 
 // FetchBundleJSON downloads the Sigstore bundle JSON for a layer from the
-// registry and returns the raw bytes. Returns (nil, nil) when layer.Bundle is
-// empty. The caller parses the JSON with trust.ParseBundle.
+// registry and returns the raw bytes. The caller parses the JSON with
+// trust.ParseBundle.
+//
+// Returns (nil, nil) when layer.Bundle is empty. That is not a skip: the agent
+// refuses a bundle-less layer before reaching this method, and treats an empty
+// return as a verification failure if it does reach it (internal/agent, #92).
 func (f *s3LayerFetcher) FetchBundleJSON(ctx context.Context, layer spec.ResolvedLayer) ([]byte, error) {
 	if layer.Bundle == "" {
 		return nil, nil
