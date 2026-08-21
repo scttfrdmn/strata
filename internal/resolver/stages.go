@@ -382,7 +382,8 @@ func (r *Resolver) verifyBundle(ctx context.Context, rl resolvedLayer) error {
 		// configuring a real client makes resolution fail closed rather than
 		// pass on the strength of "something was logged at that index".
 		// Reaching real verification from stage 7 means fetching the bundle
-		// first; that is #55/#60's work, not this call's.
+		// first; that is #55/#60's work, not this call's. The decision about
+		// which way to take it is #85.
 		if err := r.cfg.Rekor.VerifyEntry(ctx, logIndex, nil); err != nil {
 			return &ResolutionError{
 				Stage:   "stage7",
