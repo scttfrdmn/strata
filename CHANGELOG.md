@@ -44,17 +44,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Verifier == nil` guard is still fail-open, and inverting it fails three
     inherited tests in `internal/agent/agent_test.go` that construct a boot with
     verification disabled and call it a happy path. That is a reviewed decision,
-    not a fix to slip in, and it is filed as such. What *is* closed is the
-    deployed hole: `internal/agent` is an internal package with exactly one
+    not a fix to slip in, and it is filed as such (#92, #93). What *is* closed is
+    one deployed path in: `internal/agent` is an internal package with exactly one
     non-test `agent.Config` construction (`cmd/strata-agent/main.go`), where
-    `BundleFetcher` is never nil, so after this change no shipped caller can
-    reach the library fail-open.
+    `BundleFetcher` is never nil, so after this change no shipped caller reaches
+    the **nil-verifier** fail-open at `agent.go:270`.
+
+    That is narrower than it first read, and the difference matters to anyone
+    deploying this. `verifyBundles` fails open a **second** way, which the
+    enumeration above does not touch and cannot: a layer whose `Bundle` field is
+    empty is dropped from the verify set (`agent.go:285-293`), and an empty verify
+    set returns nil. Its trigger is a property of the lockfile rather than of the
+    wiring, so it fires with a fully configured verifier and bundle fetcher and
+    **is reachable in production, with and without this change**. A publisher who
+    omits `Bundle`, or an attacker who strips it, still gets a clean boot. Tracked
+    as #92 (decision) and #93 (fix); not closed here.
   - `STRATA.md`'s layer-verification section claimed verification "is
     unconditional — there is no flag to skip verification". That was false in the
     worse direction: verification was skippable without a flag. It now documents
     both explicit opt-outs.
   - `pkg/strata` and every other command are **unchanged**: nothing outside
     `cmd/strata-agent` imports `internal/agent`.
+- **`strata run` verifies every layer before mounting it, and `--no-verify` now
+  disables something** (#55). `strata run` accepted a `--no-verify` flag and
+  never verified a signature in either state: the flag's only effect was to
+  suppress one warning, which fired on an empty `rekor_entry` *field in the
+  lockfile*. A field is not evidence about a file, and the two paths — with and
+  without the flag — mounted identical content. Layers are now verified after
+  they are on disk and before anything is mounted, because the bytes about to be
+  mounted are what has to be verified.
+
+  Each layer must now clear four checks that need no network and no cosign — its
+  bundle must be readable (an unfetched `s3://` bundle URI is a failure, not a
+  skip), parse, carry a Rekor entry, and **attest the digest the lockfile pins**
+  — and then its signature must verify with cosign against a new `--key`. All
+  failures are reported together, each naming its layer and reason, and the mount
+  is refused.
+
+  The digest-match check is not one `trust.VerifyLayer` performs, and it is here
+  deliberately: cosign ties bundle to artifact itself, so `VerifyLayer` can omit
+  it, but on a machine without cosign that omission would make "a valid bundle
+  for somebody else's layer" indistinguishable from "verified". `--no-verify`
+  still mounts unverified content, and now says so on stderr — a silent skip is
+  indistinguishable from a check that ran and passed, which is the condition this
+  issue was filed about.
+
+  **What changes per consumer**, resolved from
+  `grep -rn 'no-verify' --include='*.go' --include='*.md' . `:
+  - **`strata run` without `--key` and without `--no-verify` now fails where it
+    previously mounted.** This is a breaking change for every existing
+    invocation, and it is the point of the fix: the previous behaviour was an
+    unverified mount reported as a normal one. The refusal names the missing
+    prerequisite and the flag that overrides it. Passing `--key <cosign.pub>`
+    verifies; passing `--no-verify` mounts unverified, loudly.
+  - `strata capture` (`capture.go:133`) and `strata stratify`
+    (`stratify.go:160`) — output unchanged, but their existing advice ("use
+    `strata run --no-verify` to use unsigned layers") stops being decorative and
+    becomes required. Before this fix an unsigned captured layer mounted without
+    the flag.
+  - `docs/userspace.md:63` — the documented `--no-verify` example is unchanged
+    and still correct.
+  - `strata verify --rekor` — no behaviour change. It shares `loadLocalBundle`
+    with this path; two of that helper's messages were reworded to stop naming
+    `--rekor`, which would have been false in `strata run`'s output. The function
+    still neither fetches nor mutates, and still returns every failure rather
+    than logging it.
+  - `strata export`, `strata fold`, `strata build`, `strata publish`,
+    `strata resolve`, `strata freeze` and `strata-agent` are **unchanged**: none
+    of them mounts layers through `strata run`'s path. The agent's own
+    verification fail-open is a separate defect (#56).
 - **Rekor entry verification compares the entry to the bundle** (#59).
   `RekorHTTPClient.VerifyEntry` took a bundle, discarded it (`_ = bundle`), and
   returned success for any log index the server could find an entry at. That is a
