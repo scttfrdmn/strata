@@ -267,6 +267,29 @@ func TestProductionPrereqs_ClosedByDefault(t *testing.T) {
 	}
 }
 
+// TestProductionPrereqs_RefusesWithTheRealLookPath closes the gap the injected
+// lookPath leaves: that the production wiring actually consults the real one.
+//
+// Every other test here substitutes cosignAbsent, which proves the decision
+// logic and nothing about what production calls. Stripping PATH makes the real
+// exec.LookPath fail — deterministically, whether or not cosign is installed on
+// the machine running this — and no S3 call happens, because the key fetch is
+// never reached.
+func TestProductionPrereqs_RefusesWithTheRealLookPath(t *testing.T) {
+	t.Setenv("PATH", "/nonexistent-strata-agent-test")
+
+	v, err := resolveVerifier(context.Background(), productionPrereqs(os.Getenv))
+	if err == nil {
+		t.Fatalf("cosign is unreachable and nothing was opted out, but the boot was allowed to continue (verifier %+v)", v)
+	}
+	if v != nil {
+		t.Errorf("returned a verifier alongside an error: %+v", v)
+	}
+	if !strings.Contains(err.Error(), "cosign not found on PATH") {
+		t.Errorf("refusal does not name the real prerequisite: %v", err)
+	}
+}
+
 // TestProductionPrereqs_UsesTheRealEnvironment checks the wiring against
 // os.Getenv, which is what main passes. os.Setenv is safe here because the
 // variable is read once, synchronously, by the call under test.
