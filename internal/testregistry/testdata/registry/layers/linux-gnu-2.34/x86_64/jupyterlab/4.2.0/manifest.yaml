@@ -1,6 +1,11 @@
 # Fixture layer manifest. Requires python, which no base OS provides, so this
 # layer only resolves when the python fixture layer resolves alongside it —
 # that cross-layer edge is what gives stage 6 a non-trivial topological order.
+# rekor_entry is testregistry.SentinelRekorEntry — numeric so stage 7's
+# strconv.ParseInt succeeds and the value reaches the Rekor client, and 2^53-1 so
+# the client cannot find it (confirmed HTTP 404 on 2026-08-20). Do not change it
+# to a realistic index: plausible integers can name real public-log entries, and
+# VerifyEntry accepts existence as proof (#59).
 id: jupyterlab-4.2.0-linux-gnu-2.34-x86_64
 name: jupyterlab
 version: 4.2.0
@@ -10,7 +15,7 @@ size: 373
 content_manifest:
   /opt/strata/jupyterlab/4.2.0/bin/jupyter: a388035603ff3d32e6634df4a3180a11a7a7b6eeb0890838fcd82c0551caca31
   /opt/strata/share/strata-fixture/LICENSE: 44baabe7776eff447026502a05fcf2950dd5de0729329ebb6788529b2a538daa
-rekor_entry: "148923472"
+rekor_entry: "9007199254740991"
 bundle: ""
 signed_by: strata-fixture@invalid.test
 cosign_version: v3.0.5

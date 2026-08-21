@@ -1,18 +1,18 @@
 {
-  "_strata_fixture": "NOT A VALID SIGSTORE BUNDLE — no signature over this content exists. messageDigest is the real SHA-256 of layer.sqfs; every other field is synthetic. See internal/testregistry/testregistry.go.",
+  "_strata_fixture": "NOT A VALID SIGSTORE BUNDLE — no signature over this content exists. messageDigest is the real SHA-256 of layer.sqfs, so a digest comparison passes and the signature check is what fails. signature is ASCII text; logIndex is 2^53-1, chosen because it parses as int64 and cannot exist in any real log (confirmed HTTP 404 on 2026-08-20); keyId is not the public-good Rekor log's key. Making any of these plausible would let this fixture pass a real verification for the wrong reason — see internal/testregistry/testregistry.go.",
   "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
   "verificationMaterial": {
     "tlogEntries": [
       {
-        "logIndex": "148923471",
+        "logIndex": "9007199254740991",
         "logId": {
-          "keyId": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="
+          "keyId": "c3RyYXRhLWZpeHR1cmUtTk9ULWEtcmVhbC1sb2ctSUQ="
         },
         "kindVersion": {
           "kind": "hashedrekord",
           "version": "0.0.1"
         },
-        "integratedTime": "1785283200"
+        "integratedTime": "0"
       }
     ]
   },

@@ -1,8 +1,13 @@
 # Fixture formation. bundle is filled in by testregistry.Materialize with the
-# absolute file:// URI of bundle.json in this directory. rekor_entry is a
-# numeric string on purpose: stage 7 parses it with strconv.ParseInt whenever a
-# Rekor client is configured, so "pending-initial-build" would not survive that
-# path (see #61).
+# absolute file:// URI of bundle.json in this directory.
+#
+# rekor_entry is testregistry.SentinelRekorEntry — numeric so that stage 7's
+# strconv.ParseInt succeeds and the value reaches the Rekor client, and 2^53-1 so
+# that the client cannot find it (confirmed HTTP 404 on 2026-08-20). Do not
+# change it to a realistic index: an earlier version of this fixture used
+# plausible indices and all of them resolved to real entries in the public log
+# belonging to other people, which VerifyEntry would have accepted as proof
+# (#59). Not a numeric-vs-placeholder question — an impossible-vs-plausible one.
 name: strata-fixture
 version: "2026.08"
 description: Fixture formation — python + jupyterlab, for offline resolution tests.
@@ -18,7 +23,7 @@ provides:
     version: 4.2.0
 validated_on:
   - al2023/x86_64
-rekor_entry: "148923470"
+rekor_entry: "9007199254740991"
 bundle: ""
 signed_by: strata-fixture@invalid.test
 built_at: 2026-08-01T00:00:00Z

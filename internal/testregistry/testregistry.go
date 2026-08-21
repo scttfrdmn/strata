@@ -6,8 +6,8 @@
 // rekor_entry, because nothing has been built. Resolution against it therefore
 // dies in stage 7 (BUNDLE_MISSING) for every profile. This package is the
 // offline substitute — a two-layer registry whose manifests carry a real
-// sha256 over real bytes, a bundle that exists on disk, and a numeric Rekor
-// entry that survives strconv.ParseInt.
+// sha256 over real bytes, a bundle that exists on disk, and a Rekor entry that
+// parses as an integer but cannot name a real log entry.
 //
 // # Using it
 //
@@ -36,10 +36,45 @@
 //     all stage 7 checks today. A test that needs real signature verification
 //     needs a real key, and that is not this fixture's job.
 //
+// # Why the fake fields are shaped the way they are
+//
+// Fixture data must be *maximally implausible to a real verifier*, not minimally
+// sufficient for the checks that happen to exist today. A fixture optimised to
+// pass the current checks will also pass whatever replaces them, which is the
+// failure mode this package nearly shipped with.
+//
+// The first version chose rekor_entry values that looked like real log indices,
+// reasoning only that stage 7 parses them with strconv.ParseInt when a Rekor
+// client is configured. All three resolved to HTTP 200 in the live public log —
+// real entries belonging to other people's artifacts — and the bundles carried
+// the genuine public-good Rekor log's key ID alongside them. Because
+// RekorHTTPClient.VerifyEntry treats existence as proof and discards the bundle
+// it was handed (#59), a resolve with a real Rekor client would have reported
+// this fixture as transparency-log verified, by borrowing a stranger's
+// attestation. Every synthetic field is now chosen so the strongest available
+// check fails on it:
+//
+//   - SentinelRekorEntry parses as int64 and cannot be a log index, so it reaches
+//     VerifyEntry and fails there rather than short-circuiting earlier.
+//   - SentinelLogKeyID replaces the real log's key ID, which the fixture had no
+//     business claiming.
+//   - SentinelSignature is ASCII, so it cannot accidentally be a valid signature.
+//   - Layer messageDigest values are the real SHA-256 of layer.sqfs, so a digest
+//     comparison passes and the *signature* check is what fails. Failing at the
+//     right step is more useful than failing early.
+//
+// TestFixtureIsNotTrustworthy enumerates the whole tree and asserts these hold
+// for every file, including files added later, and separately pins the properties
+// of the constants themselves so the invariant cannot be defeated by editing one.
+// If a correct tightening of verification appears to require loosening a check or
+// special-casing this fixture, the fixture is what is wrong.
+//
 // Extending it is adding files under testdata/registry — Materialize is
 // data-driven and discovers whatever manifests are there. It verifies each
 // committed sha256 against the committed bytes, so a fixture that drifts fails
-// with a message naming the file rather than rotting silently.
+// with a message naming the file rather than rotting silently. New layers must
+// use the Sentinel* values below; TestFixtureIsNotTrustworthy fails if they do
+// not.
 package testregistry
 
 import (
@@ -75,6 +110,36 @@ const (
 
 	// FormationRef is the formation ProfileFormation refers to.
 	FormationRef = "strata-fixture@2026.08"
+
+	// SentinelRekorEntry is the rekor_entry and bundle logIndex carried by every
+	// fixture manifest. It is 2^53-1: a valid int64, so it survives
+	// strconv.ParseInt in stage 7 and reaches the Rekor client, and far beyond any
+	// real log size, so the client cannot find it. Confirmed HTTP 404 against
+	// rekor.sigstore.dev on 2026-08-20, where 148923470-148923472 — the plausible
+	// indices this fixture used to carry — all returned HTTP 200 for other
+	// people's entries.
+	//
+	// Do not replace this with a realistic-looking index. A fixture that can be
+	// confirmed present in a real transparency log is a fixture that can launder a
+	// stranger's attestation into a passing test.
+	SentinelRekorEntry = "9007199254740991"
+
+	// SentinelLogKeyID is the logId.keyId in every fixture bundle: base64 of the
+	// ASCII "strata-fixture-NOT-a-real-log-ID". It replaces
+	// c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d, the real
+	// public-good Rekor log key ID, which this fixture previously claimed.
+	SentinelLogKeyID = "c3RyYXRhLWZpeHR1cmUtTk9ULWEtcmVhbC1sb2ctSUQ="
+
+	// SentinelSignature is the messageSignature.signature in every fixture bundle:
+	// base64 of the ASCII "strata-fixture-not-a-real-signature". ASCII text cannot
+	// be a valid ECDSA signature, so real verification fails on it immediately and
+	// legibly.
+	SentinelSignature = "c3RyYXRhLWZpeHR1cmUtbm90LWEtcmVhbC1zaWduYXR1cmU="
+
+	// SentinelIntegratedTime is the tlog integratedTime in every fixture bundle.
+	// Zero rather than a plausible recent timestamp: anything that renders it
+	// shows 1970 and is obviously looking at fixture data.
+	SentinelIntegratedTime = "0"
 )
 
 // LayerIDs are the layer IDs in the fixture registry, in stage-6 dependency

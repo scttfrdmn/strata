@@ -1,6 +1,11 @@
 # Fixture layer manifest. source and bundle are left empty on purpose: they are
 # absolute file:// URIs and are filled in by testregistry.Materialize, which also
 # checks sha256 and size against the committed layer.sqfs bytes.
+# rekor_entry is testregistry.SentinelRekorEntry — numeric so stage 7's
+# strconv.ParseInt succeeds and the value reaches the Rekor client, and 2^53-1 so
+# the client cannot find it (confirmed HTTP 404 on 2026-08-20). Do not change it
+# to a realistic index: plausible integers can name real public-log entries, and
+# VerifyEntry accepts existence as proof (#59).
 id: python-3.13.2-linux-gnu-2.34-x86_64
 name: python
 version: 3.13.2
@@ -11,7 +16,7 @@ content_manifest:
   /opt/strata/python/3.13.2/bin/python3: acb0ec226a8922341b1d6178ebdf6884db2ebe154b9ea63cadda1d917813b1b5
   /opt/strata/python/3.13.2/lib/libpython3.13.so: b5d218eaa9698d6261b9af4a65e83fafebb275de375e12bc1d2a4ce0b7f0450f
   /opt/strata/share/strata-fixture/LICENSE: 44baabe7776eff447026502a05fcf2950dd5de0729329ebb6788529b2a538daa
-rekor_entry: "148923471"
+rekor_entry: "9007199254740991"
 bundle: ""
 signed_by: strata-fixture@invalid.test
 cosign_version: v3.0.5
