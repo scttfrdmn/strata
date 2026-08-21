@@ -3,7 +3,10 @@ package trust
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -231,8 +234,80 @@ func (c *RekorHTTPClient) Log(ctx context.Context, bundle *Bundle) (int64, error
 	return 0, fmt.Errorf("rekor log: could not extract logIndex from response")
 }
 
-// VerifyEntry confirms a bundle is present at logIndex in the Rekor log.
+// Sentinel errors returned by RekorHTTPClient.VerifyEntry. There is one per
+// distinct reason an entry fails to attest a bundle, because "the call returned
+// an error" is not a measurement: a rejection that fires from the wrong check
+// looks identical in the output. Callers and tests match with errors.Is.
+var (
+	// ErrNoBundle means VerifyEntry was called without the bundle whose
+	// contents the log entry is supposed to attest. Existence of an entry at a
+	// log index says only that somebody logged something there.
+	ErrNoBundle = errors.New("rekor verify: no bundle supplied")
+
+	// ErrEntryNotFound means the log holds no entry at the requested index.
+	ErrEntryNotFound = errors.New("rekor verify: no entry at log index")
+
+	// ErrLogIndexMismatch means the bundle names a different log index than the
+	// one being checked, so the two cannot be talking about the same entry.
+	ErrLogIndexMismatch = errors.New("rekor verify: bundle claims a different log index")
+
+	// ErrMalformedEntry means the entry body could not be decoded.
+	ErrMalformedEntry = errors.New("rekor verify: entry body is not decodable")
+
+	// ErrUnsupportedEntryKind means the entry is not a hashedrekord, which is
+	// the only kind this client knows how to compare against a bundle.
+	ErrUnsupportedEntryKind = errors.New("rekor verify: unsupported entry kind")
+
+	// ErrIncompleteBundle means the bundle carries no digest or no signature,
+	// so there is nothing to compare the entry against. Comparing empty to
+	// empty would succeed, which is the failure mode this check exists to stop.
+	ErrIncompleteBundle = errors.New("rekor verify: bundle has no digest or signature to compare")
+
+	// ErrDigestAlgorithm means the entry or the bundle names a hash algorithm
+	// other than SHA-256.
+	ErrDigestAlgorithm = errors.New("rekor verify: unsupported digest algorithm")
+
+	// ErrDigestMismatch means the entry attests a different artifact than the
+	// bundle does. This is the case where a real, valid, findable log entry
+	// belongs to somebody else's artifact.
+	ErrDigestMismatch = errors.New("rekor verify: entry attests a different artifact digest")
+
+	// ErrSignatureMismatch means the entry and the bundle agree on the artifact
+	// but carry different signatures over it.
+	ErrSignatureMismatch = errors.New("rekor verify: entry carries a different signature")
+
+	// ErrPublicKeyMismatch means the entry and the bundle carry different key
+	// material. Checked only when both sides supply raw key bytes.
+	ErrPublicKeyMismatch = errors.New("rekor verify: entry carries different key material")
+)
+
+// VerifyEntry confirms that the Rekor log entry at logIndex attests bundle:
+// that an entry exists there, and that its body names the same artifact digest,
+// the same signature, and (where both sides carry raw key bytes) the same key as
+// the bundle presented alongside it.
+//
+// bundle is required. Existence alone establishes only that something was logged
+// at that index — not that it was this artifact, nor that it was signed by the
+// expected key. An index without a bundle is unverifiable and returns
+// ErrNoBundle rather than success (#59).
+//
+// The comparison covers the hashedrekord fields this repository itself writes in
+// Log: spec.data.hash (algorithm and hex value) and spec.signature (content and
+// public key). It does not check the log's own signed inclusion promise or the
+// signer's identity — a bundle whose signature is cryptographically invalid but
+// consistently recorded in the log still passes this function. Full signature
+// verification is CosignVerifier.Verify's job; this function's job is to tie the
+// log entry to the bundle.
 func (c *RekorHTTPClient) VerifyEntry(ctx context.Context, logIndex int64, bundle *Bundle) error {
+	if bundle == nil {
+		return fmt.Errorf("%w: log index %d proves only that something was logged there", ErrNoBundle, logIndex)
+	}
+	// A bundle that names a different index is not evidence about this one,
+	// whatever the log returns.
+	if claimed, ok := bundle.RekorLogIndex(); ok && claimed != logIndex {
+		return fmt.Errorf("%w: bundle names %d, caller asked about %d", ErrLogIndexMismatch, claimed, logIndex)
+	}
+
 	url := fmt.Sprintf("%s/api/v1/log/entries?logIndex=%d", c.rekorBaseURL(), logIndex)
 	resp, err := getJSON(ctx, url)
 	if err != nil {
@@ -254,12 +329,92 @@ func (c *RekorHTTPClient) VerifyEntry(ctx context.Context, logIndex int64, bundl
 			continue
 		}
 		if entry.LogIndex == logIndex {
-			// Entry exists in the log. For full verification, the body would be
-			// decoded and compared against the bundle. For now, existence is sufficient
-			// for the unit layer of trust; the cosign CLI performs the full check.
-			_ = bundle
-			return nil
+			return matchEntryBody(entry.Body, bundle, logIndex)
 		}
 	}
-	return fmt.Errorf("rekor verify: entry at logIndex %d not found", logIndex)
+	return fmt.Errorf("%w: %d", ErrEntryNotFound, logIndex)
+}
+
+// matchEntryBody compares a base64-encoded hashedrekord entry body against the
+// bundle it is supposed to attest. Every return path names the specific field
+// that disagreed, so that a caller can tell which check rejected the entry.
+func matchEntryBody(bodyB64 string, bundle *Bundle, logIndex int64) error {
+	rawBody, err := base64.StdEncoding.DecodeString(bodyB64)
+	if err != nil {
+		return fmt.Errorf("%w: entry %d body is not base64: %v", ErrMalformedEntry, logIndex, err)
+	}
+	var body hashedRekorBody
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+		return fmt.Errorf("%w: entry %d body is not JSON: %v", ErrMalformedEntry, logIndex, err)
+	}
+	if body.Kind != "hashedrekord" {
+		return fmt.Errorf("%w: entry %d is kind %q; this client compares hashedrekord entries only",
+			ErrUnsupportedEntryKind, logIndex, body.Kind)
+	}
+
+	// An empty digest or signature on the bundle side would make every
+	// comparison below vacuous, so it is rejected before any of them run.
+	if len(bundle.MessageSignature.MessageDigest.Digest) == 0 || len(bundle.MessageSignature.Signature) == 0 {
+		return fmt.Errorf("%w: digest=%d bytes signature=%d bytes",
+			ErrIncompleteBundle,
+			len(bundle.MessageSignature.MessageDigest.Digest),
+			len(bundle.MessageSignature.Signature))
+	}
+
+	if !isSHA256(body.Spec.Data.Hash.Algorithm) {
+		return fmt.Errorf("%w: entry %d names %q", ErrDigestAlgorithm, logIndex, body.Spec.Data.Hash.Algorithm)
+	}
+	if alg := bundle.MessageSignature.MessageDigest.Algorithm; alg != "" && !isSHA256(alg) {
+		return fmt.Errorf("%w: bundle names %q", ErrDigestAlgorithm, alg)
+	}
+
+	// The Rekor body carries the digest as a hex string; the bundle carries raw
+	// bytes. Log writes the same bridge (fmt.Sprintf("%x", …)).
+	wantDigest := hex.EncodeToString(bundle.MessageSignature.MessageDigest.Digest)
+	if gotDigest := strings.ToLower(body.Spec.Data.Hash.Value); gotDigest != wantDigest {
+		return fmt.Errorf("%w: entry %d attests sha256:%s, bundle attests sha256:%s",
+			ErrDigestMismatch, logIndex, gotDigest, wantDigest)
+	}
+
+	if !bytes.Equal(body.Spec.Signature.Content, bundle.MessageSignature.Signature) {
+		return fmt.Errorf("%w: entry %d signature is %d bytes, bundle signature is %d bytes",
+			ErrSignatureMismatch, logIndex,
+			len(body.Spec.Signature.Content), len(bundle.MessageSignature.Signature))
+	}
+
+	// Key material is compared only when both sides carry raw bytes. A cosign v3
+	// key-based bundle may carry a Hint instead, which is not the same encoding
+	// and is not guessed at here; the digest and signature comparisons above
+	// already tie the entry to this artifact and this signature.
+	if want := bundleRawKey(bundle); len(want) > 0 && len(body.Spec.Signature.PublicKey.Content) > 0 {
+		if !bytes.Equal(body.Spec.Signature.PublicKey.Content, want) {
+			return fmt.Errorf("%w: entry %d key is %d bytes, bundle key is %d bytes",
+				ErrPublicKeyMismatch, logIndex, len(body.Spec.Signature.PublicKey.Content), len(want))
+		}
+	}
+
+	return nil
+}
+
+// isSHA256 reports whether a hash-algorithm name from a Rekor body or a sigstore
+// bundle denotes SHA-256. Rekor writes "sha256"; sigstore bundles write
+// "SHA2_256".
+func isSHA256(alg string) bool {
+	switch strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(alg)) {
+	case "sha256", "sha2256":
+		return true
+	}
+	return false
+}
+
+// bundleRawKey returns the raw certificate or public key bytes a bundle carries,
+// or nil when it carries neither (a hint-only bundle).
+func bundleRawKey(bundle *Bundle) []byte {
+	switch {
+	case bundle.VerificationMaterial.Certificate != nil && len(bundle.VerificationMaterial.Certificate.RawBytes) > 0:
+		return bundle.VerificationMaterial.Certificate.RawBytes
+	case bundle.VerificationMaterial.PublicKey != nil && len(bundle.VerificationMaterial.PublicKey.RawBytes) > 0:
+		return bundle.VerificationMaterial.PublicKey.RawBytes
+	}
+	return nil
 }
