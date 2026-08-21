@@ -198,7 +198,12 @@ type RekorClient interface {
 	// log index. The returned index is stored in LayerManifest.RekorEntry.
 	Log(ctx context.Context, bundle *Bundle) (logIndex int64, err error)
 
-	// VerifyEntry confirms that a bundle is present and unmodified in the
-	// Rekor log at logIndex. Returns nil iff the entry is valid.
+	// VerifyEntry confirms that the entry in the Rekor log at logIndex attests
+	// bundle — the same artifact digest and the same signature, not merely that
+	// an entry exists there. Returns nil iff the entry matches the bundle.
+	//
+	// bundle is required. An implementation given none cannot distinguish this
+	// artifact's entry from a stranger's and must report that rather than return
+	// success; RekorHTTPClient returns ErrNoBundle.
 	VerifyEntry(ctx context.Context, logIndex int64, bundle *Bundle) error
 }

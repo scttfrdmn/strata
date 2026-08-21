@@ -163,7 +163,7 @@ func verifyRekorEntries(ctx context.Context, lf *spec.LockFile, client trust.Rek
 // tracked separately (#60).
 func loadLocalBundle(uri string) (*trust.Bundle, error) {
 	if uri == "" {
-		return nil, errors.New("Bundle field is empty: nothing to verify the log entry against")
+		return nil, errors.New("empty Bundle field: nothing to verify the log entry against")
 	}
 	path := uri
 	switch {

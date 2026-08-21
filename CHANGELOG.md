@@ -8,6 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Rekor entry verification compares the entry to the bundle** (#59).
+  `RekorHTTPClient.VerifyEntry` took a bundle, discarded it (`_ = bundle`), and
+  returned success for any log index the server could find an entry at. That is a
+  presence check wearing a verifier's name: it cannot distinguish this artifact's
+  entry from a stranger's, and a valid, findable, correctly-signed entry for
+  somebody else's artifact passed it. It now decodes the `hashedrekord` body and
+  compares the artifact digest, the signature, and — where both sides carry raw
+  key bytes — the key material, returning one exported sentinel per rejection
+  reason (`trust.ErrDigestMismatch`, `ErrSignatureMismatch`, `ErrNoBundle`, and
+  seven others) so a caller can tell *which* check refused. A nil bundle is now
+  `ErrNoBundle` rather than success.
+
+  What this function still does **not** do, stated so it is not mistaken for more
+  than it is: it does not check the log's signed inclusion promise and does not
+  verify the signature cryptographically. A bundle whose signature is invalid but
+  consistently recorded in the log passes. Tying the entry to the bundle is this
+  function's job; `CosignVerifier.Verify` does the cryptography.
+
+  **What changes per consumer**, all of them, enumerated from
+  `grep -rn 'VerifyEntry(' --include='*.go' . | grep -v _test.go`:
+  - `strata verify --rekor` — behaviour change, and the only shipped caller. It
+    now loads each layer's Sigstore bundle and passes it. Two new failure modes:
+    a layer whose log entry does not match its bundle fails, naming the reason
+    (previously it passed); and a layer whose `bundle` field is a URI that cannot
+    be read locally — `s3://…`, which is what registry manifests carry — is
+    reported as a failure naming the layer rather than checked against no bundle.
+    The second is deliberate: the alternative is a command that reports success
+    for every layer in a realistic lockfile while verifying none of them.
+    Fetching remote bundles so `--rekor` works against an s3-backed lockfile is
+    #60. Without `--rekor`, `strata verify` is unchanged.
+  - `internal/resolver` stage 7 (`stages.go:386`) — no observable change today,
+    because no shipped code path sets `resolver.Config.Rekor` (all four
+    constructions leave it nil), so the branch is unreachable outside tests.
+    Where it becomes reachable, the direction changes: stage 7 holds a bundle
+    *URI* and never bundle bytes, so a configured client now receives no bundle
+    and resolution **fails closed** with `ErrNoBundle` instead of passing on the
+    strength of "something was logged at that index". Reaching real verification
+    from stage 7 requires fetching the bundle first — #55/#60.
+  - `internal/trust` as an API — `RekorClient.VerifyEntry`'s contract now requires
+    a non-nil bundle. Any out-of-tree implementation that ignored the argument was
+    conforming to the old documentation and no longer conforms to the new one.
+    `FakeRekorClient` still returns nil unconditionally and is documented as
+    unable to observe whether a call site passes a bundle at all.
+  - `strata run`, `strata export`, `strata fold`, `strata build`, `strata publish`,
+    `strata resolve`, `strata freeze` and `strata-agent` are **unchanged**: none of
+    them calls `VerifyEntry`, on any path.
 - **The layer cache no longer mounts content it has not hashed** (#57). Three
   defects composed into an arbitrary-content mount: the cache path was built from
   an unvalidated lockfile field (`filepath.Join` *Cleans* `..` rather than
