@@ -1,0 +1,20 @@
+# The same two layers as offline-minimal.yaml, declared in the inline string
+# form that every documented example uses — "- python@3.13" rather than a
+# name/version mapping. Until #53 the two forms were not interchangeable: this
+# one did not parse at all, so nothing offline exercised the syntax the README
+# teaches. Keeping both profiles in the fixture means a regression in either form
+# fails a test rather than only failing users.
+name: offline-inline
+description: Inline-form profile that resolves offline against the testregistry fixture.
+version: "1.0"
+
+base:
+  os: al2023
+  arch: x86_64
+
+software:
+  - jupyterlab@4.2
+  - python@3.13
+
+instance:
+  type: c7i.xlarge

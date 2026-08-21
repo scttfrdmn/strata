@@ -2,8 +2,9 @@
 # dependency edge (jupyterlab requires python), so the lockfile's mount order is
 # a fact about stage 6 rather than an accident of input order.
 #
-# Software refs use the struct form deliberately: the inline string form
-# ("- python@3.13") does not parse today (#53).
+# Software refs use the struct form here. The inline string form
+# ("- python@3.13") parses as of #53, and offline-inline.yaml resolves these same
+# two layers that way, so both forms are exercised offline rather than one.
 name: offline-minimal
 description: Minimal profile that resolves offline against the testregistry fixture.
 version: "1.0"
