@@ -260,11 +260,19 @@ func (c *LocalClient) upsertLayerIndex(manifest *spec.LayerManifest) error {
 }
 
 // FetchLayerSqfs copies the squashfs file from the local registry to cacheDir.
-// If cacheDir already contains <sha256>.sqfs it is returned immediately.
-// The copied file is verified against manifest.SHA256 before being committed.
+// manifest.SHA256 must be a well-formed digest; it is validated before any path
+// is built from it. If cacheDir already contains <sha256>.sqfs it is reused, but
+// only after it hashes to that digest — the filename is not evidence of the
+// contents. The copied file is verified before being committed.
 func (c *LocalClient) FetchLayerSqfs(_ context.Context, manifest *spec.LayerManifest, cacheDir string) (string, error) {
-	cachePath := filepath.Join(cacheDir, manifest.SHA256+".sqfs")
-	if _, err := os.Stat(cachePath); err == nil {
+	cachePath, err := spec.LayerCachePath(cacheDir, manifest.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("registry: layer %q: %w", manifest.ID, err)
+	}
+	if _, statErr := os.Stat(cachePath); statErr == nil {
+		if err := spec.VerifyFileDigest(cachePath, manifest.SHA256); err != nil {
+			return "", fmt.Errorf("registry: cached layer %q: %w (remove the file to re-download it)", manifest.ID, err)
+		}
 		return cachePath, nil
 	}
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
