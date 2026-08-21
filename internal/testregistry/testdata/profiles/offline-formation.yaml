@@ -1,0 +1,16 @@
+# Same two layers, reached through a formation ref instead of direct software
+# refs, so stage 2 (formation expansion, formation bundle/rekor presence) is on
+# the offline path too.
+name: offline-formation
+description: Formation-based profile that resolves offline against the testregistry fixture.
+version: "1.0"
+
+base:
+  os: al2023
+  arch: x86_64
+
+software:
+  - formation: strata-fixture@2026.08
+
+instance:
+  type: c7i.xlarge

@@ -30,6 +30,50 @@ jobs:
           files: coverage.out
           fail_ci_if_error: false
 
+  offline-resolve:
+    name: Offline resolve (no AWS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Build strata
+        run: go build -o bin/strata ./cmd/strata
+
+      - name: Materialize the file:// fixture registry
+        run: go run ./internal/testregistry/mkregistry "$RUNNER_TEMP/strata-fixture"
+
+      # This job is the closing condition of #54: a checkout with no AWS
+      # credentials configured must be able to produce a lockfile. The runner has
+      # no AWS credentials, and the blank AWS_* values below keep an accidental
+      # future org-level secret from making this pass for the wrong reason.
+      - name: Resolve a profile end to end
+        env:
+          STRATA_REGISTRY_URL: file://${{ runner.temp }}/strata-fixture/registry
+          AWS_PROFILE: ""
+          AWS_ACCESS_KEY_ID: ""
+          AWS_SECRET_ACCESS_KEY: ""
+          AWS_REGION: ""
+        run: |
+          set -euo pipefail
+          ./bin/strata resolve \
+            "$RUNNER_TEMP/strata-fixture/profiles/offline-minimal.yaml" \
+            -o "$RUNNER_TEMP/offline.lock.yaml"
+
+          lock="$RUNNER_TEMP/offline.lock.yaml"
+          test -s "$lock"
+          grep -q 'id: python-3.13.2-linux-gnu-2.34-x86_64' "$lock"
+          grep -q 'id: jupyterlab-4.2.0-linux-gnu-2.34-x86_64' "$lock"
+          # Every layer must carry a bundle: an empty one is the stage-7 failure
+          # this job exists to prevent regressing.
+          ! grep -q 'bundle: ""' "$lock"
+          echo "--- $lock ---"
+          cat "$lock"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

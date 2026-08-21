@@ -85,32 +85,47 @@ registry; otherwise the embedded Tier 0 catalog is used.`,
 	return cmd
 }
 
-// buildRegistryClient returns an S3Client if STRATA_REGISTRY_URL is set,
-// falling back to the embedded Tier 0 catalog as a MemoryStore.
-// If STRATA_REGISTRY_URL is set but the S3 client cannot be initialised
-// (e.g. bad URL, missing credentials) an error is printed to stderr and the
-// embedded catalog is used instead — offline fallback is intentional.
+// buildRegistryClient returns a registry client for STRATA_REGISTRY_URL,
+// falling back to the embedded Tier 0 catalog as a MemoryStore when the
+// variable is unset.
+//
+// The URL is dispatched by scheme through newClientForURL, so a "file://" URL
+// gets a LocalClient and an "s3://" URL gets an S3Client. Routing every URL to
+// NewS3Client, as this did before, made the documented offline workflow
+// (STRATA_REGISTRY_URL=file:///var/strata-local) fail its scheme check and fall
+// silently back to the embedded recipe catalog, which carries no bundles and so
+// dies in stage 7 for every profile (#54).
+//
+// If the client cannot be initialised (e.g. bad URL, missing credentials) an
+// error is printed to stderr and the embedded catalog is used instead —
+// offline fallback is intentional.
 func buildRegistryClient() registry.Client {
-	if url := os.Getenv("STRATA_REGISTRY_URL"); url != "" {
-		client, err := registry.NewS3Client(url)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: S3 registry unavailable (%v); falling back to embedded catalog\n", err) //nolint:errcheck
-			return buildCatalog()
-		}
-		return client
+	url := os.Getenv("STRATA_REGISTRY_URL")
+	if url == "" {
+		return buildCatalog()
 	}
-	return buildCatalog()
+	client, err := newClientForURL(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: registry %q unavailable (%v); falling back to embedded catalog\n", url, err) //nolint:errcheck
+		return buildCatalog()
+	}
+	return client
 }
 
 // buildProbeClient returns a probe.Client for use by resolve/freeze.
 //
-// When STRATA_REGISTRY_URL is set and AWS credentials are available, it wires
-// a real SSMResolver with an S3-backed cache so that lockfiles contain real
-// AMI IDs. On any initialisation failure it falls back to the static offline
-// client. Pre-seed the S3 probe cache with "strata probe <os> <arch>" before
-// running strata resolve against a live registry.
+// When STRATA_REGISTRY_URL names an S3 registry and AWS credentials are
+// available, it wires a real SSMResolver with an S3-backed cache so that
+// lockfiles contain real AMI IDs. On any initialisation failure it falls back
+// to the static offline client. Pre-seed the S3 probe cache with
+// "strata probe <os> <arch>" before running strata resolve against a live
+// registry.
+//
+// A file:// registry is the offline path by definition, so it never reaches for
+// SSM: doing so would trade "no lockfile" for an IMDS timeout on a machine that
+// has no credentials to find.
 func buildProbeClient() *probe.Client {
-	if url := os.Getenv("STRATA_REGISTRY_URL"); url != "" {
+	if url := os.Getenv("STRATA_REGISTRY_URL"); url != "" && !strings.HasPrefix(url, "file://") {
 		reg, err := registry.NewS3Client(url)
 		if err == nil {
 			r, err := probe.NewSSMResolver(context.Background())

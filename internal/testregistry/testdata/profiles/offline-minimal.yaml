@@ -1,0 +1,22 @@
+# Resolves entirely against the fixture registry — two layers with a real
+# dependency edge (jupyterlab requires python), so the lockfile's mount order is
+# a fact about stage 6 rather than an accident of input order.
+#
+# Software refs use the struct form deliberately: the inline string form
+# ("- python@3.13") does not parse today (#53).
+name: offline-minimal
+description: Minimal profile that resolves offline against the testregistry fixture.
+version: "1.0"
+
+base:
+  os: al2023
+  arch: x86_64
+
+software:
+  - name: jupyterlab
+    version: "4.2"
+  - name: python
+    version: "3.13"
+
+instance:
+  type: c7i.xlarge

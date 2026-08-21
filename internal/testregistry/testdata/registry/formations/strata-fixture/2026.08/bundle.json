@@ -1,0 +1,26 @@
+{
+  "_strata_fixture": "NOT A VALID SIGSTORE BUNDLE — no signature over this formation exists. Every field is synthetic: signature is ASCII text, logIndex is 2^53-1 and cannot exist in any real log (confirmed HTTP 404 on 2026-08-20), keyId is not the public-good Rekor log's key, and messageDigest is zero. Making any of these plausible would let this fixture pass a real verification for the wrong reason — see internal/testregistry/testregistry.go.",
+  "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+  "verificationMaterial": {
+    "tlogEntries": [
+      {
+        "logIndex": "9007199254740991",
+        "logId": {
+          "keyId": "c3RyYXRhLWZpeHR1cmUtTk9ULWEtcmVhbC1sb2ctSUQ="
+        },
+        "kindVersion": {
+          "kind": "hashedrekord",
+          "version": "0.0.1"
+        },
+        "integratedTime": "0"
+      }
+    ]
+  },
+  "messageSignature": {
+    "messageDigest": {
+      "algorithm": "SHA2_256",
+      "digest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    },
+    "signature": "c3RyYXRhLWZpeHR1cmUtbm90LWEtcmVhbC1zaWduYXR1cmU="
+  }
+}
