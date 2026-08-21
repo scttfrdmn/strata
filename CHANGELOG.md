@@ -8,6 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **A layer that names no attestation bundle no longer mounts** (#92). With a
+  verifier and a bundle fetcher both configured — the shape `cmd/strata-agent`
+  always wires — `internal/agent.verifyBundles` dropped any layer whose `Bundle`
+  field was empty from the verify set, and then returned success on an empty
+  verify set. The trigger was a property of the lockfile rather than of the
+  wiring, so it fired against a fully configured verifier: a publisher who
+  omitted `Bundle`, or an attacker who stripped it, booted clean past a verifier
+  that would have refused every layer it was actually shown. Omitting a field is
+  cheaper than forging a signature, which is why absent and invalid now get the
+  same answer.
+
+  Two sites had to change, not one. Inverting the layer filter alone leaves the
+  hole open through a second door: `FetchBundleJSON` is documented to return
+  `(nil, nil)` for an empty bundle, the shipped `s3LayerFetcher` does exactly
+  that, and `verifyBundles` treated a fetch that produced no bytes as nothing to
+  verify. A layer that names a bundle and receives no bytes for it is now a
+  refusal too. Both refusals name the offending layers — the whole unverifiable
+  set, not the first one found — so one boot failure reports everything an
+  operator has to fix.
+
+  **What changes per consumer**, enumerated from
+  `grep -rn 'agent.Config{' --include='*.go' .`,
+  `grep -rn 'internal/agent' --include='*.go' . | grep -v '^./internal/agent'`,
+  and `grep -rn 'FetchBundleJSON' --include='*.go' .`:
+  - **`strata-agent` now fails to boot on any lockfile with a layer that has no
+    `bundle`**, where it previously booted and mounted that layer. This is the
+    intended breaking change and it is reachable in production today: any
+    registry or lockfile carrying a layer published without a bundle stops
+    booting. There is no new opt-out — `STRATA_AGENT_ALLOW_UNVERIFIED=1` (#56)
+    already covers the deliberate case, and it takes effect earlier, by leaving
+    the verifier nil.
+  - `internal/agent`'s `Verifier == nil || BundleFetcher == nil` fail-open at
+    `agent.go:285` is **deliberately untouched**, and is still a fail-open.
+    Inverting it fails three inherited tests that construct a boot with
+    verification disabled and call it a happy path; that is a decision about this
+    package's default contract, filed as #93, not a fix to fold in here.
+  - `cmd/strata-agent`'s `s3LayerFetcher.FetchBundleJSON` still returns
+    `(nil, nil)` for an empty `Bundle` — **no behaviour change**, but that return
+    is no longer a skip anywhere, and its doc comment now says so.
+  - `strata run` is **unchanged**: `collectRunBundleFailures` already refused an
+    empty `Bundle` via `loadLocalBundle` (`cmd/strata/verify.go:172-174`), with a
+    must-reject row and an accept control asserting it
+    (`cmd/strata/run_verify_test.go:131-135`, `:174-177`). The two paths agree
+    now; before this change they disagreed, and only the agent path was wrong.
+  - `pkg/strata` and every other command are **unchanged**: nothing outside
+    `cmd/strata-agent` imports `internal/agent`.
 - **`strata-agent` refuses to boot when it cannot verify layer authenticity**
   (#56). `newCosignVerifier` returned a nil `trust.Verifier` when cosign was not
   on `PATH` or the public key could not be fetched from S3, and
@@ -40,25 +86,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Operators who relied on the old degradation must set
     `STRATA_AGENT_ALLOW_UNVERIFIED=1`. The AMI build is the place to check: if
     cosign is not baked in, every instance was taking the old path.
-  - `internal/agent` is **unchanged** — deliberately. `verifyBundles`'s
-    `Verifier == nil` guard is still fail-open, and inverting it fails three
-    inherited tests in `internal/agent/agent_test.go` that construct a boot with
-    verification disabled and call it a happy path. That is a reviewed decision,
-    not a fix to slip in, and it is filed as such (#92, #93). What *is* closed is
-    one deployed path in: `internal/agent` is an internal package with exactly one
-    non-test `agent.Config` construction (`cmd/strata-agent/main.go`), where
-    `BundleFetcher` is never nil, so after this change no shipped caller reaches
-    the **nil-verifier** fail-open at `agent.go:270`.
+  - `internal/agent` was **unchanged by this entry** — deliberately.
+    `verifyBundles`'s `Verifier == nil` guard is still fail-open, and inverting it
+    fails three inherited tests in `internal/agent/agent_test.go` that construct a
+    boot with verification disabled and call it a happy path. That is a reviewed
+    decision, not a fix to slip in, and it is filed as such (#93). What *is*
+    closed by this entry is one deployed path in: `internal/agent` is an internal
+    package with exactly one non-test `agent.Config` construction
+    (`cmd/strata-agent/main.go`), where `BundleFetcher` is never nil, so after
+    this change no shipped caller reaches the **nil-verifier** fail-open at
+    `agent.go:285`.
 
     That is narrower than it first read, and the difference matters to anyone
-    deploying this. `verifyBundles` fails open a **second** way, which the
-    enumeration above does not touch and cannot: a layer whose `Bundle` field is
-    empty is dropped from the verify set (`agent.go:285-293`), and an empty verify
-    set returns nil. Its trigger is a property of the lockfile rather than of the
-    wiring, so it fires with a fully configured verifier and bundle fetcher and
-    **is reachable in production, with and without this change**. A publisher who
-    omits `Bundle`, or an attacker who strips it, still gets a clean boot. Tracked
-    as #92 (decision) and #93 (fix); not closed here.
+    deploying this. `verifyBundles` failed open a **second** way, which the
+    enumeration above does not touch and cannot: a layer whose `Bundle` field was
+    empty was dropped from the verify set, and an empty verify set returned nil.
+    Its trigger is a property of the lockfile rather than of the wiring, so it
+    fired with a fully configured verifier and bundle fetcher and **was reachable
+    in production, with and without this change**. A publisher who omitted
+    `Bundle`, or an attacker who stripped it, got a clean boot.
+
+    **Amended 2026-08-21:** that second fail-open is now closed — see the #92
+    entry above, which ships in the same release. This bullet is left standing
+    with its tense corrected rather than deleted, because the two changes are
+    separately reviewable and a reader tracing why the agent refuses a
+    bundle-less layer needs both halves. #93 remains open and is the only
+    fail-open left in `verifyBundles`.
   - `STRATA.md`'s layer-verification section claimed verification "is
     unconditional — there is no flag to skip verification". That was false in the
     worse direction: verification was skippable without a flag. It now documents

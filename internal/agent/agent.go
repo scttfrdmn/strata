@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,8 +40,13 @@ type LayerFetcher interface {
 
 // BundleFetcher downloads the Sigstore bundle JSON for a layer from the
 // registry. Used alongside Verifier to perform cryptographic signature
-// verification after layers are fetched. Implementations should return
-// (nil, nil) when layer.Bundle is empty.
+// verification after layers are fetched.
+//
+// An implementation may return (nil, nil) when layer.Bundle is empty, but must
+// not rely on that being tolerated: with a Verifier configured, the agent
+// refuses a layer that names no bundle before calling this, and treats an empty
+// return for a layer that does name one as a verification failure. Returning no
+// bytes is never a way to skip verification.
 type BundleFetcher interface {
 	FetchBundleJSON(ctx context.Context, layer spec.ResolvedLayer) ([]byte, error)
 }
@@ -263,9 +269,18 @@ func (a *Agent) fetchAndVerifyLayers(ctx context.Context, lf *spec.LockFile) ([]
 	return paths, nil
 }
 
-// verifyBundles verifies the Sigstore cosign bundle for each layer in
-// parallel. Skipped when Verifier or BundleFetcher is nil, or when a layer
-// has no Bundle field. The first verification failure cancels the rest.
+// verifyBundles verifies the Sigstore cosign bundle for each fetched layer in
+// parallel. The first verification failure cancels the rest.
+//
+// Skipped entirely when Verifier or BundleFetcher is nil. That remaining
+// fail-open is tracked by #93 and is not closed here: no shipped caller reaches
+// it (cmd/strata-agent always wires both), but three inherited tests assert it
+// and inverting it is a decision about this package's default contract.
+//
+// With both configured, verification is not optional per layer. A layer that
+// names no bundle, or whose bundle fetch yields no bytes, is refused — absent
+// material is treated the same as invalid material, because a lockfile is
+// attacker-influenced input and omitting a field is cheaper than forging one.
 func (a *Agent) verifyBundles(ctx context.Context, lf *spec.LockFile, paths []overlay.LayerPath) error {
 	if a.cfg.Verifier == nil || a.cfg.BundleFetcher == nil {
 		return nil
@@ -281,13 +296,33 @@ func (a *Agent) verifyBundles(ctx context.Context, lf *spec.LockFile, paths []ov
 		err error
 	}
 
-	// Count layers that have both a local path and a bundle URI.
+	// Every fetched layer must be verifiable. A layer that names no bundle
+	// cannot be verified, and with a verifier configured that is a refusal
+	// rather than a skip: the trigger is a property of the lockfile, not of
+	// the wiring, so an attacker who can write the registry can also omit the
+	// field and reach a clean boot past a verifier that refuses everything
+	// (#92). Absent and invalid are the same answer here.
+	//
+	// Every unverifiable layer is named, not just the first, so one boot
+	// failure reports the whole set.
 	var toVerify []spec.ResolvedLayer
+	var unverifiable []string
 	for _, layer := range lf.Layers {
-		if _, ok := pathByID[layer.ID]; ok && layer.Bundle != "" {
-			toVerify = append(toVerify, layer)
+		if _, ok := pathByID[layer.ID]; !ok {
+			continue
 		}
+		if layer.Bundle == "" {
+			unverifiable = append(unverifiable, layer.ID)
+			continue
+		}
+		toVerify = append(toVerify, layer)
 	}
+	if len(unverifiable) > 0 {
+		return fmt.Errorf("agent: refusing to mount layers with no attestation bundle: %s",
+			strings.Join(unverifiable, ", "))
+	}
+	// No fetched layers at all — nothing was mounted, so there is nothing to
+	// verify. This is not the absent-bundle case, which is refused above.
 	if len(toVerify) == 0 {
 		return nil
 	}
@@ -310,8 +345,15 @@ func (a *Agent) verifyBundles(ctx context.Context, lf *spec.LockFile, paths []ov
 				cancel()
 				return
 			}
-			if data == nil {
-				results <- result{} // no bundle data — skip
+			// A fetcher that returns no bytes for a layer that names a bundle
+			// leaves the layer unverified. Skipping here would reopen the
+			// refusal above through a second door: the shipped S3 fetcher
+			// returns (nil, nil) for an empty Bundle, so a filter-only fix
+			// would still admit a bundle-less layer (#92).
+			if len(data) == 0 {
+				results <- result{fmt.Errorf("no bundle bytes for %q: layer names %q",
+					layer.ID, layer.Bundle)}
+				cancel()
 				return
 			}
 
