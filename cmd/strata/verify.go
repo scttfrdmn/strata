@@ -159,18 +159,25 @@ func verifyRekorEntries(ctx context.Context, lf *spec.LockFile, client trust.Rek
 // job everywhere else in this codebase (see trust.VerifyLayer, which refuses URIs
 // outright). Rather than pass a nil bundle and let the Rekor check degrade into a
 // presence check, an unfetchable bundle is an error that names what is missing.
-// Fetching remote bundles so that --rekor works against an s3-backed lockfile is
+// Fetching remote bundles so that s3-backed lockfiles can be verified in place is
 // tracked separately (#60).
+//
+// Callers: strata verify --rekor, and strata run's pre-mount check (#55). The
+// messages are worded for both — they used to name --rekor, which would have been
+// a lie in run's output. Nothing else about this function changed when run started
+// calling it: it neither fetches nor mutates, and every failure it can report is
+// returned rather than logged, so the second caller inherits no behaviour that the
+// first one's tests were not already asserting.
 func loadLocalBundle(uri string) (*trust.Bundle, error) {
 	if uri == "" {
-		return nil, errors.New("empty Bundle field: nothing to verify the log entry against")
+		return nil, errors.New("empty Bundle field: nothing to verify the signature against")
 	}
 	path := uri
 	switch {
 	case strings.HasPrefix(uri, "file://"):
 		path = strings.TrimPrefix(uri, "file://")
 	case strings.Contains(uri, "://"):
-		return nil, fmt.Errorf("bundle %q must be fetched to disk before --rekor can verify against it", uri)
+		return nil, fmt.Errorf("bundle %q must be fetched to disk before it can be verified", uri)
 	}
 
 	data, err := os.ReadFile(path)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,11 +19,12 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/strata/internal/overlay"
+	"github.com/scttfrdmn/strata/internal/trust"
 	"github.com/scttfrdmn/strata/spec"
 )
 
 func newRunCmd() *cobra.Command {
-	var lockfilePath, cacheDir string
+	var lockfilePath, cacheDir, keyRef string
 	var noVerify bool
 	var envOverrides []string
 
@@ -34,8 +36,16 @@ resulting environment. Works for both privileged (OverlayFS) and
 unprivileged (FUSE) contexts.
 
 Layer files are cached in the user cache directory and reused on
-subsequent runs. Pass --no-verify to skip signature verification
-on air-gapped systems.`,
+subsequent runs.
+
+Every layer is verified before anything is mounted: its bundle must be
+readable, parse, carry a Rekor entry, and attest the digest the lockfile
+pins, and its signature must verify with cosign against --key. A layer
+that fails any of those is not mounted.
+
+Pass --no-verify to mount unverified layers on air-gapped systems. It
+reports, on stderr, that verification was skipped — before this was a
+flag that disabled nothing, because nothing was enabled.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if lockfilePath == "" {
@@ -47,18 +57,19 @@ on air-gapped systems.`,
 			if cacheDir == "" {
 				cacheDir = defaultCacheDir()
 			}
-			return runRun(cmd.Context(), lockfilePath, args, noVerify, cacheDir, envOverrides)
+			return runRun(cmd.Context(), lockfilePath, args, noVerify, cacheDir, keyRef, envOverrides)
 		},
 	}
 
 	cmd.Flags().StringVar(&lockfilePath, "lockfile", "", "path to the lockfile (required)")
-	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "skip signature verification (use on air-gapped systems)")
+	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "mount layers without verifying their signatures (use on air-gapped systems)")
+	cmd.Flags().StringVar(&keyRef, "key", "", "cosign public key for layer signature verification (required unless --no-verify)")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "layer cache directory (default: ~/.cache/strata/layers)")
 	cmd.Flags().StringArrayVar(&envOverrides, "env", nil, "additional environment variables (KEY=VAL)")
 	return cmd
 }
 
-func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bool, cacheDir string, envOverrides []string) error {
+func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bool, cacheDir, keyRef string, envOverrides []string) error {
 	// 1. Read lockfile.
 	data, err := os.ReadFile(lockfilePath)
 	if err != nil {
@@ -69,10 +80,13 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 		return fmt.Errorf("run: parsing lockfile: %w", err)
 	}
 
-	// 2. Signature verification — best-effort warning (not fatal) since strata
-	//    run is primarily for unprivileged/HPC use where cosign may be absent.
-	if !noVerify && lf.RekorEntry == "" {
-		fmt.Fprintln(os.Stderr, "run: warning: lockfile has no Rekor entry — not signed")
+	// 2. Signature verification happens in step 6, after the layers are on disk:
+	//    the bytes about to be mounted are what has to be verified, and a
+	//    lockfile field is not evidence about a file. This used to be a warning
+	//    here that fired only on an empty RekorEntry, which is what made
+	//    --no-verify a flag that disabled nothing (#55).
+	if lf.RekorEntry == "" {
+		fmt.Fprintln(os.Stderr, "run: warning: lockfile has no Rekor entry — not signed") //nolint:errcheck
 	}
 
 	// 3. Warn if the lockfile has package entries — packages are installed by
@@ -102,14 +116,19 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 		return fmt.Errorf("run: %w", err)
 	}
 
-	// 6. Create temp working directory.
+	// 6. Verify what is about to be mounted, and refuse to mount it otherwise.
+	if err := verifyRunLayers(ctx, &lf, layerPaths, noVerify, keyRef); err != nil {
+		return err
+	}
+
+	// 7. Create temp working directory.
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("strata-%d-*", os.Getpid()))
 	if err != nil {
 		return fmt.Errorf("run: creating work dir: %w", err)
 	}
 	defer os.RemoveAll(workDir) //nolint:errcheck
 
-	// 7. Mount overlay with user-local paths and auto-detected strategy.
+	// 8. Mount overlay with user-local paths and auto-detected strategy.
 	cfg := overlay.Config{
 		LayersDir: filepath.Join(workDir, "layers"),
 		RWDir:     filepath.Join(workDir, "rw"),
@@ -125,10 +144,10 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	defer stop()
 	defer ov.Cleanup() //nolint:errcheck
 
-	// 8. Build environment for the child process.
+	// 9. Build environment for the child process.
 	env := buildRunEnv(&lf, ov.MergedPath, envOverrides)
 
-	// 9. Execute the command.
+	// 10. Execute the command.
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Env = env
 	cmd.Stdin = os.Stdin
@@ -142,6 +161,170 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
+}
+
+// runLayerCheck is one layer that passed every check not needing cosign, held
+// with its parsed bundle so the signature step does not re-read or re-parse it.
+type runLayerCheck struct {
+	layerID string
+	sqfs    string
+	bundle  *trust.Bundle
+}
+
+// verifyRunLayers refuses to let runRun proceed unless every layer about to be
+// mounted verifies. It reports all failures rather than the first, because a
+// user fixing a lockfile wants the whole list.
+//
+// noVerify skips the whole step and says so on stderr. That announcement is
+// load-bearing: the defect this replaces (#55) was a --no-verify flag that
+// disabled nothing, and a silent skip is indistinguishable from a check that
+// ran and passed.
+func verifyRunLayers(ctx context.Context, lf *spec.LockFile, paths []overlay.LayerPath, noVerify bool, keyRef string) error {
+	if noVerify {
+		fmt.Fprintln(os.Stderr, //nolint:errcheck
+			"run: warning: --no-verify given: layer signatures were NOT verified; mounting unverified content")
+		return nil
+	}
+
+	failures, checks := collectRunBundleFailures(lf, paths)
+
+	// The signature step runs only when every structural check passed, matching
+	// strata verify's shape (verify.go: presence failures gate the Rekor step).
+	// Ordering matters for more than tidiness: the structural checks need no
+	// cosign, so they stay reachable — and testable — on a machine that has
+	// none, while a missing cosign would otherwise mask every bundle defect
+	// behind one prerequisite error.
+	if len(failures) == 0 {
+		v, err := newRunVerifier(keyRef)
+		if err != nil {
+			failures = append(failures, err.Error())
+		} else {
+			failures = append(failures, verifyRunSignatures(ctx, checks, v)...)
+		}
+	}
+
+	if len(failures) == 0 {
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "run: %d verification failure(s):\n", len(failures)) //nolint:errcheck
+	for _, f := range failures {
+		fmt.Fprintf(os.Stderr, "  - %s\n", f) //nolint:errcheck
+	}
+	return errors.New("run: refusing to mount unverified layers (pass --no-verify to mount them anyway)")
+}
+
+// collectRunBundleFailures performs every per-layer check that does not need
+// cosign, and returns the layers that still need a signature check.
+//
+// This discharges trust.VerifyLayer's steps in a different order rather than
+// calling it, so each of that function's guarantees is accounted for here
+// explicitly:
+//
+//   - step 1, file digest vs manifest: already done, unconditionally, by
+//     fetchLayersToCache — which will not return a path it has not hashed
+//     against a well-formed digest (#57). Re-hashing here would hash the same
+//     squashfs a third time for no new information.
+//   - step 2, bundle non-empty / not a bare URI / readable / parses: done here
+//     via loadLocalBundle, the same helper strata verify --rekor uses.
+//   - step 2, HasRekorEntry: done here.
+//   - step 3, cosign signature: done by verifyRunSignatures.
+//
+// One check here is *not* in trust.VerifyLayer: the bundle must attest the
+// digest this lockfile pins. VerifyLayer can omit it because cosign verify-blob
+// ties bundle to artifact itself; this path cannot, because a missing cosign
+// must not be the difference between "wrong layer's bundle" and "accepted".
+// Without it, a valid bundle for a different artifact passes every local check.
+func collectRunBundleFailures(lf *spec.LockFile, paths []overlay.LayerPath) ([]string, []runLayerCheck) {
+	pathByID := make(map[string]string, len(paths))
+	for _, p := range paths {
+		pathByID[p.ID] = p.Path
+	}
+
+	var (
+		failures []string
+		checks   []runLayerCheck
+	)
+	for _, layer := range lf.Layers {
+		sqfs, ok := pathByID[layer.ID]
+		if !ok {
+			failures = append(failures, fmt.Sprintf(
+				"layer %s: no fetched file to verify", layer.ID))
+			continue
+		}
+
+		bundle, err := loadLocalBundle(layer.Bundle)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("layer %s: %v", layer.ID, err))
+			continue
+		}
+		if !bundle.HasRekorEntry() {
+			failures = append(failures, fmt.Sprintf(
+				"layer %s: bundle has no Rekor entry: unsigned layers will not mount", layer.ID))
+			continue
+		}
+		if alg := bundle.MessageSignature.MessageDigest.Algorithm; alg != "" && !isBundleSHA256(alg) {
+			failures = append(failures, fmt.Sprintf(
+				"layer %s: bundle digest algorithm is %q, not SHA-256", layer.ID, alg))
+			continue
+		}
+		attested := hex.EncodeToString(bundle.MessageSignature.MessageDigest.Digest)
+		if !strings.EqualFold(attested, layer.SHA256) {
+			failures = append(failures, fmt.Sprintf(
+				"layer %s: bundle attests sha256:%s but the lockfile pins sha256:%s",
+				layer.ID, attested, layer.SHA256))
+			continue
+		}
+
+		checks = append(checks, runLayerCheck{layerID: layer.ID, sqfs: sqfs, bundle: bundle})
+	}
+	return failures, checks
+}
+
+// isBundleSHA256 reports whether a Sigstore digest algorithm name means SHA-256.
+// Bundles write "SHA2_256"; be lenient about the spellings seen in the wild
+// rather than rejecting a correct bundle over punctuation.
+func isBundleSHA256(alg string) bool {
+	switch strings.ToUpper(strings.NewReplacer("-", "", "_", "").Replace(alg)) {
+	case "SHA2256", "SHA256":
+		return true
+	}
+	return false
+}
+
+// verifyRunSignatures checks each layer's signature with v.
+//
+// v is a parameter so a test can drive the pass and fail directions without
+// cosign on PATH; runRun supplies a real CosignVerifier. There is deliberately
+// no nil-means-skip case — that shape is the defect filed as #56.
+func verifyRunSignatures(ctx context.Context, checks []runLayerCheck, v trust.Verifier) []string {
+	var failures []string
+	for _, c := range checks {
+		if err := v.Verify(ctx, c.sqfs, c.bundle); err != nil {
+			failures = append(failures, fmt.Sprintf(
+				"layer %s: signature verification failed: %v", c.layerID, err))
+		}
+	}
+	return failures
+}
+
+// newRunVerifier builds the cosign verifier for strata run.
+//
+// Both prerequisites are errors rather than a nil verifier: strata run is used
+// where cosign is often absent, which is exactly the case that must not
+// silently downgrade to mounting unverified content. The message names the flag
+// that makes the trade-off explicit instead of making it by default.
+func newRunVerifier(keyRef string) (trust.Verifier, error) {
+	if keyRef == "" {
+		return nil, errors.New("no --key given: layer signatures cannot be verified without a cosign public key (pass --key, or --no-verify to mount unverified layers)")
+	}
+	if _, err := os.Stat(keyRef); err != nil {
+		return nil, fmt.Errorf("--key %q is not readable: layer signatures cannot be verified (fix the path, or pass --no-verify to mount unverified layers): %w", keyRef, err)
+	}
+	if _, err := exec.LookPath("cosign"); err != nil {
+		return nil, fmt.Errorf("cosign not found on PATH: layer signatures cannot be verified (install cosign, or pass --no-verify to mount unverified layers): %w", err)
+	}
+	return &trust.CosignVerifier{KeyRef: keyRef}, nil
 }
 
 // buildRunEnv builds the environment for the child process from os.Environ()
