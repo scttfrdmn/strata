@@ -468,7 +468,7 @@ moves the status of every proposition it names; nothing else does.
 | X3 | The inline software-ref form `- python@3.13` was documented and did not parse | H1 | #53 | Yes — E1, `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` |
 | X3 | All three shipped examples name formation versions the catalog does not contain, and `go test ./examples/` passes | H1 | #70 | No |
 | R4, R5 | Stage 4 validates against one provider, stage 6 wires the edge to another; stage 4 is itself first-match | H1 | #67 | No |
-| T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #92 (decision), #93 (fix) | Partially — the absent-bundle half is closed by #104 at `internal/agent/agent.go:310-323`, E1 at `internal/agent/verify_bundles_test.go:187,252`; the nil-verifier half at `:285` is open under #93. `Partially` counts as live, so T1 and T5 stay refuted |
+| T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #93 (fix); the decision half was #92, closed | Partially — the absent-bundle half is closed by #104 at `internal/agent/agent.go:310-323`, E1 at `internal/agent/verify_bundles_test.go:187,252`; the nil-verifier half at `:285` is open under #93. `Partially` counts as live, so T1 and T5 stay refuted |
 | T1, T5 | `BundleFetcher`'s godoc **specified** the fail-open: implementations were told to return `(nil, nil)` for a layer naming no bundle, and `verifyBundles` treated no bytes as nothing to verify. The shipped `s3LayerFetcher` conforms. A defect in an interface's *specification* is inherited by every conforming implementation, so no amount of testing the implementations finds it | H1 | #92 | Yes — E1, `internal/agent/verify_bundles_test.go:291` (empty bytes refused) and `cmd/strata-agent/s3_bundle_contract_test.go:22` (the shipped `s3LayerFetcher` held to the corrected contract). #104 rewrote the godoc and inverted the behaviour together |
 | T2, T7, T9 | `strata verify` and `IsSigned()` are presence checks; no lockfile verification exists | A1 | #60 | No |
 | T4 | Agent fetches its cosign public key from the bucket that serves the layers | A1 | #62 | No |
@@ -951,7 +951,34 @@ class and wrong in one detail**.
     cell is accepted as long as the suite is green. That is rule 6's question, and
     it is answered by a coverage delta on the line, by hand, per refutation. The
     generator removed the drift between two columns; it did not remove the need to
-    show reachability.
+    show reachability. Filed as **#105**, with the obstacle measured: 45 of 154
+    citation instances in this file are not machine-resolvable as written (10
+    basename-only, 35 with no path at all), and only 13 of 49 test-file citations
+    name the test they cite.
+
+37. **#92 closed; the live register row's issue reference moved to #93, and the
+    discharged one did not.** #92 held both halves of the `verifyBundles`
+    fail-open; its absent-bundle half is discharged by #104 and its nil-verifier
+    half is #93, so nothing lived in it that was not tracked elsewhere. Two rows
+    in §4 named it and they were treated differently, which is the citation-tense
+    rule of item 35 applied to issue references rather than line numbers:
+
+    - The `verifyBundles skips…` row is **`Partially` — live** — so its issue cell
+      was updated to name #93 as the tracking issue. A live refutation pointing at
+      a closed issue reads as settled work.
+    - The `BundleFetcher's godoc specified the fail-open` row is **`Yes` —
+      discharged** — so its `#92` stays. The issue is where that counterexample was
+      established, and repointing it would lose the provenance for no gain.
+
+    Bookkeeping that transferred with the closure, recorded because a state
+    transition is cheap and a queue label is a claim about the world: #92's
+    decision-needed marker lived in its *title* (`Decision request: …`) and in no
+    label, so it was invisible to every label query. #93 now carries
+    `status: needs-design`, with the open question written out — whether
+    `agent.Config{Verifier: nil}` becomes an error or a spelled `AllowUnverified`
+    opt-out. Labels, milestone, both proposition references (T1 and T5) and the
+    zero-coverage measurement were already on #93 and were checked field by field
+    before the transition, not after.
 
 **Placement.** This file sits at the repository root beside `STRATA.md` rather
 than under `docs/`. `CLAUDE.md` hygiene rule 1 sends documentation to `docs/`;
