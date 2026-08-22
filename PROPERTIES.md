@@ -4,8 +4,8 @@
 Every proposition below carries a verdict from an adversarial review of the
 proposition *text*, an authored `Basis`, and a **generated** `Status` — see §3
 and §6, and do not edit a Status cell by hand. The bibliography in §5 has been
-verified against primary sources. Of the 34 propositions, 27 are `REFUTED`, 4
-are `ENFORCED E1`, 1 is `ASSERTED (E0)`, 1 is `UNPOPULATED` and 1 is
+verified against primary sources. Of the 34 propositions, 27 are `REFUTED`, 2
+are `ENFORCED E1`, 1 is `ASSERTED (E0)`, 2 are `UNPOPULATED` and 2 are
 `WITHDRAWN`; that distribution is derived, not counted by eye —
 `go run ./cmd/propgen` prints the totals it was taken from. The principal
 finding is §0.2.
@@ -18,6 +18,13 @@ finding is §0.2.
 > in the paragraph above stayed the same.** Movement lives in the `(n of m live)`
 > counts and in §4, not in the totals. A reader watching the distribution for
 > change would have seen a clean bill on the day the register got worse.
+>
+> The converse also holds, demonstrated the same day: restating `R1`, `R2` and
+> `R6` truthfully (§7) moved `ENFORCED E1` from 4 to 2 and moved `REFUTED` **not
+> at all**. Nothing about the code changed. A falling `ENFORCED` count here means
+> propositions stopped claiming more than their evidence supports, which is the
+> instrument working — so the totals cannot be read as a direction of travel in
+> either direction.
 
 Provenance for every measurement in this document unless stated otherwise:
 
@@ -364,12 +371,12 @@ verdict, not a measurement of the implementation.
 
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
-| **R1** | *Determinism.* Resolution is a function of (profile, registry state, resolver version). Two resolutions with identical inputs produce byte-identical lockfiles. | **TOO STRONG** | E1 — `internal/resolver/resolver_test.go:574` | ENFORCED E1 | A lockfile records `ResolvedAt` from the wall clock, so two resolutions are never byte-identical; satisfying R1 literally means abandoning a field Strata deliberately records. Repaired form — *identical on the canonical content projection* — is witnessed by `internal/resolver/resolver_test.go:574 TestEnvironmentID_Stability`, which resolves the same profile twice and compares `EnvironmentID` and `ProfileSHA256`. Domain: one single-layer profile, one in-memory store. |
-| **R2** | *Order-independence.* Permuting the entries of `software:` in a profile does not change the resulting lockfile, except in fields whose specification says they record declaration order. | **TOO WEAK** | none | REFUTED | Broken-but-satisfying implementation: add the sentence *"`mount_order` records declaration order"* to the spec. R2's exception clause then exempts the field that decides OverlayFS shadowing, so YAML key order silently determines which file wins — and R2 still holds. The exception must be closed by naming a canonical tie-break, not by whatever the spec happens to say. Counterexample, executed: two lockfiles differing only in the slice order of two layers that share `MountOrder` yield different `EnvironmentID`s (`ef104908…` vs `4535c5c4…`), with the distinct-`MountOrder` control returning equal (`ef104908…` twice); permuting `Packages` likewise changes the ID (`789830da…` vs `fd576991…`). The doc comment at `spec/lockfile_hash.go:27-28` claims determinism "regardless of the order they appear in the lockfile YAML" — true only when `MountOrder` is distinct. Upstream, the resolver's tie-break *is* declaration order: `internal/resolver/stages.go:301` `sort.Ints(queue) // deterministic tie-breaking` orders by input index. Filed as #95. |
+| **R1** | *Determinism.* Resolution is a function of (profile, registry state, resolver version). Two resolutions with identical inputs produce lockfiles that are byte-identical after eliding exactly one field, `resolved_at`, which records the wall-clock time of resolution. Every other byte is identical — including every field that does not participate in `environment_id`. The set of elided fields is enumerated here and is not deferred to the specification. | SOUND | none | UNPOPULATED | **Restated 2026-08-21** (was: *"...produce byte-identical lockfiles"*, verdict `TOO STRONG`). The old form was unsatisfiable — a lockfile records `ResolvedAt` from the wall clock, so byte-identity fails on input one and satisfying R1 literally meant abandoning a field Strata deliberately records. **What the old statement permitted that this one forbids:** an unsatisfiable proposition generates no checkable obligation, so what stood in for R1 was whatever its citation happened to assert. `internal/resolver/resolver_test.go:574 TestEnvironmentID_Stability` compares `EnvironmentID` and `ProfileSHA256` — two derived hashes, the first over the five members of `envHashInput` (`spec/lockfile_hash.go:16-22`). Every field outside that hash was therefore free to differ between two identical resolutions with nothing objecting: `profile_name`, `strata_version`, `rekor_entry`, `bundle`, `mutable_layer`, `mount_order`, `satisfied_by`, `from_formation`. The new form forbids all of that. **What can now refute it that could not before:** a differential resolve comparing the full canonical serialisation with `resolved_at` elided. Under the old form no such test could be R1 evidence, because an honest attempt fails on the timestamp; under the new form it is the direct instrument, and it is cheap. Basis is deliberately `none`: the cited test does not exercise the restated property (proof-standard rule 6), and the old cell's `ENFORCED E1` measured a *repaired form* — "identical on the canonical content projection" — that deferred the word *canonical* to the implementation, which is rule 9. Stating R1 truthfully moved it from `ENFORCED E1` to `UNPOPULATED`. |
+| **R2** | *Order-independence.* Permuting the entries of `software:` in a profile does not change the resulting lockfile in **any** field, `mount_order` included. Where the dependency graph leaves two layers mutually unordered, their relative order is fixed by a total order computed from layer content — name, then version, then digest — and never by position in the input. This proposition grants no exception and the specification cannot grant one on its behalf. | SOUND | none | REFUTED | **Restated 2026-08-21** (was: *"...does not change the resulting lockfile, except in fields whose specification says they record declaration order"*, verdict `TOO WEAK`). **What the old statement permitted that this one forbids:** one sentence added to the spec — *"`mount_order` records declaration order"* — satisfied the old R2 exactly, while leaving YAML key order to decide OverlayFS shadowing between two layers that both ship `bin/python`. The old exception clause was also open-ended: any field could be exempted later by amending the spec, so the proposition's content was whatever the implementation's own document said it was (rule 9). The new form forbids both — `mount_order` must be permutation-invariant, the tie-break is named in the proposition rather than referenced, and no spec amendment can widen it. **What can now refute it that could not before:** a permutation generator over `software:`. Under the old form that generator **confirms** R2 no matter what the implementation does, because every difference it can find lands in `mount_order`, which the spec exempts — a property test of a too-weak proposition is a tautology. Under the new form the same generator refutes on input one, and two artifacts already in hand become refutations of R2 itself rather than of a doc comment. Counterexample, executed: two lockfiles differing only in the slice order of two layers that share `MountOrder` yield different `EnvironmentID`s (`ef104908…` vs `4535c5c4…`), with the distinct-`MountOrder` control returning equal (`ef104908…` twice); permuting `Packages` likewise changes the ID (`789830da…` vs `fd576991…`). The doc comment at `spec/lockfile_hash.go:27-28` claims determinism "regardless of the order they appear in the lockfile YAML" — true only when `MountOrder` is distinct. Upstream, the resolver's tie-break *is* declaration order: `internal/resolver/stages.go:301` `sort.Ints(queue) // deterministic tie-breaking` orders by input index. Filed as #95. |
 | **R3** | *Totality.* Resolution yields either a complete lockfile or an error. No execution produces a partially-populated lockfile. | **TOO WEAK** | none | REFUTED (2 of 2 live) | Broken-but-satisfying implementation: drop every request that cannot be resolved and return a fully-populated lockfile for the remainder. Every layer it names is complete, so R3 holds, and the environment is silently not the one that was asked for. "Complete" must be quantified over the *request*: every element of `software:` is either represented in the lockfile or named in an error. Realised instance: #79 — a null entry in a software list is silently dropped and the profile resolves without it. Second instance, untracked: `Profile.Instance` and `Profile.Storage` are parsed and then referenced nowhere (see X1). |
 | **R4** | *Provider soundness.* If the dependency graph contains an edge from a consumer to a provider for capability *c*, that provider satisfies the consumer's declared version constraint on *c*. | SOUND | none | REFUTED | #67. `internal/resolver/stages.go:266-270` builds `capProviderIdx[cap.Name] = i` in a nested loop with no guard, so the highest-indexed provider of a capability wins the edge irrespective of version. |
 | **R5** | *Provider completeness.* If some layer in the resolved set satisfies a consumer's constraint on *c*, resolution does not fail for want of a provider of *c*. | SOUND | none | REFUTED | #67, same issue, different half: `spec/layer.go:192-205 SatisfiesRequirement` is version-aware but first-match, so a satisfiable profile is rejected when a non-satisfying provider of the same capability name is encountered first. |
-| **R6** | *Environment identity is functional.* `EnvironmentID` is a function of exactly the fields the specification enumerates: changing any enumerated field changes the ID, and changing any non-enumerated field does not. | **TOO WEAK** | E1 — `spec/spec_test.go:542`, `spec/packages_test.go:208` | ENFORCED E1 | Broken-but-satisfying implementation: hash `base_ami_sha256` alone and enumerate `base_ami_sha256` alone. R6 holds exactly, and the identity distinguishes nothing. R6 defers its whole content to a list the implementation controls — the same defect as R2's exception clause and P1's `IsFrozen`. The repair is to derive the enumeration from behaviour, which is what X2 attempts; R6 and X2 are one proposition split in two, and R6 alone is not worth having. Under the current enumeration (`spec/lockfile_hash.go:16-22`) both directions are witnessed: `spec/spec_test.go:542 TestEnvironmentID` (layer digest changes the ID; `RekorEntry` does not) and `spec/packages_test.go:208 TestEnvironmentIDIncludesPackages`. |
+| **R6** | *Environment identity is functional.* `EnvironmentID` is a function of exactly the fields the specification enumerates: changing any enumerated field changes the ID, and changing any non-enumerated field does not. | **TOO WEAK** | withdrawn — R7, X2 | WITHDRAWN (superseded by R7, X2) | **Withdrawn 2026-08-21, not restated — the attempt to restate it is what retired it.** The defect is proof-standard rule 9: *both* of R6's conjuncts defer to an enumeration the implementation owns, so hashing `base_ami_sha256` alone and enumerating `base_ami_sha256` alone satisfies R6 exactly while the identity distinguishes nothing. **What the old statement permitted:** the identity depending on an attestation pointer. Enumerate `rekor_entry`, and re-signing a layer changes `environment_id` — invalidating every cache entry for an environment whose *content* did not change — and old-R6 calls that correct, because the enumeration lists it. **What forbids it now, and why that is not a new R6:** removing the deferral means stating both conjuncts in terms of environment content, and both are already propositions here. Conjunct (a), *changing any enumerated field changes the ID*, becomes *a behaviour that can alter the assembled environment participates in the identity* — that is **X2**. Conjunct (b), *changing any non-enumerated field does not*, becomes *two lockfiles that assemble the same environment have equal `EnvironmentID`* — that is **R7**, verbatim. The enumeration was not incidental to R6; it was the only thing giving R6 content distinct from X2 ∧ R7. R6 in fact became redundant the moment R7 was added (§7 *Propositions restated or added* item 2, which already recorded that “R6 and X2 constrain only the direction behaviour → identity”); the deferral disguised it, and restating R6 is what exposed it. **What could now refute it that could not before — the question that decided withdrawal over restatement:** the one restatement that keeps R6 independent is to move the enumeration into this document — *the ID is a function of exactly these five fields*, `spec/lockfile_hash.go:16-22`. That form is sound, and falsifiable only by **drift between the list here and the struct there**: two representations bound to each other, which is exactly what rule 11 and §6.1 were adopted to stop counting as evidence. It would render `ENFORCED` while asserting nothing about whether either representation is right. A proposition whose only refuting instrument is a consistency check against itself has not moved, so R6 is withdrawn rather than narrowed. **Both citations transfer rather than lapse:** `spec/spec_test.go:542 TestEnvironmentID` asserts that `RekorEntry` does **not** change the ID — that is R7's direction, not functional-on-an-enumeration, so it was always evidence for R7 and never for R6 as written. `spec/packages_test.go:208 TestEnvironmentIDIncludesPackages` witnesses that `Packages` *do* participate, which is X2's direction. R6 carried `ENFORCED E1` on two tests, neither of which tested it. |
 | **R7** | *(new)* *No spurious distinctions.* Two lockfiles that assemble the same environment have the same `EnvironmentID`. | SOUND | none | REFUTED | Added 2026-08-21 (§7). R6 and X2 together constrain only one direction — that behaviour reaches the identity. Nothing forbids the identity distinguishing environments that are identical. `OnReady` is hashed (`spec/lockfile_hash.go:20,50`) and executed by nothing (#69), so two lockfiles that differ only in a never-run command list get different IDs and the same environment. |
 
 R4 and R5 are separate and a system can fail either independently. R4 failing
@@ -539,7 +546,7 @@ moves the status of every proposition it names; nothing else does.
 | P4, P1 | `strata freeze` cannot succeed — nothing populates `ami_sha256` | H1 | #64 | No |
 | P1 | `strata publish` accepts unsigned lockfiles and dirty mutable layers | H1 | #66 | No |
 | B2, B3 | Recipes fetch sources with no digest pinning; the recipe schema has no field for one | A3 | #68 | No |
-| X1 | `OnReady` is specified, hashed into the identity, and never executed | H1 | #69 | No |
+| X1 | `OnReady` is specified, hashed into the identity, and never executed. Declared `spec/lockfile.go:39-40`, copied `internal/resolver/stages.go:434`, hashed `spec/lockfile_hash.go:20,50`, executed nowhere | H1 | #69 | No |
 | I3, I4, I5 | `strata-agent` fetcher builds a cache path from an unvalidated digest; `""` collides on `.sqfs` | A1 + A5 | #81 | No |
 | I4 | `trust.VerifyLayers` builds squashfs paths from an unvalidated `layer.ID`; the comment claims `Join` prevents escape | A1 | #58 | No |
 | T3 | Stage 7 holds a bundle URI, not bundle bytes, so it cannot Rekor-verify | A4 | #85 | No |
@@ -1449,3 +1456,105 @@ states the standard it violated and puts a cadence on finding the next.
     entry has since been rewritten. Under the citation-tense rule (item 35) a
     historical instance stays in the past tense, but naming the correcting artifact
     makes it checkable rather than merely asserted.
+
+52. **R1 restated: `TOO STRONG` → `SOUND`, and its status falls from `ENFORCED E1`
+    to `UNPOPULATED`.** The old form demanded byte-identical lockfiles from two
+    identical resolutions. A lockfile records `ResolvedAt` from the wall clock, so
+    that fails on input one, and satisfying R1 literally meant abandoning a field
+    Strata deliberately records. The new form elides exactly one enumerated field,
+    `resolved_at`, and enumerates it **here** rather than deferring the elision set
+    to the specification (rule 9).
+
+    *What the old statement permitted that this one forbids.* An unsatisfiable
+    proposition generates no checkable obligation, so what stood in for R1 was
+    whatever its citation happened to assert.
+    `internal/resolver/resolver_test.go:574 TestEnvironmentID_Stability` compares
+    `EnvironmentID` and `ProfileSHA256` — two derived hashes, the first over the five
+    members of `envHashInput` (`spec/lockfile_hash.go:16-22`). Every field outside
+    that hash was free to differ between two identical resolutions with nothing
+    objecting: `profile_name`, `strata_version`, `rekor_entry`, `bundle`,
+    `mutable_layer`, `mount_order`, `satisfied_by`, `from_formation`.
+
+    *What can now refute it that could not before.* A differential resolve comparing
+    the full canonical serialisation with `resolved_at` elided. Under the old form no
+    such test could be R1 evidence, because an honest attempt fails on the timestamp;
+    under the new form it is the direct instrument, and it is cheap. `Basis` is
+    deliberately `none`: the cited test does not exercise the restated property (rule
+    6), and the old `ENFORCED E1` was measuring a *repaired* form — "identical on the
+    canonical content projection" — which deferred the word *canonical* to the
+    implementation, which is rule 9 again.
+
+53. **R2 restated: `TOO WEAK` → `SOUND`; it stays `REFUTED`.** The old form carried
+    the spec's own exception clause, *"except in fields whose specification says they
+    record declaration order"* — the second instance of the rule 9 pattern. The new
+    form names its own tie-break (name, then version, then digest) and grants no
+    exception.
+
+    *What the old statement permitted that this one forbids.* One sentence added to
+    the specification exempted `mount_order`, which is what decides OverlayFS
+    shadowing — so YAML key order could determine which layer's copy of a file a user
+    sees, and R2 would call it conformant.
+
+    *What can now refute it that could not before.* A permutation generator over
+    profile key order. Under the old form that generator **confirms** R2 no matter what
+    the implementation does, because any order-dependence it finds is in a field whose
+    specification can be said to record declaration order. Under the new form the same
+    generator is a refutation instrument, and it already has a counterexample:
+    `sort.Ints(queue)` at `internal/resolver/stages.go:301` breaks `MountOrder` ties by
+    slice position (#95).
+
+54. **R6 withdrawn, not restated — the attempt to restate it is what retired it.**
+    R6 said `EnvironmentID` is a function of *exactly the fields the specification
+    enumerates*, in both directions. Removing the deferral means stating both conjuncts
+    in terms of environment content, and both are already propositions here: conjunct
+    (a) becomes **X2** (*a behaviour that can alter the assembled environment
+    participates in the identity*) and conjunct (b) becomes **R7** (*two lockfiles that
+    assemble the same environment have equal `EnvironmentID`*), verbatim. The
+    enumeration was the only thing giving R6 content of its own.
+
+    R6 was in fact redundant from the moment R7 was added — item 2 of *Propositions
+    restated or added* above already recorded that "R6 and X2 constrain only the
+    direction behaviour → identity", which is the observation, one step short of the
+    conclusion. Withdrawal follows the I1 precedent: statement and verdict are left
+    standing as the historical record and the retirement is expressed in `Basis`.
+
+    *Why withdrawn rather than narrowed*, which is the question the restatement
+    criterion decides. One restatement does keep R6 independent: move the enumeration
+    into this document — *the ID is a function of exactly these five fields*,
+    `spec/lockfile_hash.go:16-22`. That form is sound, and falsifiable **only by drift
+    between the list here and the struct there** — two representations bound to each
+    other, which is what rule 11 and §6.1 exist to stop counting as evidence. It would
+    render `ENFORCED` while asserting nothing about whether either representation is
+    right. A proposition whose only refuting instrument is a consistency check against
+    itself has not moved, so it is retired instead.
+
+    Both of R6's citations transfer rather than lapse, and neither ever tested it:
+    `spec/spec_test.go:542 TestEnvironmentID` asserts that `RekorEntry` does **not**
+    change the ID, which is R7's direction; `spec/packages_test.go:208
+    TestEnvironmentIDIncludesPackages` witnesses that `Packages` *do* participate,
+    which is X2's. R6 held `ENFORCED E1` on two tests of two other propositions.
+
+55. **The distribution caveat gains its converse, and the header is re-derived.**
+    Item 46 recorded the caveat's first demonstration — rows moving discharged → live
+    with the totals unmoved. This entry is the other direction: three propositions
+    restated truthfully, no change to any code, and `ENFORCED E1` falls 4 → 2 while
+    `REFUTED` does not move at all. Measured on both sides —
+    `git show origin/main:PROPERTIES.md` into the tree and `go run ./cmd/propgen`, then
+    the same on this branch. A falling `ENFORCED` count is the instrument working, so
+    the totals are not a direction of travel either way.
+
+    This is also the evidence against the standing worry that restatement is
+    *narrowing until satisfied*. If these three had been narrowed to fit, the count of
+    enforced propositions would have risen. Not one of the three came out satisfied:
+    R1 lost its only citation, R2 stayed refuted, R6 was retired.
+
+56. **`go run ./cmd/propgen` reporting "no drift" is narrower than it sounds, and
+    said so falsely once.** propgen compares authored `Status` cells against the
+    derivation. It does **not** read §0's header sentence, so with the R-group changes
+    in place it reported `no drift` while the header still stated the previous
+    distribution. `TestPropertiesDistributionMatchesHeader`
+    (`internal/propdoc/propdoc_test.go:287-301`) is what caught it, by flattening
+    whitespace and requiring the document to contain each derived count as prose. Rule
+    10 applied to an instrument rather than a query: the scope of a checker is part of
+    its clean bill, and `go test ./internal/propdoc/` is the gate here, not propgen
+    alone.
