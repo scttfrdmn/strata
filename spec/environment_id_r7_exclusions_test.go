@@ -55,9 +55,16 @@ func r7Fixture() *LockFile {
 	}
 }
 
-// assertStillSpurious asserts that mutate changes the EnvironmentID even though
-// the assembled environment is unchanged — i.e. that the named R7 counterexample
-// still reproduces.
+// assertStillSpurious asserts that mutate changes the EnvironmentID across a
+// transformation the named issue claims preserves the assembled environment.
+//
+// The name is from when this file held four controls, each asserting a live R7
+// counterexample that would expire when its defect was fixed. Both remaining
+// callers are #95, whose environment-preserving premise the repo contradicts
+// elsewhere (see the file comment), so what these assertions buy is a regression
+// pin plus the fuzz target's machinery control — not an exclusion waiting to
+// expire. The failure message reflects that; whether #95's pair are R7
+// counterexamples at all is recorded on #95.
 func assertStillSpurious(t *testing.T, issue, why string, mutate func(l *LockFile)) {
 	t.Helper()
 
@@ -80,22 +87,33 @@ func assertStillSpurious(t *testing.T, issue, why string, mutate func(l *LockFil
 
 	after := mutated.EnvironmentID()
 	if after == before {
-		t.Errorf("%s appears to be FIXED: the identity no longer distinguishes these "+
-			"lockfiles.\n"+
-			"  the environment was unchanged because: %s\n"+
-			"  This test failing is the instruction to act, not a regression:\n"+
-			"    1. move this transformation into liveTransforms() in "+
-			"environment_id_r7_fuzz_test.go\n"+
-			"    2. delete this control and its entry from that file's stated domain\n"+
-			"    3. update the R7 row and %s's register row in PROPERTIES.md\n"+
-			"  id: %s", issue, why, issue, before)
+		t.Errorf("%s: the identity no longer distinguishes these two lockfiles.\n"+
+			"  the transformation, and what the issue claims about it: %s\n"+
+			"  This is a REGRESSION. It is NOT an instruction to move the "+
+			"transformation into liveTransforms():\n"+
+			"    - package order is content. internal/agent/package_installer.go:37 "+
+			"iterates the sets; :99 and :113 run one install command per entry, so a "+
+			"later entry can change what an earlier one installed.\n"+
+			"    - TestEnvironmentID_PackageOrderIsContent "+
+			"(environment_id_scope_test.go:839) pins that behaviour and should be "+
+			"failing beside this test. If it is passing, this test is the wrong one.\n"+
+			"    - #95 prescribes sorting both dimensions of Packages. That "+
+			"prescription is refuted on the issue for the reason above: it would give "+
+			"two different install sequences one identity.\n"+
+			"  Repair envHashInput, or revert the sort. Do not widen R7 over package "+
+			"order, and do not delete this control — it is also what proves the fuzz "+
+			"target can see a changed identity at all.\n"+
+			"  id: %s", issue, why, before)
 	}
 }
 
 func TestR7Exclusion_ReorderPackageSets(t *testing.T) {
 	assertStillSpurious(t, "#95",
-		"the order two package sets are listed in does not change which packages are "+
-			"installed; every version is exactly pinned",
+		"#95 claims the order two package sets are listed in does not change which "+
+			"packages are installed, since every version is exactly pinned. That claim "+
+			"is contradicted by internal/agent/package_installer.go:37,99,113 and the "+
+			"contradiction is recorded on the issue; what is asserted here is only that "+
+			"the identity distinguishes the two orders",
 		func(l *LockFile) {
 			l.Packages[0], l.Packages[1] = l.Packages[1], l.Packages[0]
 		})
@@ -103,8 +121,11 @@ func TestR7Exclusion_ReorderPackageSets(t *testing.T) {
 
 func TestR7Exclusion_ReorderPackageEntries(t *testing.T) {
 	assertStillSpurious(t, "#95",
-		"a package set is a set; listing numpy before scipy installs the same two "+
-			"exactly-pinned packages as the reverse",
+		"#95 claims a package set is a set, so listing numpy before scipy installs the "+
+			"same two exactly-pinned packages as the reverse. One pip command runs per "+
+			"entry, in order (internal/agent/package_installer.go:99), so the claim does "+
+			"not hold; what is asserted here is only that the identity distinguishes the "+
+			"two orders",
 		func(l *LockFile) {
 			p := l.Packages[0].Packages
 			p[0], p[1] = p[1], p[0]
