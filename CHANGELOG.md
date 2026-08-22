@@ -338,6 +338,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **A `PROPERTIES.md` Basis cell covering several execution routes now reports the
+  weakest of them, not the strongest** (#135). §3 defined the column as *the strongest
+  basis claimed* — a max over the evidence. For a proposition quantifying over every
+  execution path but covered unequally across them, a max reports the best-covered
+  route's strength as the proposition's, and says nothing about which route that was.
+  Two cells were in exactly that shape: `T1` and `T5` both read
+  `exhaustive/implementation` on the strength of a 112-cell enumeration of the agent
+  boot route, while the `strata run` route under each of them is covered only by example
+  tests. The overstatement is silent, which is why it needed a rule rather than an edit.
+
+  **The reduction is a meet, and the correction to the obvious form of a meet is the
+  substance of the change.** A min over the covered routes is the honest answer, but a
+  min needs an order and the seven bases do not have one: coverage is totally ordered
+  and subject is not (§2.1 rule 1). So the rule is a **pair where all covered scopes
+  share a subject, the set of them otherwise, over the union of the declared bounds** —
+  and a route known to be uncovered can be declared with `none`, which collapses the
+  cell, because a floor over a union says nothing about a part of the domain no entry
+  names. New cell grammar: `tier @ scope — citation`, entries separated by `;`. A
+  single entry naming no scope is the whole of the old grammar and parses unchanged,
+  which is why 32 of the 34 propositions needed no edit.
+
+  Four obligations are enforced on a multi-scope cell, with a sentinel each: name every
+  scope, name none twice, cite every scope claiming a basis, and **lead with the entry
+  the cell reduces to** — because the reduction is derived and surfaces only in the
+  Status column, so the first entry is the only basis a reader of the Basis column sees.
+
+  **What the green does not cover, stated because the change's own corpus cannot cover
+  it.** Both scoped propositions are `REFUTED`, and a live refutation outranks any basis
+  (§2.1 rule 5), so neither Status cell moves: `go run ./cmd/propgen` reports `no drift`
+  and the identical distribution — `ASSERTED (E0) 1, ENFORCED E1 2, REFUTED 27,
+  UNPOPULATED 2, WITHDRAWN 2` — before and after. A corpus test asserting today's rows
+  still pass would therefore be vacuous in the exact sense: it passes equally if the
+  reduction is a max. The corpus test instead reads the *parsed* reduction and asserts it
+  **differs** from the max, and each constructed fixture records whether its own meet and
+  max coincide and fails when a row that was supposed to discriminate stops
+  discriminating. That assertion, not any expected value, is what caught the one mutation
+  whose failing set was wider than predicted.
+
+  **What changes per consumer**, enumerated from
+  `grep -rn 'propdoc\.' --include='*.go' .` (one caller, `cmd/propgen`) and from §6's
+  human procedure, which has no callers to grep:
+  - **`go run ./cmd/propgen` now exits 1 on a Basis cell whose entries lead with
+    anything but the entry they reduce to, repeat or omit a scope, or leave a scope
+    uncited** — six new exported sentinels, one per malformation, so a test asserts which
+    check fired.
+  - **A multi-scope cell written in the old prose style no longer parses at all.** Both
+    migrated cells carried their second route as prose after a semicolon; under the new
+    grammar that is a hard parse error, so a half-migrated document cannot reach `main`.
+    Anyone adding a route to an existing cell must give every route a scope.
+  - **§6's procedure gains a step**: when a proposition's evidence covers its routes
+    unequally, the cell states each route and its own basis, and the Status column shows
+    the floor (`weakest of N scopes`). Recording only the best-covered route is now a
+    rejected document, not a style choice.
+
+  No production behaviour changes: `internal/propdoc` and `cmd/propgen` are documentation
+  tooling, not part of any shipped command. Nine mutation probes, each failing-test set
+  predicted before the run, 9 red with 8 sets exact; one probe was VOID on its first cut
+  because the mutant did not compile, which `go test` reports with exit 1 exactly as it
+  reports a caught defect (§7 item 80).
 - **`PROPERTIES.md`'s rule 11 is enforced: a `Discharged: Yes` row that cites no
   evidence now fails the build** (#137). Rule 11 — *a closed issue is a fact about the
   tracker, not evidence about the tree* — was written in one session and never run

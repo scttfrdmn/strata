@@ -31,8 +31,8 @@ finding is §0.2.
 > 2026-08-22, where `T7` moved from `REFUTED (1 of 4 live)` to
 > `REFUTED (3 of 4 live)` and every number above held — so it is stated once here
 > as what it is. `Distribution` tallies `Kind(status)`
-> (`internal/propdoc/propdoc.go:252`) and `Kind` discards the parenthesised detail
-> by construction (`:261`), so a movement expressible only in an `(n of m live)`
+> (`internal/propdoc/propdoc.go:339`) and `Kind` discards the parenthesised detail
+> by construction (`:348`), so a movement expressible only in an `(n of m live)`
 > count **cannot** appear in these totals. No future amendment demonstrates this
 > again; a movement that leaves the totals unchanged is the expected reading, and
 > the number to check is the cell.
@@ -506,7 +506,7 @@ consume *that*, and would owe the same guard for the part it used.
     nothing mechanical can close this gap.
 
     **Half of this rule is now enforced, and the boundary matters more than the
-    enforcement.** `propdoc.Doc.DischargeDefects` (`internal/propdoc/propdoc.go:363`)
+    enforcement.** `propdoc.Doc.DischargeDefects` (`internal/propdoc/propdoc.go:450`)
     reports every `Yes` row that names no basis or cites no artifact; `propgen`
     refuses to run and `TestPropertiesRegisterMeetsRule11` fails the build
     (`internal/propdoc/discharge_citation_test.go:143`). It is a report over a parsed
@@ -1005,6 +1005,18 @@ with the evidence. **Editing a Status cell directly is now a build failure rathe
 than a divergence nobody notices**, which is the point — the first population of
 this document maintained status beside the register, and the two disagreed within
 one PR.
+
+**When a proposition's evidence covers its routes unequally, the Basis cell says so
+per route.** A proposition quantifying over every execution path is rarely covered
+the same way on all of them, and one basis for the whole cell reports the
+best-covered route's strength as the proposition's. So write one entry per route —
+`tier @ scope — citation`, separated by `;` — lead with the entry the cell reduces
+to, and let the Status column derive the floor (`weakest of N scopes`). A route known
+to be uncovered is declared `none @ that route`, which collapses the cell to
+`UNPOPULATED` rather than leaving the gap to be inferred from the Evidence prose.
+§2.1 rule 12 states the reduction and the four obligations; `propgen` refuses a cell
+that breaks any of them. Recording only the best-covered route is a rejected
+document, not a style choice.
 
 A change to a proposition's text is an amendment with a date and a reason, not a
 silent edit: a proposition that quietly narrows until it is satisfied is not
@@ -2288,7 +2300,7 @@ states the standard it violated and puts a cadence on finding the next.
 
     **T7's live count moves 1 → 3 of 4, and this is the failure mode the derived column
     was supposed to prevent.** `Refutation.Live()` is `Discharged != "Yes"`
-    (`internal/propdoc/propdoc.go:87`), so both cells counted as discharged and §3
+    (`internal/propdoc/propdoc.go:117`), so both cells counted as discharged and §3
     reported `REFUTED (1 of 4 live)` — a false statement, in a trust proposition, sitting
     inside a *generated* cell. Deriving the column removed the drift between §3 and §4
     and could not remove the error, because the error was in the input the derivation
@@ -2309,7 +2321,7 @@ states the standard it violated and puts a cadence on finding the next.
     name, and putting the check in the wrong place was caught by a test written for
     something else.** Rule 11 has been enforceable since the day it was written and was
     not enforced, which is why item 78 exists. `Doc.DischargeDefects`
-    (`internal/propdoc/propdoc.go:363`) now reports every `Yes` row naming no basis or
+    (`internal/propdoc/propdoc.go:450`) now reports every `Yes` row naming no basis or
     citing no artifact, `propgen` refuses before it rewrites the Status column
     (`cmd/propgen/main.go:51-57`), and `TestPropertiesRegisterMeetsRule11`
     (`internal/propdoc/discharge_citation_test.go:143`) fails the build.
@@ -2384,9 +2396,136 @@ states the standard it violated and puts a cadence on finding the next.
     **The distribution caveat is restated as a property of the generator.** This is the
     fourth session in which a movement failed to appear in the header's totals (items 46,
     55, 62, and 78's `T7` count). `Distribution` tallies `Kind(status)`
-    (`internal/propdoc/propdoc.go:252`) and `Kind` discards parenthesised detail by
-    construction (`:261`), so a movement expressible only in an `(n of m live)` count
+    (`internal/propdoc/propdoc.go:339`) and `Kind` discards parenthesised detail by
+    construction (`:348`), so a movement expressible only in an `(n of m live)` count
     **cannot** appear there — it is derivable, not a tally of four coincidences. The block
     quote in the header now says so and says that no future amendment demonstrates it
     again. Four rediscoveries is the cost of recording a trap as a note: a note does not
     fire.
+80. **The Basis column was a max, and a max over unevenly covered routes overstates.**
+    §3 defined the cell as *the strongest basis claimed*. `T1` and `T5` each quantify over
+    every execution path and are covered unequally across them — 112 enumerated cells on
+    the agent boot route, example tests on the `strata run` route — so both cells read
+    `exhaustive/implementation`, and nothing in the column said which route that came from.
+    The overstatement is silent, which is what made it worth a rule rather than an edit
+    (#135, filed after #129's PR worked around it by naming the route in prose beside each
+    pair).
+
+    **The replacement is a meet, and the correction to the obvious form of it is the point.**
+    A min over covered routes is the honest reduction, but a min needs an order and the seven
+    bases do not have one: Coverage is totally ordered, Subject is not (rule 1). So the rule
+    is **a pair where all covered scopes share a Subject, the set otherwise, over the union of
+    the declared bounds** — and a scope known to be uncovered may be declared with `none`,
+    which collapses the cell, because a floor over a union says nothing about a part of the
+    domain no entry names. Stated as §2.1 rule 12; implemented as `Reduce`
+    (`internal/propdoc/basis.go:182`) and `parseBasis` (`internal/propdoc/propdoc.go:582`).
+
+    | Cell | Scopes | Old (max) | New (meet) | Status before | Status after |
+    |---|---|---|---|---|---|
+    | `T1` | 2 | `exhaustive/implementation` | `chosen/implementation` | `REFUTED (1 of 4 live)` | `REFUTED (1 of 4 live)` |
+    | `T5` | 3 | `exhaustive/implementation` | `chosen/implementation` | `REFUTED (1 of 4 live)` | `REFUTED (1 of 4 live)` |
+
+    **The two right-hand columns are the finding about this change's own evidence.** Both
+    scoped propositions are `REFUTED`, and a live refutation outranks any basis (rule 5), so
+    neither Status cell moves. `go run ./cmd/propgen` reports `no drift` and the identical
+    distribution — `ASSERTED (E0) 1, ENFORCED E1 2, REFUTED 27, UNPOPULATED 2, WITHDRAWN 2` —
+    before and after. **The document's own green therefore says nothing about whether the
+    reduction is right**, and a corpus test asserting today's rows pass would have been
+    vacuous in the precise sense: it would pass equally if `Reduce` returned the max. So the
+    corpus test asserts the *parsed reduction* and asserts it **differs from the max**
+    (`internal/propdoc/basis_scope_test.go:460`), and the renderings are covered by
+    constructed cells (`:376`). Cardinality stated: 2 multi-scope cells, 32 single-scope,
+    34 propositions.
+
+    **The migration was forced, not offered.** Both cells carried their second route as prose
+    after a semicolon, and under the new grammar neither parses — six inherited tests went red
+    on the unmigrated document, which is how a half-migrated document is prevented rather
+    than discouraged. Recorded as a test in its own right (`:560`).
+
+    **The guard §2 promised in advance came due, and the promise was well drafted.** The
+    ranking note said no tool consumed the basis ordering, that the list of pairs the order
+    ranks and the evidence does not was therefore "a note, and notes do not fire", and that
+    the first consumer would owe a guard making the list non-vacuous. `Reduce` is that
+    consumer. The guard exists (`:192`) and the answers are narrower than the promise
+    anticipated: `Reduce` consumes the **Coverage** order only and refuses items 1 and 2
+    outright; item 4 is *not* refused, because `asserted` is the bottom of the coverage order
+    and a floor over coverage is defined for it, while item 4's complaint is about usefulness,
+    which `Reduce` does not compute; and **item 3 is not expressible as a pair of bases at
+    all** — it is a statement about two cells — so its answer is structural, every entry
+    carrying its own scope, enforced separately (`:364`). Three of four ranked pairs
+    machine-checked, the fourth stated as inexpressible rather than silently dropped.
+
+    **Nine mutation probes, all nine red, eight failing sets predicted exactly.** The two
+    departures are worth more than the eight matches. Probe C ranked `chosen` as high as `exhaustive`
+    and I predicted one failing test; three failed, because the tie also disables the
+    lead-with-the-reduction rule (the meet equals the first entry, so a strongest-first cell
+    is accepted) and because two separate tests assert their own fixtures *discriminate* — each
+    row records whether its meet and max coincide and fails if a supposedly discriminating row
+    stops discriminating. That assertion, not any expected value, is what caught the probe: a
+    `Reduce` returning the max passes every value assertion on any row where the two agree.
+    Probe H was **VOID** on its first cut — removing `uncovered ||` orphaned the variable and
+    the mutant did not compile, which `go test` reports with exit 1 exactly as it reports a
+    caught defect — and went red at the predicted set after being re-cut as a value swap, per
+    the standing corollary that a probe should swap an expression rather than delete the only
+    use of something.
+
+    `zsh /tmp/mutprobe_135.sh` (baseline green asserted first; patch asserted to apply exactly
+    once; mutant asserted to build; tree restored from a `trap`):
+
+    | Probe | Mutation | Predicted | Failing | Verdict |
+    |---|---|---|---|---|
+    | A | meet becomes max | 10 | 10 | RED |
+    | B | subject agreement inverted | 4 | 4 | RED |
+    | C | `chosen` ranks as high as `exhaustive` | 1 | 3 | RED |
+    | D | weakest-first check disabled | 1 | 1 | RED |
+    | E | scope-uniqueness never records | 1 | 1 | RED |
+    | F | `@` recognised anywhere, not as a prefix | 1 | 1 | RED |
+    | G | scope count dropped from the status | 1 | 1 | RED |
+    | H | uncovered scope no longer collapses the cell | 2 | 2 | RED |
+    | I | the reported set is built wrong | 2 | 2 | RED |
+
+    Nine probes, seven distinct failing sets, sizes 1 to 10 — output that varies with its
+    input, which is the instrument check. The three that coincide are D, E and F, each caught
+    by the grammar table alone. Probe A's 10 is the whole package, the shape to expect from
+    inverting the reduction itself, since every corpus test parses the document through it.
+
+    **And a defect in the practice, found by this change and not fixed by it: seven
+    `path:line` citations elsewhere in this document were invalidated by inserting code above
+    their targets, and nothing checks them.**
+
+    | Anchor as written | Target | Actually at | Cited | Broken by |
+    |---|---|---|---|---|
+    | `propdoc.go:252` | `out[Kind(status)]++` | `:339` | 2× | this change |
+    | `propdoc.go:261` | `func Kind` | `:348` | 2× | this change |
+    | `propdoc.go:363` | `DischargeDefects` | `:450` | 2× | this change |
+    | `propdoc.go:87` | `Refutation.Live` | `:117` | 1× | never correct |
+
+    Seven citation instances across four cited lines, enumerated by extracting every anchor the
+    diff removes:
+
+    ```sh
+    git diff -U0 -- PROPERTIES.md | grep '^-' | grep -o '[a-z_]*\.go:[0-9]*\|`:[0-9]*`' | sort | uniq -c
+    ```
+
+    Six were broken by inserting code above their targets in this change. The seventh,
+    `propdoc.go:87` for `Refutation.Live`, was **already wrong when it was written**: at
+    `041e50f` `Live()` was at line 95. All are repaired here, and only the
+    pointers changed — every claim they support is unchanged, which is why repairing them
+    inside §7 is not rewriting the log.
+
+    **This is not a new issue; it is a measurement that contradicts an existing one's
+    premise.** #105 already scopes a citation checker and states that its level 1 — the
+    path resolves, the line is within the file, a `func <Name>(` sits at the line where a
+    test name is given — **finds zero defects today**, and therefore that level 1 is
+    insurance against future drift rather than a bug-finder. Five of these seven instances
+    are written repo-relative and land inside the file and within its length, and none of
+    the seven names a symbol; the remaining two are written bare (`` `:261` ``), the form
+    #105 measures as not machine-resolvable at all. So **level 1 as scoped is green on every
+    one of them** — silent on five and unable to read two. The class is not a dangling
+    pointer but a
+    pointer at the wrong valid line, and its base rate is not zero: seven instances in this
+    document, six of them created by one commit, in the one file this change happened to
+    touch. What separates a checkable citation from an uncheckable one is whether it names
+    what it points at, which is why #105's *"make test names mandatory alongside line
+    numbers"* is the part that buys the detection — recorded on #105 rather than filed
+    again here. (2026-08-22, #135.)
