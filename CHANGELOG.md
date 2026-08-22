@@ -338,6 +338,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **`PROPERTIES.md`'s evidence ladder is replaced by a pair: coverage × subject**
+  (#130). `E0 < E1 < E2 < E3` ranked propositions by *technique* — did you use a
+  generator, did you build a model — rather than by what was established, so an
+  exhaustive walk of a declared domain filed *below* a sampled walk of an
+  undeclared one. A basis is now Coverage ∈ {`asserted`, `chosen`, `sampled`,
+  `exhaustive`} × Subject ∈ {`implementation`, `model`}: seven cells, since
+  `asserted` takes no subject. The old ladder was one path through that grid which
+  switched subject at its top step, leaving three cells nameless — including
+  `exhaustive/implementation`, the strongest, which #129 produced and could only
+  be recorded as E1 or E2, beneath an exhaustive check of an abstraction. Per
+  consumer:
+  - *Readers of the document.* §2 is rewritten, and §2.1 rules 1, 2, 8 and 11 move
+    with it because removing the ordinal left them ill-formed. Rule 11 and §4's
+    preamble said "at E1 or better", and E3 was "better than E1" — so a
+    counterexample in shipping code could have been declared discharged on an
+    exhaustive check of a *model*. Both now read *coverage `chosen` or stronger,
+    subject `implementation`*, which is well formed because coverage alone is
+    totally ordered. No row was ever discharged that way.
+  - *Authors of Basis cells.* Both spellings are accepted — `E1` and
+    `chosen/implementation` derive the same Status — and `asserted/implementation`,
+    a bare `chosen`, and an unknown subject are each rejected with their own
+    message. **No Basis cell changed and no Status cell changed**: E0–E3 stay
+    canonical, so this is a change to what the column means, not to what it says.
+  - *`cmd/propgen` and `internal/propdoc` callers.* `propgen`'s output is
+    unchanged — no drift, same distribution, same 34 propositions. `propdoc` gains
+    exported `Coverage`, `Subject`, `BasisKind`, `Bases` and `Basis.Pair`; no
+    existing signature changed, and `Basis.Tier` now holds a canonical spelling
+    which `Pair` decodes. `DeriveStatus` resolves either spelling, so a `Basis`
+    built as a struct literal rather than parsed derives the same status.
+  - *Anyone relying on §2's availability claim.* It asserted "there are no fuzz
+    targets … no proposition may claim E2 until one exists" and had been false
+    since `spec/environment_id_r7_fuzz_test.go` merged. Replaced with the two
+    commands and their real output. `sampled/implementation` is reachable; no
+    proposition claims it, because that target's domain cannot satisfy R7's
+    premise — now stated as rule 2's second clause.
 - **A software ref's `name` carrying inline syntax is now re-parsed everywhere a
   `SoftwareRef` appears** (#53), not only in a profile's `software` list. A
   formation manifest or lockfile entry written as `- name: "cuda@12.3"` now means
