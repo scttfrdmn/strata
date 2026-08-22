@@ -45,6 +45,16 @@ func run(path string, write bool) error {
 	if unknown := doc.Unknown(); len(unknown) > 0 {
 		return fmt.Errorf("register names propositions section 3 does not state: %v", unknown)
 	}
+	// Reported before the Status column is touched: a row whose discharge is not
+	// justified makes every count derived from it wrong, so rewriting the column
+	// on top of one would publish a number the register does not support.
+	if defects := doc.DischargeDefects(); len(defects) > 0 {
+		for _, def := range defects {
+			fmt.Fprintf(os.Stderr, "%s:%d: %s: %v\n", path, def.Line, def.Tracking, def.Err)
+		}
+		return fmt.Errorf("%d register row(s) marked %q without naming and citing their evidence "+
+			"(section 2.1 rule 11)", len(defects), propdoc.DischargedYes)
+	}
 
 	drifts := doc.Drifts()
 	if len(drifts) == 0 {
