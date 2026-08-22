@@ -400,6 +400,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same exit status.
 
 ### Added
+- **The resolver's provider matrix is enumerated, and #67's two halves now have
+  measured boundaries** (#133). `PROPERTIES.md` R4 (*provider soundness*) and R5
+  (*provider completeness*) stood `SOUND` on a `Basis` of `none` — refuted by #67
+  in prose and executed by nothing.
+  `internal/resolver/provider_matrix_test.go` calls the shipping stage functions
+  directly and reports where each half fails. R5: two `mpi` providers × three
+  versions each × four constraint forms × both slice orders = 72 cells, **12 of
+  which reject a satisfiable set**. R4: all 24 input orders of a four-layer graph,
+  **3 of the 12 that reach stage 6 misordering a consumer before the only provider
+  that satisfies it**.
+
+  **The two halves are not independent in observation: R5's defect masks R4's.**
+  Stage 4 rejects any set whose *first* same-name provider does not satisfy, so
+  exactly half the input orders never reach stage 6 — and they are the ones that
+  most readily expose the wrong edge. Fixing the stage-4 half therefore *widens*
+  the stage-6 half's observable violation set. Anyone fixing one half should expect
+  the other's numbers to move, and both counts are counts of known defects: they go
+  to zero when #67 is fixed, and these tests must then be changed on purpose.
+
+  Two guards keep the tables from certifying the defect they measure. Satisfaction
+  is decided by an integer-major oracle written for the test rather than by
+  `semverGTE`/`semverLT`, because expectations computed with the code under test
+  hold by construction. And R4's premise is asserted rather than assumed — stage 5
+  permits two providers of one capability only because `InstallLayout: ""` counts as
+  versioned in `canCoexist`; if it did not, R4's domain would be empty and every
+  number in the table would be green.
+
+  No production behaviour changes: this is test-only, plus the `PROPERTIES.md` cells
+  the measurement populates. Refs #67.
 - **The agent's boot verification decision surface is enumerated, not sampled**
   (#128). All 112 combinations of `Config.Verifier` (nil, accepts-anything,
   refuses-anything, content-bound) × the bundle bytes a fetch yields (no fetcher,
