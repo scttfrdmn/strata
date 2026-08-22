@@ -2504,8 +2504,15 @@ states the standard it violated and puts a cadence on finding the next.
     diff removes:
 
     ```sh
-    git diff -U0 -- PROPERTIES.md | grep '^-' | grep -o '[a-z_]*\.go:[0-9]*\|`:[0-9]*`' | sort | uniq -c
+    git diff -U0 4d5ba47^..4d5ba47 -- PROPERTIES.md | grep '^-' \
+      | grep -o '[a-z_]*\.go:[0-9]*\|`:[0-9]*`' | sort | uniq -c
     ```
+
+    The range is the repair commit alone, and it has to be: widened to include this change's
+    first commit the same command reports twelve anchors, because rewriting the `T1` and `T5`
+    cells re-emits every citation inside them as a removal. A diff-based enumeration of
+    citations counts *lines touched*, not citations broken, unless the range is the one that
+    touched only pointers.
 
     Six were broken by inserting code above their targets in this change. The seventh,
     `propdoc.go:87` for `Refutation.Live`, was **already wrong when it was written**: at
