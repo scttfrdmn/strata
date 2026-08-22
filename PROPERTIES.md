@@ -1895,3 +1895,113 @@ states the standard it violated and puts a cadence on finding the next.
     years before a property document did. Recording it because the review standard
     rewards refutations and this is the first place where the useful output was a
     mitigation that decides nothing.
+
+### 2026-08-21 — the ladder ranked technique, and the strongest evidence had no rung
+
+69. **`Basis` records a pair, not an ordinal, and §2 is rewritten around it.**
+    Coverage ∈ {`asserted`, `chosen`, `sampled`, `exhaustive`} × Subject ∈
+    {`implementation`, `model`}. The old E0 < E1 < E2 < E3 ranked by *technique* —
+    did you use a generator, did you build a model — where what matters is what was
+    *established*. On the grid it is one path that switches subject at the top step:
+    `asserted` → `chosen/implementation` → `sampled/implementation` →
+    `exhaustive/`**`model`**. Three of the seven bases therefore had no rung, and
+    the strongest of the three, `exhaustive/implementation`, could only be filed as
+    E1 or E2 — *beneath* an exhaustive walk of an abstraction — because the top rung
+    had spent itself on a change of subject. The tell was the perverse ordering: an
+    exhaustive walk of a declared domain filing below a sampled walk of an
+    undeclared one. Filed as #130 off the #129 enumeration, which produced exactly
+    that result and had no honest cell to sit in.
+
+    Seven bases, not eight: `asserted` takes no subject, because where nothing was
+    executed there is no artifact the evidence was about. The collapse is stated in
+    §2 rather than left to be noticed, since a reader who counts the dimensions
+    expects eight — and it is what makes `ASSERTED (E0)` the only rendering asserted
+    coverage can produce, so `propdoc.Kind` needed no change.
+
+70. **The pair is strictly stronger than the ordinal in one direction and
+    incomparable in another, and §2 now says which.** `exhaustive/implementation`
+    beats `exhaustive/model` on faithfulness and is **incomparable to it on domain
+    size**: a bounded model state space can be orders of magnitude larger than any
+    implementation domain that can be enumerated. That is precisely why no single
+    number could hold #129. §2 states the total order triage wants *and* the four
+    places it ranks two bases the evidence does not — E2 vs E3, the pair above,
+    differing declared bounds, and the model subjects against `asserted`. A column
+    that cannot be totally ordered is more useful than one that can be and lies
+    about it.
+
+    Recorded honestly: that half is a **note, not a check**. Nothing in this
+    repository sorts propositions by basis, so the incomparability list cannot
+    fire, and §2 says what has to happen the first time something does — the order
+    and the list move into `internal/propdoc` together, and the list gets the guard
+    that makes it non-vacuous, namely that every pair it names must be one the order
+    actually ranks.
+
+71. **Removing the ordinal made three rules ill-formed, which is why they moved
+    with it.** Rule 1 was *"E3 without a faithfulness argument is E0"* — it demoted
+    a real result about a real artifact to "nothing was executed". It now says a
+    `model` subject does not transfer and a faithfulness argument does not rewrite
+    the subject: it *permits* recording an unargued model check as
+    `exhaustive/model`, and *forbids* reading an argued one as evidence about the
+    implementation. Rule 11 and §4's preamble said **"at E1 or better"**, and under
+    the old ladder E3 was better than E1 — so a discharge could have been claimed on
+    an exhaustive check of a *model*, declaring a counterexample in shipping code
+    gone without executing that code. No row was discharged that way; the ordinal
+    permitted it, which is enough. Both now read *coverage `chosen` or stronger,
+    subject `implementation`*, which is well formed because coverage alone **is**
+    totally ordered. Rule 8 and §3's legend: "tier" → "basis".
+
+72. **§2's own availability paragraph had been false since the day a fuzz target
+    merged, and the paragraph existed to prevent exactly that.** It asserted *"there
+    are no fuzz targets … no proposition may claim E2 until one exists"*, quoting two
+    commands. Re-run, the first now prints
+    `spec/environment_id_r7_fuzz_test.go:445:func FuzzR7NoSpuriousDistinctions`.
+    Item 14 of the first population added that paragraph so the tier could not be
+    "mistaken for available"; item 57 added the target; nothing connected them. A
+    section that asserts a technique's absence is a site the technique's arrival has
+    to update, and this is the relocated-rule failure committed by the author of the
+    rule against it. Replaced with the commands and their real output. R7 still
+    claims no basis, for the reason rule 2's second clause now states.
+
+73. **Rule 2 gains the R7 finding as a rule: a bound whose premise nothing in it can
+    satisfy makes the coverage `asserted`, whatever ran.** 46,546,540 executions,
+    green, over a domain in which no two *distinct* lockfiles can assemble the same
+    environment at all. An empty search space and a clean search are
+    indistinguishable in every number a run reports. So a `sampled` or `exhaustive`
+    claim states not only its bound but that the bound is **satisfiable** by
+    something the generator can produce — a question distinct, for an
+    implication-shaped property, from whether the transformation fired and whether
+    it was non-identity.
+
+74. **What fires, and what a green run here would not have caught.** No Basis cell
+    changed and no Status cell changed: E0–E3 stay canonical, `propgen` reports no
+    drift, and the distribution is identical, which is the evidence that this is a
+    change to what the column *means* and not to what it *says*.
+    `internal/propdoc/basis_pair_test.go` checks §2's seven-basis table against the
+    parser's registry in **both** directions — a spelling the document defines and
+    the tool rejects breaks an author who followed the document; one the tool accepts
+    and the document never defines is a basis nobody can look up, and only the first
+    is loud on its own. It states its own cardinality (7) rather than deriving it
+    from either side, per the rule that a generated table's cardinality is stated and
+    only its balance derived.
+
+    And it closes a hole the pair notation opens: the inherited distribution test
+    names **five** status kinds by hand, a bare list reads as the complete set, and a
+    pair-spelled cell with no legacy name derives a sixth that the prose would omit
+    with nothing objecting. The new test asserts the derived direction — whatever
+    kinds the register produces, the document states them — with a control proving
+    the search can fail.
+
+75. **Nine mutations, and the ninth was void in a way the #129 rule does not cover.**
+    The suite passed on its first run, so each check was probed by breaking what it
+    is about, with the failing check predicted first: drop a documented row, drop a
+    registry entry, misname a legacy tier, spell a pair inconsistently, break the
+    table header, stop canonicalising, revert `DeriveStatus`'s lookup, delete a kind
+    from the prose, and state a kind nothing claims. All nine went red, and the tree
+    was verified clean after each. But the canonicalisation mutant **did not
+    compile** (`declared and not used: k`), and `go test` exits 1 for a build failure
+    exactly as it does for a detected defect — so the first pass recorded it as red
+    with zero failing tests, and 8 of 9 nearly went into the record as 9 of 9. #129's
+    rule was *assert the patch applied*; the patch did apply. **The rule needs its
+    second half: assert the mutant builds.** Re-run as `k.Canonical()` →
+    `k.Spelling()`, which compiles, it produced the predicted 8 errors in the
+    canonicalisation test.
