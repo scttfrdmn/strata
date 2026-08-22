@@ -338,6 +338,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **T1 and T5 cite the 112-cell boot enumeration, and the citation is scoped to a
+  route** (#129). Both stood at `E1` on the routes fixed by #55 and #56.
+  `internal/agent/boot_matrix_test.go` (added under #128) enumerates the agent boot
+  route's whole decision surface, so both now claim
+  `exhaustive/implementation` — **for that route only.** T1 quantifies over *every*
+  path from "declared in a lockfile" to "mounted", the `strata run` route is covered
+  separately and only at `chosen`, and T5's "absent tool" and "absent log entry"
+  clauses are not dimensions of the agent table at all.
+
+  This exposed a limitation of the `Basis` column, filed as #135 and worked around
+  rather than fixed: §3 defines the cell as *the strongest* basis claimed, which is a
+  max over the evidence, and for a proposition whose domain is a union of execution
+  paths the max **overstates** — it reports the best-covered path's strength as the
+  proposition's, with nothing saying the others are weaker. Both cells now name their
+  route, which §2.1 rule 2 already required (the declared bound is part of the claim,
+  and *which path* is a bound as much as *which inputs* is).
+
+  No status changes: both keep a live register row on #93, so the status function's
+  refutation rule dominates the Basis cell, and the distribution is unchanged. No
+  production code changes.
 - **`PROPERTIES.md`'s evidence ladder is replaced by a pair: coverage × subject**
   (#130). `E0 < E1 < E2 < E3` ranked propositions by *technique* — did you use a
   generator, did you build a model — rather than by what was established, so an
