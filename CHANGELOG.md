@@ -338,6 +338,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **`PROPERTIES.md`'s rule 11 is enforced: a `Discharged: Yes` row that cites no
+  evidence now fails the build** (#137). Rule 11 — *a closed issue is a fact about the
+  tracker, not evidence about the tree* — was written in one session and never run
+  against the rows already in the table, so two cells reading verbatim `Yes — closed
+  completed` survived the amendment naming that exact string until an audit found them
+  (§7 item 78). `propdoc.Doc.DischargeDefects` reports every `Yes` row that names no
+  basis or cites no artifact; `cmd/propgen` refuses before it rewrites the Status
+  column, and `TestPropertiesRegisterMeetsRule11` fails the build. Two exported
+  sentinels, one per half of the rule, so a test asserts *which* check fired — a
+  rejection from the wrong reason is not evidence for the right one.
+
+  **It is a report over a parsed document, not a parse error, and that placement was
+  corrected rather than chosen.** The check first went into `parseRefutation`, which
+  turned the inherited `TestPropertiesGuardCanFail` red: that test proves the derivation
+  reads the register by flipping a live row to `Yes`, and a rule-11 guard in the parser
+  makes such a document unreadable — including by the tool that would fix it. `Unknown`
+  already had the right shape.
+
+  **What the green does not cover** is stated in rule 11 and in
+  `checkDischargeCitation`'s doc comment: a row can name a basis, cite a real path, and
+  track a genuinely closed issue whose fix and closure are both correct, and still be
+  false, because the issue can be about a different claim than the counterexample beside
+  it — *subject divergence*. Two instances known (`P4`/#54, `T7`/#48); every component of
+  each is true; neither was found by a check, and no parser can find the next one.
+
+  Measured before it was scoped: 6 `Yes` rows, **0 failing today and 2 of 8 failing one
+  commit earlier**. One of the three `Partially` rows would be reported and is out of
+  scope as **#142**, because a `Discharged` change travels alone.
+
+  **What changes per consumer**, enumerated from
+  `grep -rn 'propdoc\.' --include='*.go' .` (one caller, `cmd/propgen`) and from §6's
+  human procedure, which is the other consumer and has no callers to grep:
+  - **`go run ./cmd/propgen` now exits 1 on a register row marked `Yes` without a basis
+    and a citation**, naming the line and the tracking artifact, where it previously
+    rewrote the Status column from that row. Anyone amending §4 sees the refusal before
+    the column is regenerated.
+  - **`go test ./internal/propdoc/` now fails on such a row**, so the document cannot
+    reach `main` carrying one.
+
+  No production behaviour changes: `internal/propdoc` and `cmd/propgen` are documentation
+  tooling, not part of any shipped command. Ten mutation probes, each failing-test set
+  predicted before the run, 10 for 10 (§7 item 79).
 - **Two `Discharged: Yes` register rows are corrected to `No` and `Partially` on
   re-derived evidence** (#137). §2.1 rule 11 says a closed issue is a fact about the
   tracker, not evidence about the tree; it was added after the rows it now governs and

@@ -25,6 +25,17 @@ finding is §0.2.
 > propositions stopped claiming more than their evidence supports, which is the
 > instrument working — so the totals cannot be read as a direction of travel in
 > either direction.
+>
+> **This is a property of the generator, not a caveat about four occasions.** It
+> has now been rediscovered four times — §7 items 46, 55 and 62, and item 79 on
+> 2026-08-22, where `T7` moved from `REFUTED (1 of 4 live)` to
+> `REFUTED (3 of 4 live)` and every number above held — so it is stated once here
+> as what it is. `Distribution` tallies `Kind(status)`
+> (`internal/propdoc/propdoc.go:252`) and `Kind` discards the parenthesised detail
+> by construction (`:261`), so a movement expressible only in an `(n of m live)`
+> count **cannot** appear in these totals. No future amendment demonstrates this
+> again; a movement that leaves the totals unchanged is the expected reading, and
+> the number to check is the cell.
 
 Provenance for every measurement in this document unless stated otherwise:
 
@@ -464,6 +475,37 @@ the caveat is a caveat about nothing.
     Two representations agreeing is not evidence that either is right; a generated
     field removes drift, not error. The audit obligation in §6.1 exists because
     nothing mechanical can close this gap.
+
+    **Half of this rule is now enforced, and the boundary matters more than the
+    enforcement.** `propdoc.Doc.DischargeDefects` (`internal/propdoc/propdoc.go:363`)
+    reports every `Yes` row that names no basis or cites no artifact; `propgen`
+    refuses to run and `TestPropertiesRegisterMeetsRule11` fails the build
+    (`internal/propdoc/discharge_citation_test.go:143`). It is a report over a parsed
+    document rather than a parse error, because a policy violation must not make the
+    document unreadable by the tool that would fix it. The occasion was that this rule
+    was written in one session and never run against the rows already in the table:
+    two cells reading verbatim `Yes — closed completed` survived the amendment that
+    names that exact string, for a day, and were found by an audit rather than by a
+    check (§7 item 78).
+
+    **What no check here can see: subject divergence.** A row can name a basis, cite a
+    real path, and track a genuinely closed issue whose fix is real and whose closure
+    is correct — and still be false, because the issue is about a *different claim*
+    than the counterexample beside it. Every component is true and the row is not.
+    Two instances are known, and each was found by a different accident rather than by
+    any check:
+
+    | Row | Tracking | What the row claimed | What the closed issue was about |
+    |---|---|---|---|
+    | `P4` | #54 | Stage 7 refuses profiles resolved against the **shipped catalog** | `file://` **scheme dispatch**, which a fixture registry exercises (§7 item 38) |
+    | `T7` | #48 | `packages:` entries are **unattested** | that those entries **will not be installed** by `strata run` (§7 item 78) |
+
+    A syntactic check cannot reach this: the discharge is well-formed by every
+    criterion available to a parser, and the divergence lives between the row's
+    subject and the issue's. Finding it means reading the tracked artifact and
+    comparing subjects, which is the §6.1 audit obligation and nothing else. So the
+    green from `TestPropertiesRegisterMeetsRule11` bounds the closure-for-citation
+    conflation only, and must not be read as covering the class above.
 
 ---
 
@@ -2168,3 +2210,89 @@ states the standard it violated and puts a cadence on finding the next.
     counterexample beside it, so no parser can find the next one. The guard that **is**
     mechanical — a `Discharged` cell beginning `Yes` with no citation — is filed as the
     next change, stated as failing on 2 of 8 rows before these two were fixed.
+
+79. **The mechanical half of rule 11 becomes a check, the unmechanical half gets a
+    name, and putting the check in the wrong place was caught by a test written for
+    something else.** Rule 11 has been enforceable since the day it was written and was
+    not enforced, which is why item 78 exists. `Doc.DischargeDefects`
+    (`internal/propdoc/propdoc.go:363`) now reports every `Yes` row naming no basis or
+    citing no artifact, `propgen` refuses before it rewrites the Status column
+    (`cmd/propgen/main.go:51-57`), and `TestPropertiesRegisterMeetsRule11`
+    (`internal/propdoc/discharge_citation_test.go:143`) fails the build.
+
+    **Measured before it was scoped**, on `1a7646f`, because a check whose false-positive
+    rate is unknown is a hypothesis:
+
+    ```
+    $ awk -F'|' '/^\| /{c=$6; gsub(/^ +| +$/,"",c);
+        if (c ~ /^(Yes|No|Partially)/){split(c,a," "); n[a[1]]++}} END{for(k in n) print k, n[k]}' PROPERTIES.md
+    Partially 3
+    Yes 6
+    No 32
+    ```
+
+    Six `Yes` rows, **0 failing today** and **2 of 8 failing at `cc6e0c4`** — the check is
+    introduced against the population it was built for, and that population was fixed one
+    commit earlier, which is why the corpus test is the weaker of the two claims in its
+    file. Of the three `Partially` rows one (`I6` / #51) names neither a basis nor a path
+    for its discharged half and would be reported; the check is scoped to `Yes` and that
+    row is **#142**, because a `Discharged` change travels alone.
+
+    **The placement was wrong and an unrelated test said so.** The check first went into
+    `parseRefutation`, where the cell was already being split — placement by convenience.
+    `TestPropertiesGuardCanFail` then went red: that test proves the derivation reads the
+    register by taking the first live row and flipping its cell to `Yes`, and the row it
+    picks is `P4`/#54, whose reopened cell names no basis. A rule-11 guard in the parser
+    makes a document containing an unjustified discharge **unreadable** — by `propgen`,
+    which is the tool that would fix it, and by any test constructing a hypothetical
+    register. `Unknown` already had the right shape: a report over a parsed document, with
+    the enforcement in a test. Two things worth keeping: a policy check does not belong in
+    a parser, and the control that caught it was written for a different purpose, which is
+    the second time in two days that a control outside the instrument caught the
+    instrument (§7 item 78's mutant, stopped by the pre-commit gate's named-path staging).
+
+    **Ten mutation probes, each failing set predicted before the run, 10 for 10** — full
+    output at `/tmp/mutout_rule11.txt`, restore in a `trap ... EXIT` per item 78:
+
+    | Probe | Mutation | Failing tests |
+    |---|---|---|
+    | A | scope widened from `Yes` to `Yes`+`Partially` | `CheckDischargeCitation`, `PropertiesRegisterMeetsRule11` |
+    | B | basis check condition inverted | `CheckDischargeCitation`, `PropertiesRegisterMeetsRule11`, `DischargeReportRejectsTheRegisterAsItWas` |
+    | C | rule 11's two halves checked in the other order | `CheckDischargeCitation`, `DischargeReportRejectsTheRegisterAsItWas` |
+    | D | error message reports the 0-based line | `DischargeGuardReportsItsLine` |
+    | E | `DischargeDefect.Line` reports the 0-based line | `DischargeReportRejectsTheRegisterAsItWas` |
+    | F | citation pattern loosened to any backticked span | `CheckDischargeCitation`, `DischargeCitationPatternIsNotSatisfiedByProse` |
+    | G | basis pattern accepts any E-digit | `DischargeBasisPatternCoversEveryBasis` |
+    | H | basis pattern loses the three pair-only spellings | `CheckDischargeCitation`, `DischargeBasisPatternCoversEveryBasis` |
+    | I | `DischargeDefects` stops at the first defect | `DischargeReportRejectsTheRegisterAsItWas` |
+    | J | `DischargeDefects` collects the rows that passed | `PropertiesRegisterMeetsRule11`, `DischargeReportRejectsTheRegisterAsItWas` |
+
+    Two of these are about the tests rather than the guard. **I** is why the fixture
+    carries two offending rows: with one, a report that stopped after the first defect was
+    undetectable. **H** is a stated bound — `PropertiesRegisterMeetsRule11` does **not**
+    fail under H, because all six live `Yes` cells spell `E1` and none uses pair notation,
+    so the corpus cannot witness a basis pattern that has lost `chosen/model`,
+    `sampled/model` or `exhaustive/implementation`. That is what
+    `TestDischargeBasisPatternCoversEveryBasis` is for, and it iterates `Bases()` rather
+    than a hand-written list of E-names, which is the only form that covers the three
+    spellings with no legacy name.
+
+    **Subject divergence gets its name in rule 11, and the boundary is stated where the
+    green is read.** The class: a row marked discharged against a valid closed issue whose
+    fix is real and whose closure is correct, where the issue's subject differs from the
+    counterexample beside it. Every component true, the row false. Both known instances
+    are now tabulated in rule 11 — `P4`/#54 (item 38) and `T7`/#48 (item 78) — and each
+    was found by a different accident, neither by a check. No parser can reach it, so
+    `TestPropertiesRegisterMeetsRule11`'s green bounds the closure-for-citation conflation
+    only. Recorded in rule 11 itself rather than only here, because the place a bound has
+    to be legible is beside the thing whose green invites the wider reading.
+
+    **The distribution caveat is restated as a property of the generator.** This is the
+    fourth session in which a movement failed to appear in the header's totals (items 46,
+    55, 62, and 78's `T7` count). `Distribution` tallies `Kind(status)`
+    (`internal/propdoc/propdoc.go:252`) and `Kind` discards parenthesised detail by
+    construction (`:261`), so a movement expressible only in an `(n of m live)` count
+    **cannot** appear there — it is derivable, not a tally of four coincidences. The block
+    quote in the header now says so and says that no future amendment demonstrates it
+    again. Four rediscoveries is the cost of recording a trap as a note: a note does not
+    fire.

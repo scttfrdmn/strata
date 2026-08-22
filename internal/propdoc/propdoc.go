@@ -15,7 +15,9 @@
 package propdoc
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -79,12 +81,80 @@ type Refutation struct {
 	// Discharged is DischargedYes, DischargedNo or DischargedPartially.
 	Discharged string
 
+	// evidence is the rest of the Discharged cell after that token: for a
+	// discharged row, the basis and citation rule 11 requires. It is kept
+	// unexported because DischargeDefects is the only reader, and a second
+	// exported spelling of the cell would be a second thing to keep in step.
+	evidence string
+
 	lineIdx int
 }
 
 // Live reports whether the refutation is still standing. Partially discharged
 // counts as live: a counterexample half-answered still refutes.
 func (r Refutation) Live() bool { return r.Discharged != DischargedYes }
+
+// Rejection reasons for a Discharged: Yes cell, exported so a test can assert
+// which check fired rather than that some check did. A rejection from the wrong
+// reason is not evidence for the right one.
+var (
+	// ErrDischargeNoBasis is returned when a Yes cell names no basis, so the
+	// reader cannot tell whether the evidence meets rule 11's floor.
+	ErrDischargeNoBasis = errors.New("propdoc: a Discharged: Yes cell must name the basis of its evidence")
+	// ErrDischargeNoCitation is returned when a Yes cell cites no artifact —
+	// the case "Yes — closed completed" is, where the only thing offered is a
+	// fact about the tracker.
+	ErrDischargeNoCitation = errors.New("propdoc: a Discharged: Yes cell must cite the evidence, not the closure")
+)
+
+// dischargeCitation matches a backtick-quoted span naming a file, optionally
+// with line numbers. The extension list is wider than the current corpus needs
+// (every citation today is a .go path) so that citing a workflow, a recipe or a
+// document is not a rejection.
+var dischargeCitation = regexp.MustCompile("`[^`]*[\\w./-]+\\.(?:go|md|ya?ml|sh|json)(?::[\\d,-]+)?[^`]*`")
+
+// dischargeBasis matches any of the seven bases of section 2, in either
+// spelling. Legacy E0-E3 name four of them; the other three have pair
+// spellings only.
+var dischargeBasis = regexp.MustCompile(`\b(?:E[0-3]|asserted|(?:chosen|sampled|exhaustive)/(?:model|implementation))\b`)
+
+// checkDischargeCitation is the per-cell predicate behind DischargeDefects: it
+// applies section 2.1 rule 11 to one Discharged cell. A row may be marked Yes
+// only on re-derived evidence, and it cites that evidence rather than the
+// closure. Rule 11 makes two demands — the evidence is at coverage `chosen` or
+// stronger with subject `implementation`, and the row cites it — so the cell has
+// to say both which basis and which artifact, and each missing half gets its own
+// error.
+//
+// # What this cannot catch
+//
+// A cell can name a basis, cite a real path, track a genuinely closed issue, and
+// still be false, because the closed issue can be about a *different claim* than
+// the counterexample beside it. Two instances are known — P4/#54 (the row was
+// about the embedded catalog, #54 fixed file:// scheme dispatch) and T7/#48 (the
+// row says `packages:` entries are unattested, #48 added a not-installed
+// warning). Every component of such a row is true. Nothing here, and no parser,
+// can see it: finding it means reading the tracked issue and comparing subjects.
+// This function's green is therefore not evidence about that class.
+//
+// Scope, measured on 1a7646f: the check runs on Yes only. Of the three
+// Partially cells, one (I6/#51) names neither a basis nor a path for its
+// discharged half and would be reported; that row needs a re-derivation, and a
+// Discharged change travels alone, so it is #142 rather than a change here.
+func checkDischargeCitation(discharged, rest string, lineIdx int) error {
+	if discharged != DischargedYes {
+		return nil
+	}
+	if !dischargeBasis.MatchString(rest) {
+		return fmt.Errorf("propdoc: line %d: Discharged cell is %q with no basis named: %w",
+			lineIdx+1, strings.TrimSpace(discharged+" "+rest), ErrDischargeNoBasis)
+	}
+	if !dischargeCitation.MatchString(rest) {
+		return fmt.Errorf("propdoc: line %d: Discharged cell is %q with no artifact cited: %w",
+			lineIdx+1, strings.TrimSpace(discharged+" "+rest), ErrDischargeNoCitation)
+	}
+	return nil
+}
 
 // Doc is a parsed PROPERTIES.md.
 type Doc struct {
@@ -259,6 +329,52 @@ func (d *Doc) Unknown() []string {
 	return out
 }
 
+// DischargeDefect describes a register row marked Discharged: Yes whose cell does
+// not meet section 2.1 rule 11.
+type DischargeDefect struct {
+	// Line is the 1-indexed line of the register row.
+	Line int
+	// Tracking is the row's Tracking cell, so the reader can go to the artifact.
+	Tracking string
+	// Cell is the Discharged cell as written.
+	Cell string
+	// Err wraps ErrDischargeNoBasis or ErrDischargeNoCitation, so a caller can
+	// tell which of rule 11's two demands the row fails.
+	Err error
+}
+
+// DischargeDefects returns every register row marked Discharged: Yes that names
+// no basis or cites no artifact, in document order — the "closed completed" case
+// rule 11 was written against, and the near misses either side of it.
+//
+// This is a report rather than a parse error, and the distinction is the whole
+// design. Rule 11 is a policy about what a row may claim, not a statement about
+// whether the row can be read; making a violation a parse failure would mean a
+// document with one unjustified discharge could not be read *at all* — not by
+// propgen, which is the tool that would regenerate its Status column, and not by
+// a test constructing a hypothetical register to prove some other check can fail.
+// Unknown has the same shape for the same reason. The enforcement lives where it
+// belongs, in a CI test asserting this slice is empty, so a rule-11 violation
+// fails the build with a message naming the row rather than aborting every reader
+// of the document.
+//
+// The predicate is checkDischargeCitation, whose doc comment states what it
+// cannot see.
+func (d *Doc) DischargeDefects() []DischargeDefect {
+	var out []DischargeDefect
+	for _, r := range d.reg {
+		if err := checkDischargeCitation(r.Discharged, r.evidence, r.lineIdx); err != nil {
+			out = append(out, DischargeDefect{
+				Line:     r.lineIdx + 1,
+				Tracking: r.Tracking,
+				Cell:     strings.TrimSpace(r.Discharged + " " + r.evidence),
+				Err:      err,
+			})
+		}
+	}
+	return out
+}
+
 // section identifiers used while scanning.
 type section int
 
@@ -399,7 +515,7 @@ func parseRefutation(cells []string, lineIdx int) (Refutation, error) {
 		return Refutation{}, fmt.Errorf("propdoc: line %d: register row has %d fields, want %d",
 			lineIdx+1, len(cells), registerCells)
 	}
-	discharged, _, _ := strings.Cut(strings.TrimSpace(cells[5]), " ")
+	discharged, rest, _ := strings.Cut(strings.TrimSpace(cells[5]), " ")
 	switch discharged {
 	case DischargedYes, DischargedNo, DischargedPartially:
 	default:
@@ -421,6 +537,7 @@ func parseRefutation(cells []string, lineIdx int) (Refutation, error) {
 		Capability: strings.Trim(strings.TrimSpace(cells[3]), "`*"),
 		Tracking:   strings.TrimSpace(cells[4]),
 		Discharged: discharged,
+		evidence:   rest,
 		lineIdx:    lineIdx,
 	}, nil
 }
