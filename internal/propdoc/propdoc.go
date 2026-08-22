@@ -20,8 +20,9 @@ import (
 	"strings"
 )
 
-// Tier values accepted in a proposition's Basis cell, in addition to the
-// evidence tiers E0 through E3 defined in section 2 of the document.
+// Tier values accepted in a proposition's Basis cell, in addition to the seven
+// bases defined in section 2 of the document — see Bases, and note that a basis
+// is a (Coverage, Subject) pair rather than a rung on a ladder.
 const (
 	// TierNone means no evidence is cited for the proposition.
 	TierNone = "none"
@@ -37,10 +38,14 @@ const (
 	DischargedPartially = "Partially"
 )
 
-// Basis is the authored half of a proposition's status: the highest evidence
-// tier claimed for it, and the citation carrying that claim.
+// Basis is the authored half of a proposition's status: the strongest basis
+// claimed for it, and the citation carrying that claim. "Strongest" is not a
+// total order — section 2 states the ranking convention and the pairs it ranks
+// that the evidence does not.
 type Basis struct {
-	// Tier is E0, E1, E2, E3, TierNone or TierWithdrawn.
+	// Tier is the canonical spelling of one of the seven bases — a legacy name
+	// E0 through E3, or pair notation such as "exhaustive/implementation" for a
+	// pair that has none — or TierNone or TierWithdrawn. Pair decodes it.
 	Tier string
 	// Citation is whatever the Basis cell says after the tier. For
 	// TierWithdrawn it names the replacement propositions.
@@ -127,8 +132,15 @@ func DeriveStatus(b Basis, live, total int) string {
 	if b.Tier == TierNone || b.Tier == "" || b.Citation == "" {
 		return "UNPOPULATED"
 	}
-	if b.Tier == "E0" {
-		return "ASSERTED (E0)"
+	// Asserted coverage enforces nothing, so it renders as what it is. Naming the
+	// basis in parentheses rather than hard-coding "E0" keeps the rendering keyed
+	// to the coverage; today asserted is the one basis whose pair has no subject
+	// and therefore exactly one spelling, so this can only print "ASSERTED (E0)".
+	if k, ok := lookupBasis(b.Tier); ok {
+		if k.Coverage == CoverageAsserted {
+			return "ASSERTED (" + k.Canonical() + ")"
+		}
+		return "ENFORCED " + k.Canonical()
 	}
 	return "ENFORCED " + b.Tier
 }
@@ -363,9 +375,16 @@ func parseBasis(cell string, lineIdx int) (Basis, error) {
 	}
 	tier, rest, _ := strings.Cut(text, " ")
 	switch tier {
-	case "E0", "E1", "E2", "E3", TierNone, TierWithdrawn:
+	case TierNone, TierWithdrawn:
 	default:
-		return Basis{}, fmt.Errorf("propdoc: line %d: unknown evidence tier %q", lineIdx+1, tier)
+		// Either spelling is accepted and normalised to the canonical one, so a
+		// cell written as "chosen/implementation" derives the same Status as one
+		// written "E1" and the column stays uniform.
+		canonical, err := parseTier(tier, lineIdx)
+		if err != nil {
+			return Basis{}, err
+		}
+		tier = canonical
 	}
 	citation := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(rest), "—:-"))
 	if tier == TierNone && citation != "" {
