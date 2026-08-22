@@ -129,9 +129,15 @@ func MountWithConfig(layers []LayerPath, cfg Config) (*Overlay, error) {
 	}
 
 	// Sort ascending by MountOrder so we mount bottom-of-stack first.
+	// The sort is stable because two layers may share a MountOrder, and the
+	// stack order decides which of them wins in the merged view. A stable sort
+	// makes the tie-break the order the layers appear in the lockfile, which is
+	// the order spec.EnvironmentID hashes — an unstable sort would leave both
+	// the assembled environment and its identity resting on sort.Slice's
+	// internals, and they could disagree.
 	sorted := make([]LayerPath, len(layers))
 	copy(sorted, layers)
-	sort.Slice(sorted, func(i, j int) bool {
+	sort.SliceStable(sorted, func(i, j int) bool {
 		return sorted[i].MountOrder < sorted[j].MountOrder
 	})
 

@@ -130,15 +130,29 @@ func (l *LockFile) HasMutableLayer() bool {
 	return l.MutableLayer != nil
 }
 
-// EnvironmentID returns a stable identifier for this environment.
-// It is the SHA256 of the canonical content: base AMI SHA256, layer SHA256s
-// in mount order, env vars, and on-ready commands. Fields that are populated
-// after resolution (RekorEntry, Bundle, ResolvedAt, StrataVersion) are
-// excluded so that signing an already-resolved lockfile does not change its ID.
+// EnvironmentID returns a stable identifier for this environment. It is the
+// SHA256 of a canonical encoding of the lockfile's content; envHashInput in
+// lockfile_hash.go is the definition of what that covers, and the rule for
+// what may sit outside it is stated there. Do not maintain a second copy of
+// the field list here — the one that used to be here drifted twice.
 //
-// Two lockfiles with the same EnvironmentID describe identical environments.
+// What the identifier commits to:
+//
+//	Two lockfiles with the same EnvironmentID were assembled from identical
+//	instructions. Where those instructions are deterministic — the base image,
+//	the layer set and its mount sequence, the exported environment,
+//	digest-pinned packages — identical instructions produce identical content.
+//	Where they are not — on_ready commands, packages without a digest, a
+//	mutable upper — the identity commits to the instruction and not to its
+//	outcome.
+//
+// The second sentence is why this is not "the same ID means the same
+// environment": that stronger claim is recorded REFUTED in PROPERTIES.md (X2)
+// and the residual is enumerated in docs/environment-identity.md.
+//
 // Only frozen lockfiles (all SHA256s present) produce a stable ID; a lockfile
-// without content hashes returns an empty string.
+// without content hashes returns an empty string, which is not an identity and
+// must not be published, tagged or used as a key (#124).
 func (l *LockFile) EnvironmentID() string {
 	return computeEnvironmentID(l)
 }

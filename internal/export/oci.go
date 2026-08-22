@@ -41,9 +41,12 @@ func Export(ctx context.Context, lf *spec.LockFile, layerPaths []overlay.LayerPa
 	}
 
 	// Sort layerPaths by MountOrder ascending (bottom of stack first).
+	// Stable, for the same reason as the mounter: tied MountOrders keep
+	// lockfile order, so the exported image stacks its layers the way the
+	// mounted environment does.
 	sorted := make([]overlay.LayerPath, len(layerPaths))
 	copy(sorted, layerPaths)
-	sort.Slice(sorted, func(i, j int) bool {
+	sort.SliceStable(sorted, func(i, j int) bool {
 		return sorted[i].MountOrder < sorted[j].MountOrder
 	})
 
