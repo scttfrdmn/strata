@@ -338,6 +338,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **`EnvironmentID` now covers the fields the assembler actually reads** (#145,
+  closing #117, #118, #120, #121, #122, #123). The six issues above each
+  described the identity as too *narrow* — a sound subset missing a field. It was
+  not a subset. Cross-tabulating what the hash covered against what the assembler
+  reads found it misaligned in both directions: of the five things hashed, two are
+  read by no assembler at all (`on_ready`, which has no in-tree executor — #69 —
+  and each package entry's `sha256`, which the installer ignores in favour of
+  resolving `name@version` — #98), while ten fields that decide what lands on
+  `PATH`, in `/etc/profile.d/strata.sh` and in the module list were absent. No
+  patch to any one issue would have surfaced that, which is why they are resolved
+  by one decision rather than six patches.
+
+  The two hashed-but-unread fields stay hashed, under rule 3 of the decision: the
+  identity commits to the *instruction* and not to its outcome. An `on_ready:`
+  block is part of what the lockfile says to do even while nothing runs it.
+
+  Now hashed, with the consumer that made each one content: `profile` (becomes
+  `$STRATA_PROFILE` in every login shell), each layer's `id` (its mount point),
+  `name` and `version` (the `$STRATA_ENV/<name>/<version>/bin` entry on `PATH`),
+  `install_layout` (whether the layer contributes a `PATH` entry at all), and
+  `defaults` (the `module load` lines in `/etc/profile.d/strata-defaults.sh`).
+  Two encoding differences that assemble the same environment now share an
+  identity: an omitted `install_layout` equals an explicit `versioned`, and a
+  package set whose entries are `nil` equals one whose entries are `[]` (#117).
+
+  **What changes per consumer.** Enumerated from
+  `grep -rn 'EnvironmentID()' --include='*.go' . | grep -v _test.go`, which finds
+  eight call sites, plus the human procedure the identity exists for — citing an
+  environment in a paper:
+  - **No stored identity changes, because there are none.** No shipped code
+    assigns `Base.AMISHA256` — `grep -rn 'AMISHA256\s*[:=]' --include='*.go' . |
+    grep -v _test.go` finds only a format string, a copy into
+    `ProvenanceRecord`, and the hash input itself — so `IsFrozen()` is false for
+    every lockfile the resolver produces and `EnvironmentID()` returns `""` for
+    all of them (#64). Every consumer below sees `""` today and continues to.
+    This is why the widening lands now: it invalidates nothing, and that stops
+    being true the moment #64 is fixed.
+  - `internal/registry/s3client.go:617` and `localclient.go:374` key stored
+    lockfiles on `locks/<id>.yaml`. Unchanged in practice, per the above; a
+    lockfile that *is* frozen gets a different key than it would have before.
+  - `cmd/strata-agent/ec2_signaler.go:84` tags instances with
+    `strata:environment-id`. Same.
+  - `internal/export/oci.go:404` sets `org.opencontainers.image.revision`, and
+    `internal/zenodo/zenodo.go:105,211` puts the identity in DOI metadata. Same.
+  - `cmd/strata/update.go:117-119` and `cmd/strata/diff.go:41-43` compare two
+    lockfiles' identities to decide whether an update is a no-op. These are the
+    two sites that get *more* accurate: an update that changed only a layer's
+    version, or a profile rename, previously compared equal and reported no
+    change.
+  - **Anyone who has recorded an `EnvironmentID` outside the repository** — in a
+    paper, a ticket, a lab notebook — has recorded either `""` or a value from a
+    hand-built lockfile. The latter will not match a recomputation.
+
+  The membership rule is documented in `docs/environment-identity.md` and enforced
+  rather than described: `spec/environment_id_scope_test.go` compares seven route
+  tables against their struct definitions by reflection in both directions, so a
+  new field on any of them fails until it is classified; mutates each of the 57
+  classified fields to assert the identity moves if and only if the table says it
+  is content; and requires a table for every struct reached through a field the
+  tables call content, which is what stops the enumeration ending one level above
+  a new field. Counts from
+  `go test ./spec/ -run TestEnvironmentIDRoutes -count=1 -v | grep -c -- '--- PASS'`
+  which reports 67 — 57 mutation rows, 7 struct comparisons, 3 top-level tests.
+  `spec/declared_provenance_test.go` enforces the one exclusion that rests
+  entirely on an absence — that nothing in-tree reads `STRATA_REKOR_ENTRY` back
+  (#120) — by enumerating every mention of the name and failing on any that is
+  not a known write site.
+
+- **Two `sort.Slice` calls on layer stacks are now `sort.SliceStable`**
+  (`internal/overlay/mount_linux.go:140`, `internal/export/oci.go:49`). Two layers
+  may share a `MountOrder`, and the tie decides which one's files win in the
+  merged view. With an unstable sort the winner came from `sort.Slice`'s
+  internals, while `EnvironmentID` hashes the layers in lockfile order — so the
+  assembled environment and its identity could disagree about the same lockfile.
+  Both now break ties the same way, by the order the layers appear in the
+  lockfile.
+
+  **This changes nothing for any lockfile shipped code produces.** All three
+  producers assign distinct values — `internal/resolver/stages.go:411` and
+  `internal/build/buildenv.go:76,105` assign `i + 1`, `internal/scan/profile_gen.go:54`
+  assigns `i` — and an unstable sort on distinct keys is already deterministic.
+  It matters for hand-written and externally produced lockfiles. What a tie
+  *ought* to mean is still undefined by the specification (#95); this change only
+  removes the disagreement between two sorts.
+
 - **A `PROPERTIES.md` Basis cell covering several execution routes now reports the
   weakest of them, not the strongest** (#135). §3 defined the column as *the strongest
   basis claimed* — a max over the evidence. For a proposition quantifying over every
