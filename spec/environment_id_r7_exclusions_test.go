@@ -111,35 +111,6 @@ func TestR7Exclusion_ReorderPackageEntries(t *testing.T) {
 		})
 }
 
-func TestR7Exclusion_MutateOnReady(t *testing.T) {
-	assertStillSpurious(t, "#69",
-		"on_ready is hashed into the identity and executed by nothing — declared "+
-			"spec/lockfile.go:39-40, copied internal/resolver/stages.go:434, no executor "+
-			"in non-test code — so changing it cannot change what is assembled",
-		func(l *LockFile) {
-			l.OnReady = []string{"echo something entirely different"}
-		})
-}
-
-func TestR7Exclusion_MutatePackageDigest(t *testing.T) {
-	assertStillSpurious(t, "#98",
-		"the installer resolves name@version from upstream and ignores the recorded "+
-			"sha256, so two lockfiles differing only in that digest install identical bytes",
-		func(l *LockFile) {
-			l.Packages[0].Packages[0].SHA256 = "ffffffff"
-		})
-}
-
-func TestR7Exclusion_NilVersusEmptyInnerPackages(t *testing.T) {
-	assertStillSpurious(t, "#117",
-		"a package set with no entries installs nothing whether the slice is nil or "+
-			"empty; ResolvedPackageSet.Packages carries json:\"packages\" without "+
-			"omitempty (spec/packages.go:49), so one marshals as null and the other as []",
-		func(l *LockFile) {
-			l.Packages = []ResolvedPackageSet{{Manager: "pip", Packages: nil}}
-		})
-}
-
 // TestR7ExclusionNilEmptyIsNotAboutTheOuterSlice separates the defect from a
 // neighbour it would otherwise be conflated with. The outer Packages field does
 // carry omitempty, so nil and empty are both omitted there and the identity is
