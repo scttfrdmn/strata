@@ -58,7 +58,7 @@ Strata's differentiating claim is *independently verifiable provenance*. The
 expected shape of a review like this one is a list of attacks. That is not what
 the register in §4 contains.
 
-**Seventeen of thirty-three refutations need no adversary at all.** They are
+**Eighteen of thirty-four refutations need no adversary at all.** They are
 `H1` — permissive default (§1.4) — with no capability from §1.1 exercised, no
 position to occupy, and nothing to compromise:
 
@@ -267,6 +267,36 @@ tier being mistaken for available.
    reach. Rule 9 is the check §3.1 arrived at inductively, promoted to a rule so
    that a new proposition is tested against it before it is written down rather
    than after it has been satisfied.
+10. **The scope of a query is part of its claim.** Rule 2 says this for a
+    generator's input domain. It holds for every command whose output becomes
+    evidence: a `grep` is scoped by its path filter, a `git` history question is
+    scoped by the ref classes enumerated, a per-consumer analysis is scoped by
+    what "consumer" was taken to mean. Where a result depends on a set the author
+    selected, **the selection is an assertion and is stated beside the finding.**
+
+    Three instances, all from this project, all with the command run and the
+    output real:
+    - *Ref classes chosen to make a question tractable.* "Does pruning merged
+      branches close the stale-code-in-a-grep hazard?" was answered over
+      `refs/heads` + `refs/remotes` and came back "reduced, not removed." Over
+      `git for-each-ref` with no filter the old fail-open is in twelve release
+      tags — the one ref class that must never be deleted — so the hazard is
+      irreducible by ref deletion and the prune's premise was wrong, not merely
+      incompletely served.
+    - *The conflict set substituted for the diff set.* "No Go file differs between
+      the coverage-measured head and the merged head" was derived from the merge's
+      one conflicted path; a merge commit's diff necessarily includes everything
+      the other side brought in, and three Go files did differ.
+    - *Consumers enumerated where producers were the question.* The #92
+      `CHANGELOG.md` entry's per-consumer analysis was built from three greps for
+      callers of the changed code, while the refusal's trigger is a property of
+      the *lockfile* — so the one command that would have found the affected path
+      (`grep -rn 'ResolvedLayer{' … | grep -v _test.go`) was never run, and the
+      entry claimed a shipped producer that does not exist.
+
+    The failure mode is not a wrong command. It is a right command over a set the
+    author picked for a reason that never entered the finding. (Added 2026-08-21;
+    see §7.)
 
 ---
 
@@ -368,7 +398,7 @@ scope — a scope boundary worth re-examining before this document is cited.
 | **P1** | *Publication precondition.* A persistent identifier is minted only for a lockfile that is fully frozen, contains no mutable layer, and has been verified under a stated trust policy. | **TOO WEAK** | none | REFUTED (3 of 3 live) | Broken-but-satisfying implementation: define `IsFrozen()` as `return true`. P1 defers "fully frozen" to a predicate the implementation owns — the third instance of this pattern, with R2's exception clause and R6's enumeration. And the deferral is not hypothetical: `IsFrozen()` (`spec/lockfile.go:111-118`) inspects layer digests and the base AMI digest and **ignores `Packages` entirely**, so a lockfile that will `conda install` a `latest` version at boot is "fully frozen". Status: `cmd/strata/publish.go:73` checks `IsFrozen()` and nothing else — not `IsSigned()`, not `!HasMutableLayer()`, no trust policy (#66). |
 | **P2** | *Independent verifiability.* Given only the published record, a third party with no access to the original registry, no shared secrets, and no contact with the publisher can establish the authenticity of the environment it describes. | SOUND | none | REFUTED | The claim the whole project rests on, and the deposit does not support it. `internal/zenodo/zenodo.go:56-68 Deposit` makes exactly one `uploadFile` call (`:139`), and it deposits **the lockfile YAML and nothing else**. The attestation bundles are named by URI pointing back at the registry (`internal/registry/localclient.go:341` emits `file://…/bundle.json`; the S3 client emits `s3://` URIs), the cosign public key lives in the layer bucket (#62), and no layer bytes are deposited. A third party gets a list of digests and no material to check them against. Filed as #99. |
 | **P3** | *Referent stability.* The environment identity attested by a published record cannot subsequently denote different bytes. | SOUND | none | REFUTED | `internal/agent/package_installer.go:115` treats a recorded conda version of `latest` (or empty) as "resolve at boot", and `:101` installs pip packages from PyPI with no hash, so one `EnvironmentID` denotes different bytes on different days. Refuted for the empty adversary; A7 makes it steerable. Same root as I6; filed together as #98. |
-| **P4** | *Freeze attainability.* A lockfile produced by ordinary resolution can satisfy the system's own definition of frozen, without manual editing. | SOUND | none | REFUTED (1 of 2 live) | #64 — `strata freeze` structurally cannot succeed because nothing populates `ami_sha256`, and `IsFrozen()` requires `Base.AMISHA256 != ""`. The draft's own note anticipated the consequence and it holds: P1 is presently vacuous, because the precondition P1 guards cannot be reached by ordinary output. |
+| **P4** | *Freeze attainability.* A lockfile produced by ordinary resolution can satisfy the system's own definition of frozen, without manual editing. | SOUND | none | REFUTED (3 of 3 live) | #64 — `strata freeze` structurally cannot succeed because nothing populates `ami_sha256`, and `IsFrozen()` requires `Base.AMISHA256 != ""`. The draft's own note anticipated the consequence and it holds: P1 is presently vacuous, because the precondition P1 guards cannot be reached by ordinary output. |
 
 P4 is a liveness property rather than a safety one, and is included because a
 definition of *frozen* that ordinary output cannot satisfy makes P1 vacuous.
@@ -396,7 +426,7 @@ about B3. A research-citation claim needs B3.
 |---|-------------|---------|-------|--------|----------|
 | **X1** | *Specification completeness.* Every behaviour the profile schema permits an author to specify is either executed by the runtime or rejected at parse time. A field that is accepted, recorded, and never acted upon is a defect. | SOUND | none | REFUTED (3 of 3 live) | Four instances. (a) `OnReady` — parsed at `spec/profile.go:49`, copied into the lockfile at `internal/resolver/stages.go:434`, hashed at `spec/lockfile_hash.go:50`, executed nowhere (#69). (b) `Profile.Instance` and (c) `Profile.Storage` — `grep -rn 'InstanceConfig\|StorageMount' --include='*.go' . \| grep -v _test.go` returns only the declarations at `spec/profile.go:39,42,310,328` and no use; both are parsed, dropped at resolution, and never reach the lockfile. (d) `ResolvedPackageEntry.SHA256` — recorded and hashed into the identity, and never used by the component that installs the package (see I6). `RequiresHost` is a fifth candidate and is exempted only because the schema says so in as many words — *"Advisory only in v0.21.0"* (`spec/lockfile.go:57-60`), which is X1's rule applied honestly rather than a violation of it. (b)–(d) (b) and (c) filed as #102, (d) as #98. |
 | **X2** | *Identity captures behaviour.* If a specified behaviour can alter the state of the assembled environment, that behaviour's specification participates in the environment identity — or the identity does not determine the environment. | SOUND | none | REFUTED | Refuted in writing, by design: `spec/lockfile_hash.go:14-15` excludes `MutableLayer` from the hash — *"it is metadata about the build process, not the environment content itself (the upper is not content-addressed)"* — and a writable EBS upper mounted over the stack is exactly a behaviour that alters the assembled environment's state. Second instance: `Packages` *do* participate in the identity and still fail to determine the environment, because the bytes they name are fetched from a moving upstream at boot (I6, P3). The draft's sharp consequence stands and is now concrete. |
-| **X3** | *(new)* *Documented-form acceptability.* Every profile form the documentation presents as valid is accepted by the parser, and every artifact the documentation presents as runnable resolves against the shipped catalog. | SOUND | E1 — `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` | REFUTED (1 of 2 live) | Added 2026-08-21 (§7) because two tracker issues refuted nothing in §3 and both were the *converse* of X1. X1 lets a system satisfy it by rejecting everything at parse time; nothing said the documented forms must be accepted. #53 — the inline software-ref form `- python@3.13`, presented in the documentation, did not parse because `SoftwareRef` had no `UnmarshalYAML`; discharged at E1 by `spec/profile.go:237` with `spec/softwareref_yaml_test.go:22-24` and `spec/docsnippets_test.go`, the latter testing the documentation sites themselves. #70 — open, and confirmed live: `examples/alphafold3.yaml:10`, `examples/pytorch-jupyter.yaml:10` and `examples/r-quarto-workstation.yaml:10` name `@2024.03` formations while `cmd/strata/formations/` ships only `@2026.03`, and `go test ./examples/` passes. Four tests parse those files (`examples/examples_test.go:21,48`, `examples/catalog_test.go:19,101`) and none crosses a profile's reference against the catalog — rule 6 in the documentation dimension. |
+| **X3** | *(new)* *Documented-form acceptability.* Every profile form the documentation presents as valid is accepted by the parser, and every artifact the documentation presents as runnable resolves against the shipped catalog. | SOUND | E1 — `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` | REFUTED (2 of 3 live) | Added 2026-08-21 (§7) because two tracker issues refuted nothing in §3 and both were the *converse* of X1. X1 lets a system satisfy it by rejecting everything at parse time; nothing said the documented forms must be accepted. #53 — the inline software-ref form `- python@3.13`, presented in the documentation, did not parse because `SoftwareRef` had no `UnmarshalYAML`; discharged at E1 by `spec/profile.go:237` with `spec/softwareref_yaml_test.go:22-24` and `spec/docsnippets_test.go`, the latter testing the documentation sites themselves. #70 — open, and confirmed live: `examples/alphafold3.yaml:10`, `examples/pytorch-jupyter.yaml:10` and `examples/r-quarto-workstation.yaml:10` name `@2024.03` formations while `cmd/strata/formations/` ships only `@2026.03`, and `go test ./examples/` passes. Four tests parse those files (`examples/examples_test.go:21,48`, `examples/catalog_test.go:19,101`) and none crosses a profile's reference against the catalog — rule 6 in the documentation dimension. |
 
 X2 has a sharp consequence worth stating: a hook permitted to access the network
 or mutate the overlay cannot be made deterministic by hashing its command text.
@@ -461,12 +491,13 @@ moves the status of every proposition it names; nothing else does.
 | T1, T5 | EC2 agent fails open when cosign or the key is unavailable; no test covered it | H1 | #56 | Yes — E1, `cmd/strata-agent/cosign_verifier_test.go:127,187,249` |
 | I1′, I2, I3, I4, I5 | `strata run` layer cache: unvalidated path component, unhashed cache hits, empty SHA256 accepted | A2 + A5 | #57 | Yes — E1, `cmd/strata/layer_cache_integrity_test.go:74,123,185,249` |
 | T3 | `RekorHTTPClient.VerifyEntry` checked log-index existence and discarded the bundle | A4 | #59 | Yes — E1, `cmd/strata/verify_rekor_test.go:80,147,217` |
-| P4 | No profile could resolve offline with the shipped catalog (stage 7 `BUNDLE_MISSING`) | H1 | #54 | Yes — closed completed |
+| P4 | Stage 7 refuses every profile resolved offline against the shipped catalog, with `BUNDLE_MISSING` (originally worded *"no profile could resolve offline with the shipped catalog"*; reworded 2026-08-21 for the reason in §7 item 43, meaning unchanged) | H1 | #54 | No — **reopened 2026-08-21**. Was `Yes — closed completed`; the counterexample as *written here* still reproduces. What #54 fixed is scheme dispatch, so a `file://` registry now works: `STRATA_REGISTRY_URL=file://…/strata-fixture/registry strata resolve …/offline-minimal.yaml` exits 0, and CI's `Offline resolve (no AWS)` job asserts exactly that. The **shipped catalog** is a different registry — `buildRegistryClient` returns the embedded `MemoryStore` when `STRATA_REGISTRY_URL` is unset (`cmd/strata/resolve.go:105`), and its recipe-derived manifests carry no bundle, so stage 7 refuses every profile: `env -u STRATA_REGISTRY_URL strata resolve <single-layer profile>` → `[stage=stage7 code=BUNDLE_MISSING] layer "python-3.13.2-linux-gnu-2.34-x86_64" has no Sigstore bundle`. `cmd/strata/resolve.go:96-97` says so in a comment. The discharge matched a claim about the fixture registry to a row about the shipped catalog — the same referent slippage the citation-tense rule guards against, here in this register (§7 item 38) |
 | I6 | pip SHA256 pins were validated against nothing | A3 | #51 | Partially — `strata verify --packages` validates against PyPI out of band; the *install* still ignores the pin (see the I6 row below) |
 | T7 | `strata run` did not warn that `packages:` entries are unattested | H1 | #48 | Yes — closed completed |
 | T7 | The resolver expanded unattested formations without warning | H1 | #49 | Yes — closed completed |
 | X3 | The inline software-ref form `- python@3.13` was documented and did not parse | H1 | #53 | Yes — E1, `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` |
 | X3 | All three shipped examples name formation versions the catalog does not contain, and `go test ./examples/` passes | H1 | #70 | No |
+| X3, P4 | None of the six shipped formations resolves against the shipped catalog, at the versions that do exist. Measured on `87f02fe`: 6 of 6 exit 1, 0 lockfiles produced — five at stage 7 `BUNDLE_MISSING`, and `hpc-mpi@2026.03` at stage 4 `UNSATISFIED_REQUIREMENT` because `openmpi` requires `ucx@>=1` and the formation omits a `ucx` layer, while the same file asserts `validated_on: [al2023/x86_64, al2023/arm64]`. Distinct from #70: these profiles name `@2026.03`, which exists. The one CI job that resolves end to end points at the `file://` fixture, where bundles exist by construction, and its profile names layers rather than formations | H1 | #108 | No |
 | R4, R5 | Stage 4 validates against one provider, stage 6 wires the edge to another; stage 4 is itself first-match | H1 | #67 | No |
 | T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #93 (fix); the decision half was #92, closed | Partially — the absent-bundle half is closed by #104 at `internal/agent/agent.go:310-323`, E1 at `internal/agent/verify_bundles_test.go:187,252`; the nil-verifier half at `:285` is open under #93. `Partially` counts as live, so T1 and T5 stay refuted |
 | T1, T5 | `BundleFetcher`'s godoc **specified** the fail-open: implementations were told to return `(nil, nil)` for a layer naming no bundle, and `verifyBundles` treated no bytes as nothing to verify. The shipped `s3LayerFetcher` conforms. A defect in an interface's *specification* is inherited by every conforming implementation, so no amount of testing the implementations finds it | H1 | #92 | Yes — E1, `internal/agent/verify_bundles_test.go:291` (empty bytes refused) and `cmd/strata-agent/s3_bundle_contract_test.go:22` (the shipped `s3LayerFetcher` held to the corrected contract). #104 rewrote the godoc and inverted the behaviour together |
@@ -653,6 +684,39 @@ proposition whose verdict moves from `SOUND` to nothing while its status moves t
 changes behaviour states which propositions it moves and from what to what, in
 the form *"T5 moves from REFUTED to ENFORCED at E1; T1 remains REFUTED pending
 the agent-side counterexample."* A change that moves no proposition says so.
+
+**Referent stability applies to the records, not only to the environments.** P3
+states it for a published environment identity: what a record denotes cannot
+change after the record is made. The same failure occurs in this document, in the
+tracker, and in milestones — artifact classes P3 does not range over and the
+citation-tense rule (§7 item 35) does not cover, because that rule pins line
+numbers and issue numbers rather than the *sets* a claim quantifies over.
+
+So: **a claim recorded against a named set names the set as it stood when the
+claim was made.** If the set is renamed, re-dated, or re-scoped afterwards, the
+claim is restated or withdrawn — it is not left to be read against the new set.
+Two instances, both live at the time of writing:
+
+- **A discharge matched to the wrong registry.** The `P4 / #54` register row reads
+  *"No profile could resolve offline with the shipped catalog"* and was marked
+  `Yes — closed completed`. What #54 established is that a `file://` registry
+  resolves; the shipped catalog is the embedded `MemoryStore`, and it still fails
+  stage 7 for every profile. Row reopened above.
+- **A closed milestone whose completion claim moved under it.** `v0.21.0` records
+  #46 (*formation catalog refresh to 2026.03*) as in-scope work; #46's checklist
+  and table name `data-science`, `bioinformatics`, `quarto-publishing`, and
+  `alphafold3`, and the catalog now ships `bio-seq`, `genomics-python`,
+  `r-research`, and `jupyter-gpu`. The set was **renamed rather than re-dated**,
+  so items 1 and 4 of that checklist are satisfied for six formations other than
+  the six they name. The milestone's completeness claim does not refer to what it
+  appears to refer to. (#46 has since been unmilestoned, with the history recorded
+  on the issue; the point survives the bookkeeping, which is why it is written
+  here as a rule rather than only as a comment.)
+
+This is deliberately **not** a new numbered proposition. §0 puts process out of
+scope and §0.1 says this document is not a second tracker; a proposition about
+milestone hygiene would be both. It is an obligation on maintaining the record,
+which is what §6 is for.
 
 ---
 
@@ -979,6 +1043,198 @@ class and wrong in one detail**.
     opt-out. Labels, milestone, both proposition references (T1 and T5) and the
     zero-coverage measurement were already on #93 and were checked field by field
     before the transition, not after.
+
+### 2026-08-21 — a discharge matched to the wrong registry, and referent stability applied to the records
+
+Measurements in this entry were taken at
+`87f02fe10716f1f68423d8ab5cd84a280f289899`, working tree clean, with a binary
+built from it (`go build -o /tmp/strata-probe ./cmd/strata`). Re-derive:
+`git rev-parse HEAD; git status --porcelain`.
+
+**Propositions moved**, per the §6 obligation: **P4** moves from
+`REFUTED (1 of 2 live)` to `REFUTED (3 of 3 live)`; **X3** moves from
+`REFUTED (1 of 2 live)` to `REFUTED (2 of 3 live)`. No proposition's text, verdict
+or Basis changes, and no Status cell was edited by hand — both moved because
+register rows moved, and `go run ./cmd/propgen -write` rewrote the cells:
+
+```
+PROPERTIES.md:401: P4 written "REFUTED (1 of 2 live)", register implies "REFUTED (3 of 3 live)"
+PROPERTIES.md:429: X3 written "REFUTED (1 of 2 live)", register implies "REFUTED (2 of 3 live)"
+PROPERTIES.md: rewrote 2 Status cell(s)
+```
+
+The distribution is unchanged — `ASSERTED (E0) 1, ENFORCED E1 4, REFUTED 27,
+UNPOPULATED 1, WITHDRAWN 1` — because both propositions were already `REFUTED`.
+That is worth stating rather than passing over: **a row moving from discharged to
+live is invisible in the distribution.** It is visible only in the `(n of m live)`
+counts, which is the property §6 claims for the generated column, now exercised in
+the direction that costs something.
+
+The §0.2 headline count moved with the new row, from *seventeen of thirty-three*
+to *eighteen of thirty-four*, re-derived with the awk command printed there.
+
+38. **A discharge was matched to a claim about a different registry, and the
+    counterexample still reproduces.** The `P4 / #54` row read *"No profile could
+    resolve offline with the shipped catalog (stage 7 `BUNDLE_MISSING`)"*,
+    discharged `Yes — closed completed`. What #54 established is that **`file://`
+    scheme dispatch works**: with a materialised fixture registry,
+    `STRATA_REGISTRY_URL=file://…/strata-fixture/registry strata resolve
+    …/profiles/offline-minimal.yaml` exits 0, and CI's `Offline resolve (no AWS)`
+    job asserts exactly that and nothing more. The **shipped catalog** is a
+    different registry: `buildRegistryClient` returns the embedded `MemoryStore`
+    when `STRATA_REGISTRY_URL` is unset (`cmd/strata/resolve.go:105`), and its
+    recipe-derived manifests carry no bundle, so stage 7 refuses every profile —
+
+    ```
+    $ env -u STRATA_REGISTRY_URL /tmp/strata-probe resolve <single-layer profile>
+    strata: resolve: [stage=stage7 code=BUNDLE_MISSING] layer "python-3.13.2-linux-gnu-2.34-x86_64" has no Sigstore bundle — unsigned layers cannot be used
+    exit=1
+    ```
+
+    — which `cmd/strata/resolve.go:96-97` states in a comment, in the tree, the
+    whole time. Row reopened to `No`.
+
+    The mechanism is worth separating from the outcome. Nobody edited the row and
+    nobody misread the issue. The row's subject ("the shipped catalog") and the
+    fix's subject ("a `file://` registry") were close enough that "offline
+    resolution works now" covered both, and the register recorded the discharge
+    against the wider of the two. **A discharge is a claim about a specific
+    counterexample, and the counterexample is the row's text, not the issue's
+    title.** Rule 10 is the general form; this is the instance that produced it in
+    the register rather than in a report.
+
+    Note what did *not* catch it: `propgen` verified that the Status column agreed
+    with the register on every run since the register was written, and would have
+    gone on doing so forever. A generated column enforces consistency between two
+    places in this document; it says nothing about whether either one is true. The
+    control §2.1 rule 3 asks for — a checker that fails when it reads nothing,
+    implemented as `internal/propdoc.TestPropertiesGuardCanFail` — has a companion
+    this instance names: a checker that passes because both of its inputs are wrong
+    in the same direction.
+
+39. **#108 added as a register row against X3 and P4** — none of the six shipped
+    formations resolves against the shipped catalog, at the versions that *do*
+    exist. 6 of 6 exit 1 with 0 lockfiles produced; five fail at stage 7
+    `BUNDLE_MISSING` and `hpc-mpi@2026.03` fails earlier, at stage 4
+    `UNSATISFIED_REQUIREMENT`, because `openmpi` declares `ucx@>=1` and the
+    formation lists only `gcc` and `openmpi` — while the same file asserts
+    `validated_on: [al2023/x86_64, al2023/arm64]`, a field `spec/layer.go:223-225`
+    documents as "has been smoke-tested against". A formation that cannot pass
+    stage 4 was not smoke-tested on anything.
+
+    It is a **separate row from #70** rather than an extension of it, because the
+    two fail for unrelated reasons and either can be fixed without the other: #70
+    is `examples/*.yaml` naming `@2024.03` formations that do not exist, and these
+    profiles name `@2026.03`, which does. Recorded against X3's second clause
+    ("every artifact the documentation presents as runnable resolves against the
+    shipped catalog") and against P4, since a lockfile that cannot be produced
+    cannot be frozen.
+
+    On why the existing tests are green: `examples/catalog_test.go` asserts the
+    formation YAML **parses**, and CI's one end-to-end resolve is pointed at the
+    `file://` fixture — where bundles exist by construction — with a profile that
+    names layers rather than formations. Rule 6 in the catalog dimension: the job
+    that would catch this is aimed at the one registry where it cannot happen.
+
+40. **Rule 10 added — the scope of a query is part of its claim.** Rule 2 already
+    said it for a generator's input domain; three instances this session said it
+    for ordinary commands, in both directions, every time with the command run and
+    the output real. The third is the one that reached a shipped artifact: the #92
+    `CHANGELOG.md` entry enumerated "what changes per consumer" from three greps
+    for callers of the changed code, when the refusal's trigger is a property of
+    the *lockfile* — so the affected producer (`strata scan --output-lockfile`,
+    the only non-resolver constructor of a `spec.ResolvedLayer` in non-test code)
+    was never in the search, and the entry asserted a shipped producer of
+    bundle-less lockfiles that does not exist. Corrected in a separate PR.
+
+    Stated as a rule because the countermeasure is cheap and specific: the
+    selection travels with the finding. Not "I grepped for X" as method
+    boilerplate, but "this holds over *this set*, which I chose *because*" — at
+    which point the reason is inspectable and a reader can name the set that was
+    left out.
+
+41. **§6 gains a referent-stability obligation on the records themselves.** P3
+    states referent stability for a published environment identity. The same
+    failure happens to records, in artifact classes P3 does not range over and the
+    citation-tense rule (item 35) does not cover — that rule pins line numbers and
+    issue numbers, not the *sets* a claim quantifies over. Item 38 is one instance,
+    inside this register. The other is `v0.21.0`: a **closed** milestone whose
+    completion claim covers #46, whose checklist and table name `data-science`,
+    `bioinformatics`, `quarto-publishing` and `alphafold3`, while the catalog ships
+    `bio-seq`, `genomics-python`, `r-research` and `jupyter-gpu`. The set was
+    renamed rather than re-dated, so two of that checklist's items are satisfied
+    for six formations other than the six they name, and a closed record asserts
+    completeness of something it no longer denotes.
+
+    Deliberately **not** a new numbered proposition. §0 puts process out of scope
+    and §0.1 says this document is not a second tracker; a proposition about
+    milestone hygiene would be both. It is an obligation on maintaining the record,
+    which is §6's subject.
+
+42. **Two register rows remain discharged on issue closure, and are filed rather
+    than flipped here.** After item 38, `T7 / #48` and `T7 / #49` still read
+    `Yes — closed completed`, which §4's own standard ("removed only when its
+    discharge is evidenced at E1 or better") does not admit and §2.1 rule 4 rules
+    out directly — a closed issue is not executed evidence. Both describe a warning
+    that **is** present: `internal/resolver/stages.go:71-75` emits the unattested-
+    formation warning (observed by command in item 38's transcript) and
+    `cmd/strata/run.go:104` prints the `packages:` warning. Neither is asserted by
+    any test —
+
+    ```
+    $ grep -rln 'no Rekor attestation' --include='*_test.go' .
+    (no output)
+    ```
+
+    — so both are E0, and deleting either `warn` call leaves the suite green.
+
+    Not flipped in this amendment on purpose. Item 38 is a **measurement** — the
+    counterexample reproduces — whereas these two turn on *what `Yes` is allowed to
+    mean* when the behaviour is right and the evidence is absent. That is a
+    standard-application decision affecting T7's count, and it deserves its own
+    review rather than travelling inside a PR whose claim is something else. Filed
+    as #110, with the suggestion that `internal/propdoc` reject a `Yes` carrying no
+    tier and no citation, which converts this whole class from something a reader
+    must notice into a build failure.
+
+43. **The `#54` row's counterexample was reworded, because the guard's own control
+    could not mutate it.** `internal/propdoc.TestPropertiesGuardCanFail` is the
+    control §2.1 rule 3 asks for: it discharges a live row and requires that some
+    proposition's status move, so that a green `propgen` cannot mean "the parser
+    read nothing." (No numbered §7 item introduces it; it arrived unremarked in the
+    same commit as item 23, `d9d1b76`, which is its own small instance of the class
+    — the mechanism that makes the guard non-vacuous was the one change in that
+    commit the log did not claim.) It performs the mutation by string replacement —
+
+    ```go
+    strings.Replace(doc.lines[target.lineIdx], "| "+target.Discharged, "| "+DischargedYes, 1)
+    ```
+
+    — and `strings.Replace` with count 1 takes the **first** match in the line. The
+    row's counterexample cell began with the words *"No profile could resolve
+    offline…"*, so `| No` matched the **counterexample** column, not the
+    `Discharged` column. The mutation produced `| Yes profile could resolve
+    offline…` with the `Discharged` cell untouched, no status moved, and the control
+    failed — correctly, and for a reason that had nothing to do with what it tests.
+
+    Two properties of that control are worth recording rather than fixing in this
+    amendment, since the test file is inherited and this PR touches no `.go` file:
+
+    - It locates a cell by **text**, not by column index, so any counterexample
+      whose prose begins with `Yes`, `No` or `Partially` redirects the mutation.
+      This failed loudly, which is the good case; the bad case is a redirect that
+      still leaves a parseable document and a moved status, where the control would
+      pass while exercising the wrong column.
+    - It selects the **first** live row and `break`s, so which row the control
+      exercises is a function of register order. Reopening a row near the top of the
+      table silently changed the subject of the test.
+
+    The counterexample text now reads *"Stage 7 refuses every profile resolved
+    offline against the shipped catalog, with `BUNDLE_MISSING`"* — same claim,
+    different first word — with the original wording preserved in the cell. Filed as
+    #111. Noted here because a reader comparing this row against the register's
+    history should know the wording moved for a mechanical reason and the claim did
+    not.
 
 **Placement.** This file sits at the repository root beside `STRATA.md` rather
 than under `docs/`. `CLAUDE.md` hygiene rule 1 sends documentation to `docs/`;
