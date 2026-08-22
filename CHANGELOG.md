@@ -407,9 +407,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment" is defined by an enumerated set of transformations, each justified
   from the specification: permuting the layer slice (`MountOrder` defines the
   mount stack, and the generator assigns distinct values so a permutation is
-  always environment-preserving), re-signing, varying resolution metadata,
+  always environment-preserving), varying the attestation bundle, varying
+  provenance metadata (profile digest, resolver version, resolution time),
   appending an advisory `requires_host` entry, and rebuilding the `Env` map.
-  46,546,540 executions found no failing input.
+  10,943,695 executions over the corrected domain found no failing input.
+
+  **Two of the five transformations were unsound as first written, and the fix is
+  the more interesting half of this entry.** `vary-attestation` mutated
+  `RekorEntry` and `vary-identity-and-timing` mutated `ProfileName`, each on a
+  justification paraphrased from `spec/lockfile_hash.go:11-13` — *"they do not
+  affect what runs"*. Both fields are written into `/etc/profile.d/strata.sh` and
+  `/etc/strata/environment` (`internal/overlay/overlay.go:142-143,197-198`) and
+  into the child process environment of `strata run` (`cmd/strata/run.go:370,372`),
+  so they do affect what runs. R7's premise is *environment-preserving*, which
+  those pairs are not — and asserting that the identity must be unchanged across a
+  change that alters the environment asserts that an X2 violation is **correct**.
+  Both fields are now excluded and the transformations renamed to `vary-bundle`
+  and `vary-provenance-and-timing`; the underlying defect is filed as **#120**.
+  The R6 lesson was *do not let the implementation define the domain*, and it had
+  been applied one level too shallow: the domain came not from `envHashInput`'s
+  membership but from a comment beside it.
+
+  An earlier 46,546,540-execution figure was measured against the domain that
+  included both unsound transformations and is therefore not evidence about R7;
+  it is retained here only so the number is not silently replaced by a smaller one.
+
+  **The whole domain is conditional on a scope clause no document states (#121).**
+  `internal/overlay/overlay.go:207-211` marshals the entire lockfile into
+  `/etc/strata/active.lock.yaml` *inside* the assembled root. Read literally, every
+  field alters the assembled environment, no two distinct lockfiles assemble the
+  same one, R7's premise is unsatisfiable and every execution above searched an
+  empty domain. The generator is justified against the intended scope — mounted
+  content plus exported process environment, excluding the provenance record — and
+  that scope is currently an assumption of the test file rather than a statement in
+  `PROPERTIES.md`. Read the result as conditional on #121 landing.
 
   **Four transformations preserve the environment and still change the identity.**
   They are excluded from the live set — a target that fails on every input
@@ -432,6 +463,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     also found that `permute-layers` composed a rotation with a reversal, which
     for two layers is the identity: it reported a permutation having permuted
     nothing. Both branches are now provably non-identity for two or more layers.
+    It then failed a **second** time, on the #120 fix: with `RekorEntry` removed,
+    `vary-bundle` mutated only `Bundle`, which the generator leaves empty and
+    whose redraw returns empty on an exhausted stream — so it correctly reported
+    "nothing changed" and fired on no seed. Same repair as `permute-layers`
+    needed: append a byte, which is provably non-identity, rather than redraw and
+    hope the value differs. Two of five transformations have now needed it, which
+    is why the guard is load-bearing and not decorative.
   - The workflow asserts non-vacuity *before* it reads the search result,
     because **`go test -fuzz` exits 0 when the pattern matches no target**,
     printing only `testing: warning: no fuzz tests to fuzz` and then `PASS`. A
@@ -444,15 +482,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seeds. `go test ./...` runs the seed corpus only — milliseconds, and it
   searches nothing — which is why the search is a separate scheduled job.
 
-  Filed while building it and **not** addressed here: **#118**, which is the
-  opposite direction and outside anything R7 can find. `LockFile.Defaults`
+  **Filed while building it and not addressed here: #118, #120, #121, #122, #123
+  and #124.** All are the opposite direction — same identity, different
+  environment — and outside anything R7 can find, because R7's generator asserts
+  the converse implication. They came from enumerating which `LockFile` fields are
+  named by no proposition in `PROPERTIES.md`, which is a different activity from
+  search and is what the generator was actually most useful for: a forcing
+  function for writing the field list down.
+
+  In brief: `ProfileName`/`RekorEntry` reach the assembled root at five sites while
+  the hash comment says they do not (#120); `PATH` and `LD_LIBRARY_PATH` are built
+  entirely from `InstallLayout`, `Name` and `Version`, none of which are hashed, so
+  one identity covers a layer being on `PATH` and being absent from it (#122);
+  `EnvironmentID`'s own godoc lists four of the five hashed inputs and asserts the
+  refuted half of X2 as fact (#123); and the identity is used as a registry storage
+  key written with no conditional put, so two colliding lockfiles cannot coexist and
+  an instance boots whichever was published last (#124). The first of them:
+  `LockFile.Defaults`
   decides the contents of `/etc/profile.d/strata-defaults.sh`
   (`internal/overlay/overlay.go:164-182`) and is absent from `envHashInput`, so
   three lockfiles that load no module, `python/3.11.9`, and `python/3.9.18`
   respectively all share `EnvironmentID` `09f451dc…`. That is an identity
   collision — same ID, different environment — rather than a spurious
-  distinction, and R7's generator asserts the converse implication, so no amount
-  of searching it would surface this class.
+  distinction (#118).
 
 ## [0.22.0] - 2026-03-27
 

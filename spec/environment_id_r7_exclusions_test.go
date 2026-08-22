@@ -2,8 +2,20 @@ package spec
 
 import "testing"
 
-// The exclusions named in environment_id_r7_fuzz_test.go's stated domain, each
-// asserted to still reproduce.
+// The R7-refuting exclusions named in environment_id_r7_fuzz_test.go's stated
+// domain — same environment, different identity — each asserted to still
+// reproduce.
+//
+// The stated domain has a second kind of exclusion which is NOT controlled here,
+// and the gap is structural rather than an oversight: the opposite-reason
+// exclusions (Defaults #118, ProfileName and RekorEntry #120, the layer
+// manifest's Name/Version/InstallLayout #122) are cases where the environment
+// differs and the identity does not. Witnessing one means calling
+// overlay.ConfigureEnvironment and comparing the assembled roots, and
+// internal/overlay imports spec, so a control for them cannot live in this
+// package. It has to live in internal/overlay; #120 and #122 carry that as a
+// task. Until it does, this file controls the four R7-refuting exclusions and
+// every opposite-reason exclusion rests on its issue alone.
 //
 // These tests fail when a defect is FIXED. That is the intent. An exclusion list
 // is a claim about the present, and the way such a list rots is that someone

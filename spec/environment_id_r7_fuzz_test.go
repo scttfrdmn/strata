@@ -46,7 +46,31 @@ import (
 //
 // Excluded for the opposite reason — these change the environment, so R7's
 // premise does not hold and they are not R7's business:
-// Env, Defaults (#118), MutableLayer, and the layer set itself.
+// Env, Defaults (#118), ProfileName and RekorEntry (#120), the layer manifest's
+// Name, Version and InstallLayout (#122), MutableLayer, and the layer set itself.
+//
+// ProfileName and RekorEntry were in the live set when this file was written, on
+// justifications copied from spec/lockfile_hash.go:11-13 — "they do not affect
+// what runs". That comment is false: internal/overlay writes both into
+// /etc/profile.d/strata.sh and /etc/strata/environment, and cmd/strata/run.go
+// puts both in the child process environment. A transformation whose premise
+// fails does not merely fail to test R7 — asserting that the identity is
+// unchanged across it asserts that an X2 violation is *correct*. Taking a
+// justification from the implementation is the R6 mistake, and it was made here
+// one level down: not by asking envHashInput what mattered, but by believing a
+// comment next to it.
+//
+// # The domain rests on a scope clause PROPERTIES.md does not yet state — #121
+//
+// internal/overlay/overlay.go:207-211 marshals the entire lockfile to
+// /etc/strata/active.lock.yaml inside the assembled root. Read literally, every
+// field alters the assembled environment, no two distinct lockfiles assemble the
+// same one, R7's premise is unsatisfiable and this whole file searches an empty
+// domain. The transformations below are justified against the *intended* scope —
+// mounted content plus exported process environment, excluding the provenance
+// record — which is #121's subject and is currently an assumption of this file
+// rather than a statement anywhere. Until #121 lands, read every result here as
+// conditional on it.
 
 // r7Stream turns fuzz bytes into generator decisions. Every method is total: a
 // stream that has run out keeps yielding zero, so no input is rejected and no
@@ -254,25 +278,35 @@ func liveTransforms() []r7Transform {
 			},
 		},
 		{
-			name: "vary-attestation",
-			why: "A signature over an artifact does not change the artifact's bytes, so " +
-				"re-signing cannot change what is assembled.",
+			name: "vary-bundle",
+			why: "the attestation bundle is read by no assembler — grep for `.Bundle` " +
+				"finds no consumer that writes it into the assembled root or the child " +
+				"environment. RekorEntry was in this transformation and is now excluded: " +
+				"it reaches both (#120).",
 			apply: func(l *LockFile, s *r7Stream) bool {
-				l.RekorEntry = s.str()
-				l.Bundle = s.str()
-				return true
+				// Append rather than redraw. s.str() returns "" whenever the
+				// stream has run out, and buildLockFile leaves Bundle empty, so
+				// redrawing was a no-op on every seed — which the reachability
+				// test below caught. Appending is provably non-identity: the
+				// result is one byte longer than the input, always.
+				before := l.Bundle
+				l.Bundle += string(rune('a' + s.intn(26)))
+				return l.Bundle != before
 			},
 		},
 		{
-			name: "vary-identity-and-timing",
-			why: "profile name, profile digest, resolver version and resolution time " +
-				"describe how the lockfile came to exist, not what it assembles.",
+			name: "vary-provenance-and-timing",
+			why: "profile digest, resolver version and resolution time are read by no " +
+				"assembler. ProfileName was in this transformation and is now excluded: " +
+				"it becomes $STRATA_PROFILE in every login shell (#120).",
 			apply: func(l *LockFile, s *r7Stream) bool {
-				l.ProfileName = s.str()
+				beforeSHA, beforeVer, beforeAt := l.ProfileSHA256, l.StrataVersion, l.ResolvedAt
 				l.ProfileSHA256 = s.digest()
 				l.StrataVersion = s.str()
 				l.ResolvedAt = l.ResolvedAt.Add(time.Duration(s.next()) * time.Hour)
-				return true
+				return l.ProfileSHA256 != beforeSHA ||
+					l.StrataVersion != beforeVer ||
+					!l.ResolvedAt.Equal(beforeAt)
 			},
 		},
 		{
