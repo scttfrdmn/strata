@@ -1,0 +1,133 @@
+name: Fuzz
+
+# Property search for the PROPERTIES.md propositions that have fuzz generators.
+#
+# Why this is a separate scheduled workflow and not a step in CI: `go test ./...`
+# runs a fuzz target's *seed corpus* only. That takes milliseconds and searches
+# nothing — it is a regression check on inputs already known. Searching needs an
+# explicit -fuzztime, which does not belong on the critical path of a pull request.
+#
+# The division of labour:
+#   - CI (every PR)  replays the seed corpus and everything committed under
+#                    spec/testdata/fuzz/, so a crasher found here becomes a
+#                    permanent regression test in the ordinary job.
+#   - this workflow  searches for new ones.
+#
+# Crashers are reported as an artifact rather than committed automatically: a bot
+# commit to testdata would land a failing test on main with nobody having looked
+# at it.
+
+on:
+  schedule:
+    # Daily, at an hour chosen to avoid the top-of-hour scheduling backlog.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Duration to search per target (Go duration, e.g. 600s, 30m)"
+        required: false
+        default: "600s"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # -fuzz takes exactly one target, so each gets a matrix entry.
+          - pkg: ./spec
+            target: FuzzR7NoSpuriousDistinctions
+            # PROPERTIES.md R7 — no spurious distinctions.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Search
+        id: search
+        env:
+          FUZZTIME: ${{ inputs.fuzztime || '600s' }}
+          PKG: ${{ matrix.pkg }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -uo pipefail
+          rc=0
+          # -run '^$' so the package's ordinary tests are not re-run here; they
+          # are CI's job. Anchored target name so a prefix cannot select a
+          # different target than the one this entry names.
+          go test "$PKG" -run '^$' -fuzz "^${TARGET}\$" -fuzztime "$FUZZTIME" \
+            > fuzz.log 2>&1 || rc=$?
+          echo "search_rc=$rc" >> "$GITHUB_OUTPUT"
+          cat fuzz.log
+
+      # This step exists because of a measured property of `go test`: when the
+      # -fuzz pattern matches no target, it prints
+      #
+      #     testing: warning: no fuzz tests to fuzz
+      #     PASS
+      #
+      # and **exits 0**. Rename or typo a target and this workflow would report
+      # success every night while searching nothing, indistinguishable at the
+      # badge level from a night of real searching. So non-vacuity is asserted
+      # before the search result is read, and asserted first because a vacuous
+      # green is worse than a crasher: a crasher gets fixed.
+      - name: Assert the search actually ran
+        env:
+          MIN_EXECS: "100000"
+        run: |
+          set -euo pipefail
+
+          if grep -q "no fuzz tests to fuzz" fuzz.log; then
+            echo "::error::No fuzz target matched '${{ matrix.target }}' in ${{ matrix.pkg }}."
+            echo "go test exits 0 in this case, so this job would otherwise be green"
+            echo "while searching nothing. Fix the matrix entry or the target name."
+            exit 1
+          fi
+
+          # The last reported cumulative exec count. Absent entirely if the
+          # target failed to build or the corpus baseline never completed.
+          execs="$(sed -n 's/.*execs: \([0-9]*\).*/\1/p' fuzz.log | tail -1)"
+          if [ -z "$execs" ]; then
+            echo "::error::fuzz.log reports no exec count at all — the search did not start."
+            exit 1
+          fi
+          if [ "$execs" -lt "$MIN_EXECS" ]; then
+            echo "::error::Only $execs executions (floor $MIN_EXECS). The search started but"
+            echo "covered too little ground to count as one. Check for an early crash or a"
+            echo "generator that rejects most inputs."
+            exit 1
+          fi
+          echo "search executed $execs inputs"
+
+      - name: Upload crashers
+        if: always() && steps.search.outputs.search_rc != '0'
+        uses: actions/upload-artifact@v7
+        with:
+          name: crashers-${{ matrix.target }}
+          # Go writes a failing input here. Committing it to the repo turns it
+          # into a seed the ordinary CI job replays forever after.
+          path: |
+            spec/testdata/fuzz/
+            fuzz.log
+          if-no-files-found: warn
+
+      - name: Report the search result
+        if: always()
+        run: |
+          set -euo pipefail
+          rc='${{ steps.search.outputs.search_rc }}'
+          if [ "$rc" != "0" ]; then
+            echo "::error::${{ matrix.target }} found a failing input (go test exit $rc)."
+            echo "Download the crashers-${{ matrix.target }} artifact, commit the file under"
+            echo "spec/testdata/fuzz/${{ matrix.target }}/ so CI replays it, then fix or file."
+            exit 1
+          fi
+          echo "${{ matrix.target }}: no failing input found in this window."
