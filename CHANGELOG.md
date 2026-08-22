@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the thing that triggers the change is an input nobody in that set produces.
   - **The six shipped formations are not affected by this change, and do not
     boot for an unrelated reason.** Their 12 `pending-initial-build` values live
-    on `spec.Formation.RekorEntry`/`.Bundle` (`spec/layer.go:228-229`); the
+    on `spec.Formation.RekorEntry`/`.Bundle` (`spec/layer.go:227-228`); the
     resolver copies only the formation *name* into each layer
     (`internal/resolver/stages.go:413`) and treats the placeholder as a warning,
     not a refusal (`internal/resolver/stages.go:71-75`, the deliberate outcome
