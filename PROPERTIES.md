@@ -377,7 +377,7 @@ verdict, not a measurement of the implementation.
 | **R4** | *Provider soundness.* If the dependency graph contains an edge from a consumer to a provider for capability *c*, that provider satisfies the consumer's declared version constraint on *c*. | SOUND | none | REFUTED | #67. `internal/resolver/stages.go:266-270` builds `capProviderIdx[cap.Name] = i` in a nested loop with no guard, so the highest-indexed provider of a capability wins the edge irrespective of version. |
 | **R5** | *Provider completeness.* If some layer in the resolved set satisfies a consumer's constraint on *c*, resolution does not fail for want of a provider of *c*. | SOUND | none | REFUTED | #67, same issue, different half: `spec/layer.go:192-205 SatisfiesRequirement` is version-aware but first-match, so a satisfiable profile is rejected when a non-satisfying provider of the same capability name is encountered first. |
 | **R6** | *Environment identity is functional.* `EnvironmentID` is a function of exactly the fields the specification enumerates: changing any enumerated field changes the ID, and changing any non-enumerated field does not. | **TOO WEAK** | withdrawn — R7, X2 | WITHDRAWN (superseded by R7, X2) | **Withdrawn 2026-08-21, not restated — the attempt to restate it is what retired it.** The defect is proof-standard rule 9: *both* of R6's conjuncts defer to an enumeration the implementation owns, so hashing `base_ami_sha256` alone and enumerating `base_ami_sha256` alone satisfies R6 exactly while the identity distinguishes nothing. **What the old statement permitted:** the identity depending on an attestation pointer. Enumerate `rekor_entry`, and re-signing a layer changes `environment_id` — invalidating every cache entry for an environment whose *content* did not change — and old-R6 calls that correct, because the enumeration lists it. **What forbids it now, and why that is not a new R6:** removing the deferral means stating both conjuncts in terms of environment content, and both are already propositions here. Conjunct (a), *changing any enumerated field changes the ID*, becomes *a behaviour that can alter the assembled environment participates in the identity* — that is **X2**. Conjunct (b), *changing any non-enumerated field does not*, becomes *two lockfiles that assemble the same environment have equal `EnvironmentID`* — that is **R7**, verbatim. The enumeration was not incidental to R6; it was the only thing giving R6 content distinct from X2 ∧ R7. R6 in fact became redundant the moment R7 was added (§7 *Propositions restated or added* item 2, which already recorded that “R6 and X2 constrain only the direction behaviour → identity”); the deferral disguised it, and restating R6 is what exposed it. **What could now refute it that could not before — the question that decided withdrawal over restatement:** the one restatement that keeps R6 independent is to move the enumeration into this document — *the ID is a function of exactly these five fields*, `spec/lockfile_hash.go:16-22`. That form is sound, and falsifiable only by **drift between the list here and the struct there**: two representations bound to each other, which is exactly what rule 11 and §6.1 were adopted to stop counting as evidence. It would render `ENFORCED` while asserting nothing about whether either representation is right. A proposition whose only refuting instrument is a consistency check against itself has not moved, so R6 is withdrawn rather than narrowed. **Both citations transfer rather than lapse:** `spec/spec_test.go:542 TestEnvironmentID` asserts that `RekorEntry` does **not** change the ID — that is R7's direction, not functional-on-an-enumeration, so it was always evidence for R7 and never for R6 as written. `spec/packages_test.go:208 TestEnvironmentIDIncludesPackages` witnesses that `Packages` *do* participate, which is X2's direction. R6 carried `ENFORCED E1` on two tests, neither of which tested it. |
-| **R7** | *(new)* *No spurious distinctions.* Two lockfiles that assemble the same environment have the same `EnvironmentID`. | SOUND | none | REFUTED | Added 2026-08-21 (§7). R6 and X2 together constrain only one direction — that behaviour reaches the identity. Nothing forbids the identity distinguishing environments that are identical. `OnReady` is hashed (`spec/lockfile_hash.go:20,50`) and executed by nothing (#69), so two lockfiles that differ only in a never-run command list get different IDs and the same environment. |
+| **R7** | *(new)* *No spurious distinctions.* Two lockfiles that assemble the same environment have the same `EnvironmentID`. | SOUND | none | REFUTED (4 of 4 live) | Added 2026-08-21 (§7). R6 and X2 together constrain only one direction — that behaviour reaches the identity. Nothing forbids the identity distinguishing environments that are identical. `OnReady` is hashed (`spec/lockfile_hash.go:20,50`) and executed by nothing (#69), so two lockfiles that differ only in a never-run command list get different IDs and the same environment. **A generator exists and the Basis column is still `none`, deliberately.** `spec/environment_id_r7_fuzz_test.go` searches R7 over an enumerated set of environment-preserving transformations — permuting the layer slice under distinct `MountOrder`, re-signing, varying resolution metadata, appending an advisory `requires_host` entry, rebuilding the `Env` map — justified from the specification rather than from `envHashInput`'s membership, because deferring the domain to the code under test is what made the retired R6 unfalsifiable. 46,546,540 executions on `048aea4` found no failing input. That is evidence for **R7 restricted to that domain**, and R7 as stated quantifies over all environment-preserving pairs, four classes of which refute it — so citing a tier here would be the overclaim this document exists to catch. `TestR7SeedsReachEveryTransform` holds the floor that the seed corpus, which is all `go test ./...` runs, actually reaches every transformation; the search itself needs an explicit `-fuzztime` and runs in `.github/workflows/fuzz.yml`. |
 
 R4 and R5 are separate and a system can fail either independently. R4 failing
 means a consumer is wired to a provider that does not satisfy it; R5 failing
@@ -459,7 +459,7 @@ about B3. A research-citation claim needs B3.
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
 | **X1** | *Specification completeness.* Every behaviour the profile schema permits an author to specify is either executed by the runtime or rejected at parse time. A field that is accepted, recorded, and never acted upon is a defect. | SOUND | none | REFUTED (5 of 5 live) | Instances, each named with the issue it is filed as. No count is restated here: the register rows are the source and `Status` derives the total, and the lettering does not map one-to-one onto rows — `Profile.Instance` and `Profile.Storage` are two instances under one issue. (a) `OnReady` — parsed at `spec/profile.go:49`, copied into the lockfile at `internal/resolver/stages.go:434`, hashed at `spec/lockfile_hash.go:50`, executed nowhere (#69). (b) `Profile.Instance` and (c) `Profile.Storage` — `grep -rn 'InstanceConfig\|StorageMount' --include='*.go' . \| grep -v _test.go` returns only the declarations at `spec/profile.go:39,42,310,328` and no use; both are parsed, dropped at resolution, and never reach the lockfile. (d) `ResolvedPackageEntry.SHA256` — recorded and hashed into the identity, and never used by the component that installs the package (see I6). `RequiresHost` is a further candidate and is exempted only because the schema says so in as many words — *"Advisory only in v0.21.0"* (`spec/lockfile.go:57-60`), which is X1's rule applied honestly rather than a violation of it. (e) `validated_on` — a verification claim no code reads, and false where it can be checked (#113, added below). (f) the twelve `pending-initial-build` placeholders occupying `rekor_entry` and `bundle` (#46, added below). Filed as: (a) #69, (b) and (c) #102, (d) #98, (e) #113, (f) #46. |
-| **X2** | *Identity captures behaviour.* If a specified behaviour can alter the state of the assembled environment, that behaviour's specification participates in the environment identity — or the identity does not determine the environment. | SOUND | none | REFUTED | Refuted in writing, by design: `spec/lockfile_hash.go:14-15` excludes `MutableLayer` from the hash — *"it is metadata about the build process, not the environment content itself (the upper is not content-addressed)"* — and a writable EBS upper mounted over the stack is exactly a behaviour that alters the assembled environment's state. Second instance: `Packages` *do* participate in the identity and still fail to determine the environment, because the bytes they name are fetched from a moving upstream at boot (I6, P3). The draft's sharp consequence stands and is now concrete. |
+| **X2** | *Identity captures behaviour.* If a specified behaviour can alter the state of the assembled environment, that behaviour's specification participates in the environment identity — or the identity does not determine the environment. | SOUND | none | REFUTED (2 of 2 live) | Third instance, and the one measured rather than read off the source: `LockFile.Defaults` decides the contents of `/etc/profile.d/strata-defaults.sh` in the assembled root and is absent from `envHashInput`, so three lockfiles that load no module, `python/3.11.9` and `python/3.9.18` respectively all share `09f451dc…` (#118). Refuted in writing, by design: `spec/lockfile_hash.go:14-15` excludes `MutableLayer` from the hash — *"it is metadata about the build process, not the environment content itself (the upper is not content-addressed)"* — and a writable EBS upper mounted over the stack is exactly a behaviour that alters the assembled environment's state. Second instance: `Packages` *do* participate in the identity and still fail to determine the environment, because the bytes they name are fetched from a moving upstream at boot (I6, P3). The draft's sharp consequence stands and is now concrete. |
 | **X3** | *(new)* *Documented-form acceptability.* Every profile form the documentation presents as valid is accepted by the parser, and every artifact the documentation presents as runnable resolves against the shipped catalog. | SOUND | E1 — `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` | REFUTED (2 of 3 live) | Added 2026-08-21 (§7) because two tracker issues refuted nothing in §3 and both were the *converse* of X1. X1 lets a system satisfy it by rejecting everything at parse time; nothing said the documented forms must be accepted. #53 — the inline software-ref form `- python@3.13`, presented in the documentation, did not parse because `SoftwareRef` had no `UnmarshalYAML`; discharged at E1 by `spec/profile.go:237` with `spec/softwareref_yaml_test.go:22-24` and `spec/docsnippets_test.go`, the latter testing the documentation sites themselves. #70 — open, and confirmed live: `examples/alphafold3.yaml:10`, `examples/pytorch-jupyter.yaml:10` and `examples/r-quarto-workstation.yaml:10` name `@2024.03` formations while `cmd/strata/formations/` ships only `@2026.03`, and `go test ./examples/` passes. Four tests parse those files (`examples/examples_test.go:21,48`, `examples/catalog_test.go:19,101`) and none crosses a profile's reference against the catalog — rule 6 in the documentation dimension. |
 
 X2 has a sharp consequence worth stating: a hook permitted to access the network
@@ -546,7 +546,7 @@ moves the status of every proposition it names; nothing else does.
 | P4, P1 | `strata freeze` cannot succeed — nothing populates `ami_sha256` | H1 | #64 | No |
 | P1 | `strata publish` accepts unsigned lockfiles and dirty mutable layers | H1 | #66 | No |
 | B2, B3 | Recipes fetch sources with no digest pinning; the recipe schema has no field for one | A3 | #68 | No |
-| X1 | `OnReady` is specified, hashed into the identity, and never executed. Declared `spec/lockfile.go:39-40`, copied `internal/resolver/stages.go:434`, hashed `spec/lockfile_hash.go:20,50`, executed nowhere | H1 | #69 | No |
+| X1, R7 | `OnReady` is specified, hashed into the identity, and never executed. Declared `spec/lockfile.go:39-40`, copied `internal/resolver/stages.go:434`, hashed `spec/lockfile_hash.go:20,50`, executed nowhere. It refutes **R7** as well as X1, and for the same reason read in the opposite direction: a command list that runs nowhere cannot change the assembled environment, so two lockfiles differing only in `on_ready` assemble the same environment and get different identities. R7's evidence cell has cited this row as its demonstrating instance since R7 was added; the row named only X1 until 2026-08-21 (§7), so the attribution existed in prose and not in the table that derives R7's status | H1 | #69 | No |
 | I3, I4, I5 | `strata-agent` fetcher builds a cache path from an unvalidated digest; `""` collides on `.sqfs` | A1 + A5 | #81 | No |
 | I4 | `trust.VerifyLayers` builds squashfs paths from an unvalidated `layer.ID`; the comment claims `Join` prevents escape | A1 | #58 | No |
 | T3 | Stage 7 holds a bundle URI, not bundle bytes, so it cannot Rekor-verify | A4 | #85 | No |
@@ -555,11 +555,13 @@ moves the status of every proposition it names; nothing else does.
 | R2, R7 | `EnvironmentID` depends on YAML slice order when `MountOrder` ties, and on `Packages` order always | H1 | #95 | No |
 | I3, P1 | `IsFrozen()`/`EnvironmentID()` accept any non-empty string as a digest | A5 | #96 | No |
 | I4 | `overlay/mount_linux.go:141` and `export/oci.go:60` build paths from an unvalidated `layer.ID` | A1 | #97 | No |
-| I6, P3, X1, X2 | `packages:` installs ignore the recorded SHA256; conda `latest` resolves at boot — so `Packages` participate in the identity and still fail to determine the environment | A3, A7, H1 | #98 | No |
+| I6, P3, X1, X2, R7 | `packages:` installs ignore the recorded SHA256; conda `latest` resolves at boot — so `Packages` participate in the identity and still fail to determine the environment. The row carries **both** directions and they are worth separating, because until 2026-08-21 (§7) it named only the second: an install that ignores the recorded `sha256` means two lockfiles differing only in that digest fetch identical bytes, so the environment is the same and the identity is not — that is **R7**. Conda `latest` resolving at boot is the converse, and that is X2 | A3, A7, H1 | #98 | No |
 | P2 | The Zenodo deposit contains the lockfile only — no bundles, no key, no layers | H1 | #99 | No |
 | T6 | Nothing records the trust policy a result was produced under | H1 | #100 | No |
 | T8, T9 | No freshness bound and no set-level attestation: rollback, freeze and mix-and-match all succeed | A6, A1 | #101 | No |
 | X1, R3 | `Profile.Instance` and `Profile.Storage` are parsed and referenced nowhere else | H1 | #102 | No |
+| R7 | `EnvironmentID` distinguishes a package set whose inner `Packages` slice is `nil` from one where it is empty. A set with no entries installs nothing either way, so the environment is identical. `spec/packages.go:49` carries `json:"packages"` with no `omitempty` while the **outer** `LockFile.Packages` field has it, so the inner slice marshals as `null` in one case and `[]` in the other and `computeEnvironmentID` hashes different bytes. Measured on `048aea4`: `59cc9349bf262f0ac84ae8ec74b3c768af016efe128dc66ae3a93179ffbdd9e4` versus `57620b0c2fa034e49fd39f507a180f28d42819a3996f7300a91d0a0d7b6c5076`. Reachable from ordinary input, not only hand-built structs: YAML `packages: []` decodes to an empty non-nil slice while an omitted key leaves it nil. Distinct from #95, which is about order rather than emptiness | H1 | #117 | No |
+| X2 | `LockFile.Defaults` alters the assembled environment and does not participate in the identity, so two lockfiles that assemble **materially different** environments share one `EnvironmentID`. `Defaults` is declared `spec/lockfile.go:42-44`, copied `internal/resolver/stages.go:435`, and consumed at `internal/overlay/overlay.go:164-182`, which writes `module load <name>/<version>` lines into `/etc/profile.d/strata-defaults.sh` inside the assembled root — so it decides which module versions are active in every login shell. `envHashInput` (`spec/lockfile_hash.go:16-22`) has five members and `Defaults` is not one. Measured on `048aea4`: three lockfiles identical but for `Defaults` — none, `python/3.11.9`, `python/3.9.18` — all hash to `09f451dc302d078526dfcd8f1d50ab245ab1ba6f888f9693933db687c7f2c339`. This is the **converse** direction to #95/#69/#98/#117: same ID, different environment, so anything keying a cache or an attestation on `EnvironmentID` can vouch for the wrong environment. R7's generator cannot find this class — it asserts equal-environment-implies-equal-ID, and this is the other implication | H1 | #118 | No |
 
 ### 4.1 Tracker issues that refute no proposition
 
@@ -1558,3 +1560,104 @@ states the standard it violated and puts a cadence on finding the next.
     10 applied to an instrument rather than a query: the scope of a checker is part of
     its clean bill, and `go test ./internal/propdoc/` is the gate here, not propgen
     alone.
+
+### 2026-08-21 — R7 gets a generator, and two counterexamples the register did not name
+
+57. **R7 has a search, and the `Basis` column stays `none` on purpose.**
+    `spec/environment_id_r7_fuzz_test.go` asserts R7 over an enumerated set of
+    environment-preserving transformations. The enumeration is the whole design
+    decision: R7 quantifies over *pairs* of lockfiles, so a generator needs a supply
+    of pairs that provably assemble the same environment, and the one source it must
+    not consult is `envHashInput` — asking the code under test which fields matter is
+    what made the retired R6 unfalsifiable (item 54). So each transformation carries a
+    specification-level reason recorded beside it, and the reason, not the field list,
+    is what makes the file a test of R7 rather than a restatement of the hash input.
+
+    46,546,540 executions found no failing input, and that buys a tier for **R7
+    restricted to that domain**, which is not R7. Four classes of environment-
+    preserving pair refute R7 as stated, so they are excluded from the live set — a
+    target that fails on every input searches nothing — and citing `E1` in `Basis`
+    would be precisely the overclaim §2.1 exists to catch. The exclusion is recorded
+    in the document and in the code, not silently avoided.
+
+58. **The exclusion list cannot outlive the defects it describes.**
+    `spec/environment_id_r7_exclusions_test.go` holds one control per exclusion,
+    each asserting the spurious distinction **still reproduces**. Those tests fail when
+    a defect is *fixed*, and the failure message is the instruction: move the
+    transformation into the live set, delete the control, update the rows here. This
+    answers a hazard the register has no other guard against — a scope limit that was
+    honest when written and quietly becomes a lie, which is the shape of the count
+    deleted in item 51 and of the `Yes` rows §6.1 audits.
+
+    The same file is the control for the fuzz target's machinery, by construction
+    rather than by intention: it uses the same clone-and-compare path. If `clone` were
+    shallow, or `EnvironmentID` returned a constant, or the comparison were inverted,
+    the fuzz target would pass on every input and read exactly as it does now — and
+    these five tests would fail. A generator with no such control cannot distinguish
+    holding from being unable to see.
+
+59. **Two counterexamples filed, and they run in opposite directions.**
+    **#117** (R7): a package set's inner `Packages` slice hashes differently when
+    `nil` than when empty, because `spec/packages.go:49` lacks the `omitempty` the
+    outer field has. Same environment, different identity — `59cc9349…` versus
+    `57620b0c…`. **#118** (X2): `LockFile.Defaults` decides the contents of
+    `/etc/profile.d/strata-defaults.sh` (`internal/overlay/overlay.go:164-182`) and is
+    not in `envHashInput`, so three lockfiles that load no module, `python/3.11.9` and
+    `python/3.9.18` all hash to `09f451dc…`. Same identity, **different environment**.
+
+    The asymmetry is the finding, not a presentational note. #118 is the class that
+    matters more — a cache or an attestation keyed on `EnvironmentID` can vouch for
+    the wrong environment — and **R7's generator structurally cannot find it.** R7
+    asserts equal-environment ⇒ equal-ID; #118 is unequal-environment ∧ equal-ID. No
+    amount of searching R7 reaches it. A generator for X2 has to run the enumeration
+    the other way: find the fields that reach the assembled root and check each
+    arrives at the hash. `Defaults` appeared nowhere in this document until today,
+    which is what an unenumerated direction costs.
+
+60. **Two register rows named fewer propositions than the prose did.** #69
+    (`OnReady` hashed and executed nowhere) and #98 (`packages:` installs ignore the
+    recorded `sha256`) are both R7 counterexamples, and neither row said so; #69's
+    named X1, #98's named I6, P3, X1, X2. R7's own evidence cell has cited #69 as its
+    demonstrating instance since R7 was added. So the attribution lived in prose while
+    the table that **derives** R7's status did not carry it, and R7 rendered `REFUTED`
+    off one row when four applied.
+
+    This is item 54's borrowed-evidence finding read from the other end. There, R6
+    stood `ENFORCED E1` on two tests that measured other propositions; here two
+    refutations were attributed in prose to a proposition the register did not connect
+    them to. Both are the same missing instrument — nothing checks that a citation
+    supports what cites it — and #105 remains open for it. Neither row's `Discharged`
+    cell was touched: this changes which propositions a counterexample is recorded
+    against, not whether it is answered.
+
+61. **A fuzz target's characteristic failure is to pass without searching, and it
+    happens two ways.** Both were live here and both are now checked.
+
+    *The seeds reached three of the five transformations.* `go test ./spec/` runs the
+    seed corpus only, so the ordinary run was asserting R7 over three fifths of its
+    stated domain and reporting `PASS`; the two that declined every seed were the only
+    two with guards, needing two layers and a two-entry `Env` respectively.
+    `TestR7SeedsReachEveryTransform` failed on its first execution and named both. It
+    also exposed that `permute-layers` composed a rotation with a reversal, which for
+    two layers **is the identity** — it returned "permuted" having permuted nothing,
+    and compared a lockfile against a copy of itself. Both branches are now provably
+    non-identity, and `apply` returning false now means *nothing changed* rather than
+    *nothing was available to change*.
+
+    *`go test -fuzz` exits 0 when the pattern matches no target*, printing
+    `testing: warning: no fuzz tests to fuzz` and then `PASS`. Measured. A renamed
+    target would leave the nightly job green indefinitely while searching nothing, so
+    `.github/workflows/fuzz.yml` asserts non-vacuity **before** it reads the search
+    result — on that warning, on a missing exec count, and on an exec count below a
+    floor — because a vacuous green outlasts a crasher, which gets fixed. This is the
+    same shape as item 52's absent CI run: not a check that cannot fail, an **absent**
+    check that is visually identical to a passing one.
+
+62. **The distribution did not move, for the third time.** Two counterexamples added
+    and two rows re-attributed — 36 register rows to 38 — and `go run ./cmd/propgen`
+    reports the same distribution as before, because R7 and X2 were both already
+    `REFUTED`. The movement is visible only in the `(n of m live)` suffixes: R7
+    `REFUTED` → `REFUTED (4 of 4 live)`, X2 `REFUTED` → `REFUTED (2 of 2 live)`. §0's
+    header sentence required no edit, which is the correct behaviour and also the
+    reason item 46's caveat is stated beside the number rather than left to a reader
+    watching totals.

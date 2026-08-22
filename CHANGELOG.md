@@ -395,6 +395,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: the `STRATA_REGISTRY_URL=file:///var/strata-local` offline workflow,
   including which commands accept a `file://` registry and which are still
   S3-only, and why the embedded catalog cannot resolve on its own.
+- **A fuzz generator for `PROPERTIES.md` R7** — *two lockfiles that assemble the
+  same environment have the same `EnvironmentID`* — plus the scheduled workflow
+  that actually searches it (`.github/workflows/fuzz.yml`, daily, explicit
+  `-fuzztime`). No behaviour change: this is test and CI infrastructure only.
+
+  R7 quantifies over *pairs* of lockfiles, so the generator needs a supply of
+  pairs that provably assemble the same environment. It cannot ask
+  `envHashInput` which fields matter — deferring the domain to the code under
+  test is what made the retired R6 unfalsifiable — so "assembles the same
+  environment" is defined by an enumerated set of transformations, each justified
+  from the specification: permuting the layer slice (`MountOrder` defines the
+  mount stack, and the generator assigns distinct values so a permutation is
+  always environment-preserving), re-signing, varying resolution metadata,
+  appending an advisory `requires_host` entry, and rebuilding the `Env` map.
+  46,546,540 executions found no failing input.
+
+  **Four transformations preserve the environment and still change the identity.**
+  They are excluded from the live set — a target that fails on every input
+  searches nothing — and each exclusion has a control in
+  `spec/environment_id_r7_exclusions_test.go` asserting the distinction *still
+  reproduces*: #95 (ordering), #69 (`on_ready`), #98 (package `sha256`), and
+  **#117**, new here — a package set's inner `Packages` slice hashes differently
+  when `nil` than when empty, because `spec/packages.go:49` carries
+  `json:"packages"` with no `omitempty` while the outer field has it
+  (`59cc9349…` vs `57620b0c…`). The controls fail when a defect is *fixed*, which
+  is the signal to move that transformation into the live set; an exclusion list
+  cannot silently outlive the defects it describes.
+
+  Two guards exist because the failure mode of a fuzz target is to pass without
+  searching:
+  - `TestR7SeedsReachEveryTransform` asserts every transformation fires on at
+    least one seed. It failed on first run: two of the five — the only two with
+    guards — declined every seed, so the ordinary `go test ./spec/` run had been
+    asserting R7 over three of five transformations while reporting `PASS`. It
+    also found that `permute-layers` composed a rotation with a reversal, which
+    for two layers is the identity: it reported a permutation having permuted
+    nothing. Both branches are now provably non-identity for two or more layers.
+  - The workflow asserts non-vacuity *before* it reads the search result,
+    because **`go test -fuzz` exits 0 when the pattern matches no target**,
+    printing only `testing: warning: no fuzz tests to fuzz` and then `PASS`. A
+    renamed target would leave the nightly job green forever while searching
+    nothing. The job fails on that warning, on a missing exec count, and on an
+    exec count below a floor.
+
+  Crashers are reported as an artifact rather than auto-committed, and belong
+  under `spec/testdata/fuzz/<Target>/` so the ordinary CI job replays them as
+  seeds. `go test ./...` runs the seed corpus only — milliseconds, and it
+  searches nothing — which is why the search is a separate scheduled job.
+
+  Filed while building it and **not** addressed here: **#118**, which is the
+  opposite direction and outside anything R7 can find. `LockFile.Defaults`
+  decides the contents of `/etc/profile.d/strata-defaults.sh`
+  (`internal/overlay/overlay.go:164-182`) and is absent from `envHashInput`, so
+  three lockfiles that load no module, `python/3.11.9`, and `python/3.9.18`
+  respectively all share `EnvironmentID` `09f451dc…`. That is an identity
+  collision — same ID, different environment — rather than a spurious
+  distinction, and R7's generator asserts the converse implication, so no amount
+  of searching it would surface this class.
 
 ## [0.22.0] - 2026-03-27
 
