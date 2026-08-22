@@ -641,6 +641,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same exit status.
 
 ### Added
+- **An unfrozen lockfile's storage key is now executed rather than read** (#124).
+  `PROPERTIES.md` §4's P3 row asserted that `pkg/strata.Client.UploadLockfile`
+  accepts an unfrozen lockfile and writes it to `locks/.yaml`, alongside a
+  neighbouring claim in the same cell that *was* measured — so the whole cell read
+  as measured while half of it was code-derived.
+  `internal/registry/lockfile_key_test.go` runs it: two different unfrozen
+  lockfiles, both premises asserted (neither frozen, both `EnvironmentID() == ""`),
+  both puts returning the same URI, `locks/` holding exactly one entry named the
+  literal `.yaml`, and `ListLockfiles` returning the **second** writer's lockfile.
+  Last writer wins on a key shared by every unfrozen lockfile in the registry.
+
+  No behaviour changes. The test asserts that #124 **still reproduces**, so it
+  fails when #124 is fixed, and its messages say to delete the file rather than to
+  update the expected key — a refusal builds no key at all. It was demonstrated to
+  fail before being committed, by adding an `IsFrozen` guard to
+  `LocalClient.PutLockfile` locally; per #148, a control asserting a live defect is
+  worth exactly that demonstration.
+
+  What stays code-derived is the **S3** half: `internal/registry/s3client.go` is
+  uncovered, and that it behaves the same rests on reading `s3client.go:617`
+  against `localclient.go:374`. The register cell now says which half is which.
+
+      $ grep -n 'key := "locks/" + lockfile.EnvironmentID()' internal/registry/s3client.go internal/registry/localclient.go
+      internal/registry/localclient.go:374:	key := "locks/" + lockfile.EnvironmentID() + ".yaml"
+      internal/registry/s3client.go:617:	key := "locks/" + lockfile.EnvironmentID() + ".yaml"
+
 - **The resolver's provider matrix is enumerated, and #67's two halves now have
   measured boundaries** (#133). `PROPERTIES.md` R4 (*provider soundness*) and R5
   (*provider completeness*) stood `SOUND` on a `Basis` of `none` — refuted by #67
