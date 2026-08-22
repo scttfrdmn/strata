@@ -475,7 +475,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     printing only `testing: warning: no fuzz tests to fuzz` and then `PASS`. A
     renamed target would leave the nightly job green forever while searching
     nothing. The job fails on that warning, on a missing exec count, and on an
-    exec count below a floor.
+    exec count below a floor that **scales with the requested duration** (#125).
+
+    The floor was a constant when the workflow shipped, and dispatching the
+    workflow — rather than reading its green — is what showed the constant was
+    the wrong shape. Run `32546861518` at `-fuzztime=120s` did **3,249,288
+    executions at 27,305/sec**, against 236,367/sec for the same target locally:
+    the runner is 8.7x slower, so the constant floor of 100,000 amounted to 3.7
+    seconds of search and 0.61% of a 600-second nightly. It could detect a search
+    that never started; it could not detect one that ran its full window at a
+    thirtieth of throughput, which is what its own error message claimed to
+    catch and what a regressed generator looks like. Replayed against a synthetic
+    log of 140,000 executions over ten minutes, the old step exits 0.
+
+    **What changes per consumer**, enumerated from the workflow's two entry
+    points (`on: schedule` and `on: workflow_dispatch`):
+    - **The nightly schedule** now requires 1,200,000 executions rather than
+      100,000 — 12x tighter, and still 13.7x below measured throughput, so a
+      slower runner does not manufacture a failure.
+    - **A manual dispatch** has its floor derived from the `fuzztime` input:
+      `seconds x 2000`, with 100,000 retained as an absolute floor for short
+      windows, and `Nx` treated as the execution count it is. A `fuzztime` that
+      does not parse to integer seconds — `10m30s`, `1.5h`, `600ms` — now fails
+      the job instead of falling back to a default, because a non-vacuity check
+      that guesses its own threshold is the defect one level up.
+
+    If this floor ever trips it is evidence about the run or the generator, not a
+    reason to lower it to what was observed.
 
   Crashers are reported as an artifact rather than auto-committed, and belong
   under `spec/testdata/fuzz/<Target>/` so the ordinary CI job replays them as
