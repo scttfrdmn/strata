@@ -86,8 +86,15 @@ var ladderOutcomes = []bootOutcome{
 
 // knownOpenCells is the number of cells that reach the mount with no authenticity
 // verification because Verifier or BundleFetcher is nil (#93(a)). It is asserted
-// as a literal so the size of the hole is a number in the suite: closing #93(a)
-// changes this line, and nothing can shrink it silently.
+// as a literal so the size of the hole is a number in the suite, and so the
+// expectation table cannot shrink it silently: check (5) below compares it against
+// wantFor()'s own output, which means it catches an edit to the *table*.
+//
+// It is not the tripwire against the code, and #148 measured that: fixing #93(a)
+// leaves this number at 20 and check (5) green, because both sides are derived from
+// wantFor(). What goes red is the knownOpen branch in runCell (:526-530), once per
+// cell — Run refuses where the cell says it does not — and that failure carries the
+// instruction to lower this constant. Twenty cells fail, not one.
 const knownOpenCells = 20
 
 // --- dimension 1: the verifier's disposition -------------------------------
@@ -429,8 +436,9 @@ func TestBootMatrix_Shape(t *testing.T) {
 		seen[c.name] = true
 	}
 
-	// (5) The size of the open hole, as a literal. Closing #93(a) changes this
-	// number, so it cannot shrink without a diff.
+	// (5) The size of the open hole, as a literal, checked against the expectation
+	// table it is a claim about. Both sides come from wantFor(), so this catches the
+	// table being edited and not the code being fixed — see knownOpenCells.
 	open := fired[reasonNoVerifier]
 	if open != knownOpenCells {
 		t.Errorf("%d cells are #93(a) fail-open, knownOpenCells says %d — "+

@@ -792,7 +792,8 @@ func TestEnvironmentID_EmptyInstallLayoutEqualsVersioned(t *testing.T) {
 // TestR7Exclusion_NilVersusEmptyInnerPackages mutated the whole Packages field
 // rather than varying nil against empty, so it asserted the identity changes
 // when two entries are replaced by none — true before and after the fix, and
-// silent about either.
+// silent about either. That control was deleted by #148, which measured the
+// failure rather than reasoning about it: with #147's fix applied it still passed.
 func TestEnvironmentID_NilAndEmptyInnerPackagesAgree(t *testing.T) {
 	withNil := scopeFixture()
 	withEmpty := scopeFixture()

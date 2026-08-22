@@ -3,33 +3,64 @@ package spec
 import "testing"
 
 // The R7-refuting exclusions named in environment_id_r7_fuzz_test.go's stated
-// domain — same environment, different identity — each asserted to still
-// reproduce.
+// domain, each asserted to still distinguish two lockfiles.
 //
-// The stated domain has a second kind of exclusion which is NOT controlled here,
-// and the gap is structural rather than an oversight: the opposite-reason
-// exclusions (Defaults #118, ProfileName and RekorEntry #120, the layer
-// manifest's Name/Version/InstallLayout #122) are cases where the environment
-// differs and the identity does not. Witnessing one means calling
-// overlay.ConfigureEnvironment and comparing the assembled roots, and
-// internal/overlay imports spec, so a control for them cannot live in this
-// package. It has to live in internal/overlay; #120 and #122 carry that as a
-// task. Until it does, this file controls the four R7-refuting exclusions and
-// every opposite-reason exclusion rests on its issue alone.
+// Two controls remain, both #95, and the list of what is *not* controlled here is
+// longer than the list of what is. That is deliberate. #148 probed every assertion
+// in this repo that a defect still reproduces by applying the fix locally and
+// watching the assertion go red, and three of the controls that used to live in
+// this file could not fail:
 //
-// These tests fail when a defect is FIXED. That is the intent. An exclusion list
-// is a claim about the present, and the way such a list rots is that someone
-// repairs the code and the list keeps quietly narrowing the property for years
-// afterwards. Here the list cannot outlive the defects: fix #95 and
-// TestR7Exclusion_ReorderPackageSets fails, which is the instruction to delete
-// the exclusion and move the transformation into liveTransforms().
+//   - #117 (nil versus empty inner Packages) was fixed by #147, and its control was
+//     mis-constructed: it replaced two entries with none rather than varying nil
+//     against empty, so it asserted something true before and after the fix.
+//     Deleted. TestEnvironmentID_NilAndEmptyInnerPackagesAgree in
+//     environment_id_scope_test.go is the assertion that the fix holds.
+//   - #98 (the installer ignores a package entry's recorded sha256) and #69
+//     (on_ready is hashed and executed by nothing) had controls that read
+//     EnvironmentID(). Neither fix goes anywhere near it: #98's is an installer
+//     argv carrying --require-hashes and --hash=sha256:, #69's is an executor that
+//     runs the commands. No mutation of a lockfile's identity can observe either,
+//     so there is no better mutation to write — the instrument cannot see the
+//     subject. Both are deleted and the observable each should watch is recorded on
+//     its own issue. A named absence is better than a control that reads as
+//     coverage.
 //
-// They are also the control for the fuzz target's machinery, which is why they
-// use the same clone-and-compare path rather than a private one. If clone()
+// The stated domain has a second kind of exclusion which is NOT controlled here
+// either, and that gap is structural rather than an oversight: the opposite-reason
+// exclusions (Defaults #118, ProfileName and RekorEntry #120, the layer manifest's
+// Name/Version/InstallLayout #122) are cases where the environment differs and the
+// identity does not. Witnessing one means calling overlay.ConfigureEnvironment and
+// comparing the assembled roots, and internal/overlay imports spec, so a control
+// for them cannot live in this package. It has to live in internal/overlay; #120
+// and #122 carry that as a task.
+//
+// An exclusion list is a claim about the present, and the way such a list rots is
+// that someone repairs the code and the list keeps quietly narrowing the property
+// for years afterwards. What follows from that, for the two controls left, is not
+// what it was when there were four.
+//
+// A failure here does NOT mean #95 has been fixed and the transformation should
+// move into liveTransforms(). #95 prescribes sorting both dimensions of Packages,
+// and that prescription is refuted on the issue by the consumer:
+// internal/agent/package_installer.go:37 iterates the sets and :99, :113 run one
+// install command per entry, so a later entry can change what an earlier one
+// installed. TestEnvironmentID_PackageOrderIsContent
+// (environment_id_scope_test.go:839) pins the behaviour that refutation implies,
+// and it asserts the same distinction from the other side, so the two fail
+// together. A red here is a regression in envHashInput, or someone applying the
+// refuted prescription — never an instruction to widen R7 over package order.
+// assertStillSpurious's message says so, because #148 found two controls that go
+// red while telling the reader to implement the defect, and these were them.
+//
+// These two are also the control for the fuzz target's machinery, which is why
+// they use the same clone-and-compare path rather than a private one. If clone()
 // returned an alias, or EnvironmentID() returned a constant, or the comparison
 // were inverted, FuzzR7NoSpuriousDistinctions would pass on everything and look
-// exactly as it does now. These tests are what makes that distinguishable:
-// a harness that cannot see a changed identity fails here.
+// exactly as it does now. These tests are what makes that distinguishable: a
+// harness that cannot see a changed identity fails here. Two callers are enough
+// for that role, and it is why these two survive the deletions above — a control
+// is not retired for being redundant to its stated purpose.
 
 // r7Fixture is a frozen lockfile with one layer and one package set, built
 // explicitly rather than drawn from a stream so each control below is readable
