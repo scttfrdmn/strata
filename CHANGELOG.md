@@ -338,6 +338,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **Two `Discharged: Yes` register rows are corrected to `No` and `Partially` on
+  re-derived evidence** (#137). §2.1 rule 11 says a closed issue is a fact about the
+  tracker, not evidence about the tree; it was added after the rows it now governs and
+  never run against them. Two of the eight `Yes` cells read verbatim `Yes — closed
+  completed`, both on T7 (*a weaker check announces itself*). Neither was flipped as
+  bookkeeping — each was re-derived against today's code, with the evidence added as
+  tests.
+
+  **#49 → `Partially`.** The resolver's placeholder-attestation warning exists and
+  fires (`internal/resolver/stages.go:71-75`), and three of the four `resolver.New`
+  constructions in the tree pass `Warnings: os.Stderr`. `pkg/strata/strata.go:103-107`
+  passes nothing and `pkg/strata.Options` exposes no field to set it, so the public
+  library route resolves formations carrying `pending-initial-build` in silence — on
+  the shipped catalog, where all six still do (#46). Filed as **#138**.
+
+  **#48 → `No`.** The row says `strata run` "did not warn that `packages:` entries are
+  unattested"; #48 asked for a warning that those entries *will not be installed*, and
+  that is what `cmd/strata/run.go:92-105` emits. No route says anything about
+  attestation — the agent installs these entries from PyPI/conda/CRAN with no bundle
+  and no Rekor entry (`internal/agent/package_installer.go:37-45`). The attestation gap
+  is **#139**; the row's wording is **#140** and is repaired separately, because
+  rewording a counterexample in the change that discharges it is
+  narrowing-until-satisfied.
+
+  T7's derived Status moves from `REFUTED (1 of 4 live)` to `REFUTED (3 of 4 live)`:
+  `Refutation.Live()` is `Discharged != "Yes"`, so both cells counted as discharged and
+  a *generated* cell in a trust proposition stated a false count. The distribution is
+  unchanged (27 REFUTED before and after) — what moved is a count inside one cell,
+  which is the class of claim a distribution table cannot see.
+
+  No production behaviour changes: two new test files
+  (`internal/resolver/formation_attestation_warning_test.go`,
+  `cmd/strata/run_packages_warning_test.go`) plus the register cells and §7. Both files
+  include the control that asserts today's *silence*, so closing #138 or #139 fails a
+  test and forces the register row to be revisited on purpose.
 - **T1 and T5 cite the 112-cell boot enumeration, and the citation is scoped to a
   route** (#129). Both stood at `E1` on the routes fixed by #55 and #56.
   `internal/agent/boot_matrix_test.go` (added under #128) enumerates the agent boot
