@@ -79,9 +79,28 @@ jobs:
       # badge level from a night of real searching. So non-vacuity is asserted
       # before the search result is read, and asserted first because a vacuous
       # green is worse than a crasher: a crasher gets fixed.
+      # The floor below is derived from the requested duration rather than being a
+      # constant, because a constant floor detects only one of the two failure
+      # modes its own error message names. Measured: run 32546861518, dispatched
+      # from main at -fuzztime=120s, did 3,249,288 execs at 27,305/sec. The same
+      # target does 236,367/sec locally, so the runner is 8.7x slower. Against
+      # that rate the old constant floor of 100,000 was 3.7 seconds of search —
+      # 0.61% of a 600s nightly. It could catch a search that never started, and
+      # could not catch a search that ran its full window at 1/30th throughput,
+      # which is what a regressed generator looks like. See #125.
+      #
+      # MIN_EXECS_PER_SEC is set an order of magnitude below the measured rate on
+      # purpose: the floor exists to catch collapse, not to track performance. At
+      # 2000/sec the nightly floor is 1,200,000 — 12x tighter than the constant it
+      # replaces and still 13.7x below measured throughput, so a slower runner or
+      # a heavier generator does not produce a false failure. If this ever trips,
+      # it is evidence about the run or about the generator; it is not a reason to
+      # lower the floor to whatever was observed.
       - name: Assert the search actually ran
         env:
-          MIN_EXECS: "100000"
+          FUZZTIME: ${{ inputs.fuzztime || '600s' }}
+          MIN_EXECS_PER_SEC: "2000"
+          MIN_EXECS_ABSOLUTE: "100000"
         run: |
           set -euo pipefail
 
@@ -92,6 +111,49 @@ jobs:
             exit 1
           fi
 
+          # Derive the floor from what was asked for. Only single-unit integer
+          # durations and -fuzztime's Nx exec-count form are accepted; anything
+          # else exits non-zero rather than falling back to a default. A
+          # non-vacuity check that silently guesses its own threshold is the
+          # defect this step exists to prevent, one level up.
+          is_digits() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+          floor=""
+          case "$FUZZTIME" in
+            *x)
+              # -fuzztime=Nx is a count of executions, not a duration, so it is
+              # the floor. Note the untreated edge: for a very small N, go may
+              # finish before printing any "execs:" line at all, and the
+              # no-exec-count branch below fires. Nobody dispatches a
+              # hundred-execution search as a property check.
+              n="${FUZZTIME%x}"
+              is_digits "$n" || { echo "::error::FUZZTIME='$FUZZTIME' is not an integer exec count."; exit 1; }
+              floor="$n"
+              basis="an explicit exec count of $n"
+              ;;
+            *h) n="${FUZZTIME%h}"; is_digits "$n" || { echo "::error::FUZZTIME='$FUZZTIME' is not an integer number of hours."; exit 1; }; secs=$((n * 3600)) ;;
+            *m) n="${FUZZTIME%m}"; is_digits "$n" || { echo "::error::FUZZTIME='$FUZZTIME' is not an integer number of minutes."; exit 1; }; secs=$((n * 60)) ;;
+            # Note that 'Nms' lands here, not in the *m arm, since it ends in 's'.
+            # Sub-second windows are rejected rather than supported: a floor
+            # derived from them would be smaller than one scheduler tick.
+            *s) n="${FUZZTIME%s}"; is_digits "$n" || { echo "::error::FUZZTIME='$FUZZTIME' is not an integer number of seconds (note: 'ms' is not supported)."; exit 1; }; secs="$n" ;;
+            *)
+              echo "::error::FUZZTIME='$FUZZTIME' has no recognised unit. Use a single-unit"
+              echo "integer duration (600s, 30m, 1h) or an exec count (5000x). Compound"
+              echo "durations like 10m30s and fractional ones like 1.5h are rejected"
+              echo "deliberately: this step will not guess the floor it is enforcing."
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$floor" ]; then
+            floor=$((secs * MIN_EXECS_PER_SEC))
+            basis="${secs}s at a floor of ${MIN_EXECS_PER_SEC} execs/sec"
+            if [ "$floor" -lt "$MIN_EXECS_ABSOLUTE" ]; then
+              floor="$MIN_EXECS_ABSOLUTE"
+              basis="$basis, raised to the absolute floor of $MIN_EXECS_ABSOLUTE"
+            fi
+          fi
+
           # The last reported cumulative exec count. Absent entirely if the
           # target failed to build or the corpus baseline never completed.
           execs="$(sed -n 's/.*execs: \([0-9]*\).*/\1/p' fuzz.log | tail -1)"
@@ -99,13 +161,14 @@ jobs:
             echo "::error::fuzz.log reports no exec count at all — the search did not start."
             exit 1
           fi
-          if [ "$execs" -lt "$MIN_EXECS" ]; then
-            echo "::error::Only $execs executions (floor $MIN_EXECS). The search started but"
-            echo "covered too little ground to count as one. Check for an early crash or a"
-            echo "generator that rejects most inputs."
+          if [ "$execs" -lt "$floor" ]; then
+            echo "::error::Only $execs executions against a floor of $floor ($basis)."
+            echo "The search ran but covered far less ground than its duration implies."
+            echo "Check for an early crash, a generator that rejects most inputs, or a"
+            echo "throughput regression. Do not lower the floor to match the observation."
             exit 1
           fi
-          echo "search executed $execs inputs"
+          echo "search executed $execs inputs (floor $floor — $basis)"
 
       - name: Upload crashers
         if: always() && steps.search.outputs.search_rc != '0'
