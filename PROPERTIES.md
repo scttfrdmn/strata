@@ -10,6 +10,15 @@ are `ENFORCED E1`, 1 is `ASSERTED (E0)`, 1 is `UNPOPULATED` and 1 is
 `go run ./cmd/propgen` prints the totals it was taken from. The principal
 finding is §0.2.
 
+> **The distribution is not a progress measure, and must not be quoted as one.**
+> It counts propositions by status, and a proposition already `REFUTED` stays
+> `REFUTED` whether it has one live counterexample or four. Demonstrated, not
+> hypothesised: on 2026-08-21 two rows moved from discharged to live — `P4` from
+> `(1 of 2 live)` to `(3 of 3 live)`, `X3` to `(2 of 3 live)` — and **every number
+> in the paragraph above stayed the same.** Movement lives in the `(n of m live)`
+> counts and in §4, not in the totals. A reader watching the distribution for
+> change would have seen a clean bill on the day the register got worse.
+
 Provenance for every measurement in this document unless stated otherwise:
 
 | | |
@@ -58,7 +67,7 @@ Strata's differentiating claim is *independently verifiable provenance*. The
 expected shape of a review like this one is a list of attacks. That is not what
 the register in §4 contains.
 
-**Eighteen of thirty-four refutations need no adversary at all.** They are
+**Twenty of thirty-six refutations need no adversary at all.** They are
 `H1` — permissive default (§1.4) — with no capability from §1.1 exercised, no
 position to occupy, and nothing to compromise:
 
@@ -292,11 +301,29 @@ tier being mistaken for available.
       callers of the changed code, while the refusal's trigger is a property of
       the *lockfile* — so the one command that would have found the affected path
       (`grep -rn 'ResolvedLayer{' … | grep -v _test.go`) was never run, and the
-      entry claimed a shipped producer that does not exist.
+      entry claimed a shipped producer that does not exist. Corrected by #109.
 
     The failure mode is not a wrong command. It is a right command over a set the
     author picked for a reason that never entered the finding. (Added 2026-08-21;
     see §7.)
+11. **Closure-discharged is not evidence-discharged.** An issue closing is a fact
+    about the tracker. A property holding is a fact about the code. A register row
+    may be marked `Discharged: Yes` only on **re-derived evidence at E1 or better**,
+    and the row cites that evidence rather than the closure. "Closed completed" is
+    not a citation; the issue's title is not the row's counterexample.
+
+    This rule is retrospective, not hypothetical: three of the register's nine
+    `Yes` rows at the time it was written had been discharged on closure alone, and
+    one of the three (`P4` / #54) was discharged against a claim wider than the row
+    made, while the row's counterexample went on reproducing and the defect sat
+    stated in a comment in the tree (§7 item 38).
+
+    **Deriving a column does not make it true.** The Status column is generated from
+    the register precisely so that the two cannot drift (§7 items 23–24), and
+    `propgen` reported agreement on every run from the day the register was written.
+    Two representations agreeing is not evidence that either is right; a generated
+    field removes drift, not error. The audit obligation in §6.1 exists because
+    nothing mechanical can close this gap.
 
 ---
 
@@ -424,7 +451,7 @@ about B3. A research-citation claim needs B3.
 
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
-| **X1** | *Specification completeness.* Every behaviour the profile schema permits an author to specify is either executed by the runtime or rejected at parse time. A field that is accepted, recorded, and never acted upon is a defect. | SOUND | none | REFUTED (3 of 3 live) | Four instances. (a) `OnReady` — parsed at `spec/profile.go:49`, copied into the lockfile at `internal/resolver/stages.go:434`, hashed at `spec/lockfile_hash.go:50`, executed nowhere (#69). (b) `Profile.Instance` and (c) `Profile.Storage` — `grep -rn 'InstanceConfig\|StorageMount' --include='*.go' . \| grep -v _test.go` returns only the declarations at `spec/profile.go:39,42,310,328` and no use; both are parsed, dropped at resolution, and never reach the lockfile. (d) `ResolvedPackageEntry.SHA256` — recorded and hashed into the identity, and never used by the component that installs the package (see I6). `RequiresHost` is a fifth candidate and is exempted only because the schema says so in as many words — *"Advisory only in v0.21.0"* (`spec/lockfile.go:57-60`), which is X1's rule applied honestly rather than a violation of it. (b)–(d) (b) and (c) filed as #102, (d) as #98. |
+| **X1** | *Specification completeness.* Every behaviour the profile schema permits an author to specify is either executed by the runtime or rejected at parse time. A field that is accepted, recorded, and never acted upon is a defect. | SOUND | none | REFUTED (5 of 5 live) | Instances, each named with the issue it is filed as. No count is restated here: the register rows are the source and `Status` derives the total, and the lettering does not map one-to-one onto rows — `Profile.Instance` and `Profile.Storage` are two instances under one issue. (a) `OnReady` — parsed at `spec/profile.go:49`, copied into the lockfile at `internal/resolver/stages.go:434`, hashed at `spec/lockfile_hash.go:50`, executed nowhere (#69). (b) `Profile.Instance` and (c) `Profile.Storage` — `grep -rn 'InstanceConfig\|StorageMount' --include='*.go' . \| grep -v _test.go` returns only the declarations at `spec/profile.go:39,42,310,328` and no use; both are parsed, dropped at resolution, and never reach the lockfile. (d) `ResolvedPackageEntry.SHA256` — recorded and hashed into the identity, and never used by the component that installs the package (see I6). `RequiresHost` is a further candidate and is exempted only because the schema says so in as many words — *"Advisory only in v0.21.0"* (`spec/lockfile.go:57-60`), which is X1's rule applied honestly rather than a violation of it. (e) `validated_on` — a verification claim no code reads, and false where it can be checked (#113, added below). (f) the twelve `pending-initial-build` placeholders occupying `rekor_entry` and `bundle` (#46, added below). Filed as: (a) #69, (b) and (c) #102, (d) #98, (e) #113, (f) #46. |
 | **X2** | *Identity captures behaviour.* If a specified behaviour can alter the state of the assembled environment, that behaviour's specification participates in the environment identity — or the identity does not determine the environment. | SOUND | none | REFUTED | Refuted in writing, by design: `spec/lockfile_hash.go:14-15` excludes `MutableLayer` from the hash — *"it is metadata about the build process, not the environment content itself (the upper is not content-addressed)"* — and a writable EBS upper mounted over the stack is exactly a behaviour that alters the assembled environment's state. Second instance: `Packages` *do* participate in the identity and still fail to determine the environment, because the bytes they name are fetched from a moving upstream at boot (I6, P3). The draft's sharp consequence stands and is now concrete. |
 | **X3** | *(new)* *Documented-form acceptability.* Every profile form the documentation presents as valid is accepted by the parser, and every artifact the documentation presents as runnable resolves against the shipped catalog. | SOUND | E1 — `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` | REFUTED (2 of 3 live) | Added 2026-08-21 (§7) because two tracker issues refuted nothing in §3 and both were the *converse* of X1. X1 lets a system satisfy it by rejecting everything at parse time; nothing said the documented forms must be accepted. #53 — the inline software-ref form `- python@3.13`, presented in the documentation, did not parse because `SoftwareRef` had no `UnmarshalYAML`; discharged at E1 by `spec/profile.go:237` with `spec/softwareref_yaml_test.go:22-24` and `spec/docsnippets_test.go`, the latter testing the documentation sites themselves. #70 — open, and confirmed live: `examples/alphafold3.yaml:10`, `examples/pytorch-jupyter.yaml:10` and `examples/r-quarto-workstation.yaml:10` name `@2024.03` formations while `cmd/strata/formations/` ships only `@2026.03`, and `go test ./examples/` passes. Four tests parse those files (`examples/examples_test.go:21,48`, `examples/catalog_test.go:19,101`) and none crosses a profile's reference against the catalog — rule 6 in the documentation dimension. |
 
@@ -478,6 +505,9 @@ Every refutation is recorded here with the proposition it breaks, the adversary
 capability it uses, and the artifact tracking its discharge. A refutation is
 removed from this register only when its discharge is evidenced at E1 or better.
 `H1` in the capability column means no adversary is required (§1.4).
+**A `Yes` requires re-derived evidence, not a closed issue** — §2.1 rule 11 — and
+`Yes` rows are audited on the cadence in §6.1, because a discharged row is the one
+nobody has a reason to look at again.
 
 **This table is the source of truth for the Status column in §3.** The
 `Discharged` cell must begin with `Yes`, `No` or `Partially` — anything else is a
@@ -497,7 +527,9 @@ moves the status of every proposition it names; nothing else does.
 | T7 | The resolver expanded unattested formations without warning | H1 | #49 | Yes — closed completed |
 | X3 | The inline software-ref form `- python@3.13` was documented and did not parse | H1 | #53 | Yes — E1, `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` |
 | X3 | All three shipped examples name formation versions the catalog does not contain, and `go test ./examples/` passes | H1 | #70 | No |
-| X3, P4 | None of the six shipped formations resolves against the shipped catalog, at the versions that do exist. Measured on `87f02fe`: 6 of 6 exit 1, 0 lockfiles produced — five at stage 7 `BUNDLE_MISSING`, and `hpc-mpi@2026.03` at stage 4 `UNSATISFIED_REQUIREMENT` because `openmpi` requires `ucx@>=1` and the formation omits a `ucx` layer, while the same file asserts `validated_on: [al2023/x86_64, al2023/arm64]`. Distinct from #70: these profiles name `@2026.03`, which exists. The one CI job that resolves end to end points at the `file://` fixture, where bundles exist by construction, and its profile names layers rather than formations | H1 | #108 | No |
+| X3, P4 | None of the six shipped formations resolves against the shipped catalog, at the versions that do exist. Measured on `87f02fe`: 6 of 6 exit 1, 0 lockfiles produced — five at stage 7 `BUNDLE_MISSING`, and `hpc-mpi@2026.03` at stage 4 `UNSATISFIED_REQUIREMENT`. That last is **four** missing layer dependencies, not one: `openmpi`'s recipe declares `runtime_requires` on `ucx@>=1`, `hwloc@>=2`, `pmix@>=5` and `libfabric@>=1`, all four shipped as recipes and none listed in the formation, which lists only `gcc` and `openmpi`. Stage 4 returns on the first, so the reported `ucx` understates it — enumerated by probe against `spec.BaseCapabilities.SatisfiesRequirement`, the predicate `stage4ValidateGraph` itself uses (originally worded *"because `openmpi` requires `ucx@>=1` and the formation omits a `ucx` layer"*; corrected 2026-08-21). Distinct from #70: these profiles name `@2026.03`, which exists. The one CI job that resolves end to end points at the `file://` fixture, where bundles exist by construction, and its profile names layers rather than formations | H1 | #108 | No |
+| X1 | `validated_on` is a verification claim that no code reads and that is false where it can be checked. `grep -rn 'ValidatedOn' --include='*.go' .` returns its declaration and doc comment at `spec/layer.go:223,225` and nothing else — no reader in non-test code and none in tests. All six shipped formations assert it. For `hpc-mpi@2026.03` the assertion cannot ever have held: its four missing dependencies fail `stage4ValidateGraph`, which checks requirements against base capabilities plus *the resolved set only* and never adds a layer to satisfy one, and stage 4 (`internal/resolver/resolver.go:119`) runs before stage 7 (`:135`) — so the failure is independent of bundle, registry and attestation state, and no registry serving the shipped `openmpi` recipe resolves it | H1 | #113 | No |
+| X1 | Twelve `pending-initial-build` values across the six shipped formations occupy `rekor_entry` and `bundle` — fields whose names assert an attestation that does not exist. The resolver responds with `r.warn` (`internal/resolver/stages.go:71-75`, the deliberate outcome of #49) and never propagates either field into a lockfile: `stages.go:409-413` copies `FromFormation`, the formation *name*, alone. So `internal/agent.verifyBundles` cannot see the placeholder and nothing downstream can act on it. Recorded here for the first time on 2026-08-21; previously the register mentioned #46 only in §4.1's "same category" list, which is the silent state the register exists to prevent | H1 | #46 | No |
 | R4, R5 | Stage 4 validates against one provider, stage 6 wires the edge to another; stage 4 is itself first-match | H1 | #67 | No |
 | T1, T5 | `verifyBundles` skips when the verifier is nil **and** when a layer names no bundle | A1 + A5; H1 for the nil half | #93 (fix); the decision half was #92, closed | Partially — the absent-bundle half is closed by #104 at `internal/agent/agent.go:310-323`, E1 at `internal/agent/verify_bundles_test.go:187,252`; the nil-verifier half at `:285` is open under #93. `Partially` counts as live, so T1 and T5 stay refuted |
 | T1, T5 | `BundleFetcher`'s godoc **specified** the fail-open: implementations were told to return `(nil, nil)` for a layer naming no bundle, and `verifyBundles` treated no bytes as nothing to verify. The shipped `s3LayerFetcher` conforms. A defect in an interface's *specification* is inherited by every conforming implementation, so no amount of testing the implementations finds it | H1 | #92 | Yes — E1, `internal/agent/verify_bundles_test.go:291` (empty bytes refused) and `cmd/strata-agent/s3_bundle_contract_test.go:22` (the shipped `s3LayerFetcher` held to the corrected contract). #104 rewrote the godoc and inverted the behaviour together |
@@ -717,6 +749,45 @@ This is deliberately **not** a new numbered proposition. §0 puts process out of
 scope and §0.1 says this document is not a second tracker; a proposition about
 milestone hygiene would be both. It is an obligation on maintaining the record,
 which is what §6 is for.
+
+### 6.1 Audit the `Yes` rows, not the `No` rows
+
+**Discharged rows are where error accumulates unobserved.** A refuted row keeps
+getting attention: it is in a milestone, it is on someone's list, and somebody is
+trying to make it go away. A discharged row leaves the queue and is never looked at
+again. So the register's reliability is not limited by the rows under active
+dispute — it is limited by the rows nobody has a reason to revisit.
+
+`P4` / #54 is the demonstration. It sat `Yes — closed completed` while its
+counterexample reproduced on every run, and the mechanisms in place did not and
+could not object: `propgen` checked the Status column against the register, the
+register agreed with itself, and no test re-derives a counterexample. It was found
+by re-running a command, and only a re-run could have found it.
+
+**Cadence.** At every minor release, and on any change that touches the register:
+
+1. Sample **at least three** `Yes` rows, choosing the **oldest-discharged first**
+   and rotating so no row goes more than two minor releases unaudited.
+2. For each, **re-derive the counterexample as the row states it** — run the
+   command, boot the probe, execute the test. Reading the row is not an audit;
+   reading the closing issue is not an audit.
+3. Check the row's *scope* against what the evidence establishes, which is the
+   failure #54 exhibited: the counterexample reproduced, the discharge was real for
+   a narrower claim, and the row was wider than the claim. Rule 10 in the register.
+4. Record the audit with its date on the row, whether or not the row changes. A
+   `Yes` with no audit date is a `Yes` that has never been checked, and that is
+   worth being able to see.
+
+Every audit outcome is one of three, and all three get written down: the row holds
+(date it), the row is wrong (reopen it, per rule 11), or the row is **right but
+overbroad** (restate the counterexample to what the evidence covers, and file the
+remainder).
+
+**Audit log.**
+
+| Date | Rows audited | Outcome |
+|---|---|---|
+| 2026-08-21 | `P4`/#54, `T7`/#48, `T7`/#49 | #54 reopened — counterexample reproduces, discharge belonged to a narrower claim (§7 item 38). #48 and #49 found discharged on closure with no cited tier; filed as #110 rather than flipped, since applying rule 11 to them is a standard-application decision (§7 item 42). |
 
 ---
 
@@ -1242,3 +1313,139 @@ the judgment here is that a specification of the system's claimed properties is
 a peer of `STRATA.md`, which is also at the root. Recorded as a decision rather
 than assumed, because rule 1 also forbids standalone tracking files and §0.1
 exists to explain why this is not one.
+
+### 2026-08-21 — the discharge standard, and an audit obligation on the rows nobody revisits
+
+This entry follows directly from item 38. That item found one wrong `Yes`; this one
+states the standard it violated and puts a cadence on finding the next.
+
+44. **Rule 11 added — closure-discharged is not evidence-discharged.** An issue
+    closing is a fact about the tracker; a property holding is a fact about the
+    code. Three of the register's nine `Yes` rows had conflated them. A `Yes` now
+    requires re-derived evidence at E1 or better, cited on the row, and "closed
+    completed" is not a citation.
+
+    The rule carries the reason it was needed, because the reason is not obvious:
+    **deriving a column does not make it true.** §7 items 23–24 made Status a
+    function of the register precisely so the two could not drift, and `propgen`
+    reported agreement on every run from the day the register was written. Two
+    representations agreeing is not evidence that either is right. A generated field
+    removes drift, not error — and the failure it cannot see is the one where both
+    inputs are wrong in the same direction.
+
+45. **§6.1 added — audit the `Yes` rows, not the `No` rows.** The sharp form of item
+    38's finding. A refuted row keeps getting attention: it is in a milestone, it is
+    someone's work, somebody wants it gone. A discharged row leaves the queue and is
+    never looked at again. **So the register's reliability is limited not by the rows
+    under dispute but by the rows nobody has a reason to revisit**, and those are
+    exactly the `Yes` rows.
+
+    The cadence is: at every minor release and on any change touching the register,
+    sample at least three `Yes` rows oldest-discharged first, rotating so none goes
+    more than two minor releases unaudited; **re-derive the counterexample as the row
+    states it** rather than reading the row or its closing issue; check the row's
+    scope against what the evidence actually establishes; and date the row whether or
+    not it changes, so that a `Yes` with no audit date is visibly unchecked.
+
+    Three outcomes are possible and all three are written down: the row holds, the
+    row is wrong (reopen), or the row is **right but overbroad** — restate the
+    counterexample to what the evidence covers and file the remainder. That third
+    outcome is what #54 actually was, and a binary audit would have recorded it
+    wrongly in either direction.
+
+46. **The distribution is now marked as not a progress measure**, in a block quote
+    beside the headline where it is most likely to be quoted from. This is not a
+    caution about a hypothetical: on this date two rows moved from discharged to live
+    and every number in that paragraph stayed the same, because a proposition already
+    `REFUTED` stays `REFUTED` whether it has one live counterexample or four. **A
+    reader watching the distribution for change would have seen a clean bill on the
+    day the register got worse.** This amendment adds two more refutation rows and
+    the distribution again does not move, which makes the point twice on one day.
+
+47. **`validated_on` gets a register row against X1 (#113), split out of #108.** Five
+    formations that do not resolve is a broken catalog. One that *asserts it was
+    validated* is a false verification claim shipped in data, and repairing the
+    catalog does not by itself make the assertion honest. X1 is the exact fit: "a
+    field that is accepted, recorded, and never acted upon is a defect."
+    `grep -rn 'ValidatedOn' --include='*.go' .` returns the declaration at
+    `spec/layer.go:225` and its doc comment at `:223`, and **nothing else** — no
+    reader in non-test code, and none in tests either.
+
+    What makes `hpc-mpi@2026.03`'s assertion false rather than merely unverified is
+    that its failure is registry-independent. `stage4ValidateGraph` checks each
+    requirement against base capabilities plus the capabilities of *the resolved set*
+    and never adds a layer to satisfy one; stage 4 (`internal/resolver/resolver.go:119`)
+    runs before stage 7 (`:135`). So no registry serving the shipped `openmpi`
+    recipe's `runtime_requires` resolves this formation, whatever the bundle state —
+    which means `validated_on: [al2023/x86_64, al2023/arm64]` cannot have been true
+    when it was written.
+
+48. **The #108 row's count was wrong and is corrected: four missing dependencies, not
+    one.** The row said `hpc-mpi@2026.03` fails "because `openmpi` requires `ucx@>=1`
+    and the formation omits a `ucx` layer." `openmpi`'s recipe declares
+    `runtime_requires` on `ucx@>=1`, `hwloc@>=2`, `pmix@>=5` and `libfabric@>=1` —
+    **all four shipped as recipes, none listed in the formation.** Stage 4 returns on
+    the first unsatisfied requirement, so the error message names `ucx` and the row
+    reproduced the error message as if it were the finding.
+
+    This is rule 10 again, in its narrowest form: the *set* the claim quantified over
+    was "requirements stage 4 reported", not "requirements unsatisfied". Enumerated by
+    probe against `spec.BaseCapabilities.SatisfiesRequirement` — the same predicate
+    `stage4ValidateGraph` uses, so the probe cannot disagree with the resolver about
+    what satisfaction means. `glibc` is satisfied by base capabilities, evidenced by
+    the observed error naming `ucx` rather than `glibc` even though `gcc`'s `glibc`
+    requirement is iterated first.
+
+49. **The `pending-initial-build` placeholders get a register row against X1 (#46),
+    for the first time.** They had been recorded only in §4.1's list of "open issues
+    in the same category", which is precisely the silent state item 27 established the
+    register to prevent — a defect described in prose with no row to move. The row
+    states what the placeholders do and do not do: the resolver warns
+    (`internal/resolver/stages.go:71-75`, the deliberate outcome of #49) and never
+    propagates either field into a lockfile (`stages.go:409-413` copies
+    `FromFormation` alone), so nothing downstream can act on them. **They are a trust
+    defect and not a liveness defect**, which is worth having written down, because a
+    static grep for the constant invites the opposite conclusion and this review drew
+    it before tracing the field.
+
+    **And adding a row obliges extending the proposition it refutes.** Items 47 and 49
+    each add a register row against X1, which took X1 from three rows to five — while
+    X1's own evidence cell still opened "Four instances." and enumerated `(a)`–`(d)`.
+    The count was inherited and was honest when written; adding rows beneath it is what
+    made it wrong, and nothing mechanical objected because the count lives in prose that
+    no derivation reads. `validated_on` and the placeholders are now `(e)` and `(f)` in
+    that cell, and the opening count is **deleted rather than corrected** — the register
+    rows are the source and `Status` derives the total, per the ruling behind rule 11.
+    The lettering deliberately does not claim to map onto rows: `Profile.Instance` and
+    `Profile.Storage` are two instances under one issue, which is the row-for-case
+    substitution this review has made before.
+
+50. **§0.2's headline is re-derived: twenty of thirty-six.** Two rows added, both
+    `H1` with no §1.1 capability, and the `awk` in §0.2 moves 18 → 20 as the row count
+    moves 34 → 36.
+
+    Note for anyone comparing against the record, because two similar figures are in
+    play and the resemblance is a trap. Item 30 corrected a review figure of "20 of
+    32" by reporting that at the first population the register held 32 rows, "of which
+    18 mention H1 and 16 exercise no adversary capability." Those are two different
+    counts, and **§0.2's headline is the second one** — its `awk` requires `H1` present
+    *and* no `A1`–`A7`. Run against each historical version rather than extrapolated —
+    `git show "<ref>":"PROPERTIES.md" | awk '<the §0.2 command>'`, quoting the ref
+    because zsh reads a bare `$ref:P...` as its realpath modifier and silently prints
+    `0 of 0`:
+
+    | ref | rows | no-capability | mentions H1 |
+    |---|---|---|---|
+    | `d9d1b76^` (first population) | 32 | **16** | 18 |
+    | `d9d1b76` (X2's row added, item 27) | 33 | 17 | — |
+    | `ff5cd80` (#112) | 34 | 18 | — |
+    | here | 36 | **20** | — |
+
+    So the present "20 of 36" shares a numerator with the original non-reproducible
+    "20 of 32" by coincidence, and is not a vindication of it.
+
+51. **§2.1 rule 10's third instance now names #109 as its correction.** The instance
+    described the #92 `CHANGELOG.md` entry's consumers-for-producers substitution; the
+    entry has since been rewritten. Under the citation-tense rule (item 35) a
+    historical instance stays in the past tense, but naming the correcting artifact
+    makes it checkable rather than merely asserted.
