@@ -365,6 +365,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same exit status.
 
 ### Added
+- **The agent's boot verification decision surface is enumerated, not sampled**
+  (#128). All 112 combinations of `Config.Verifier` (nil, accepts-anything,
+  refuses-anything, content-bound) × the bundle bytes a fetch yields (no fetcher,
+  valid for this layer, valid for *other* content, `(nil, nil)`, non-JSON,
+  well-formed JSON with the wrong media type, fetch error) × `layer.Bundle`
+  (empty, named) × the layer's content against its declared `SHA256` (match,
+  mismatch) now run as cells, each asserting which check fired, whether `Mount`
+  was reached, and how many times the verifier was called.
+
+  This closes a gap that a green suite and 81.3% coverage both concealed: four of
+  the twenty-nine statement blocks in `verifyBundles` were unreached by the whole
+  module's tests, one of them `Verifier.Verify` returning an error. The verifier
+  exists in order to be able to refuse, and no test had ever made it do so
+  through the agent. Three of the four are now executed (the fourth, a `pathByID`
+  miss at `internal/agent/agent.go:311`, is unreachable through `Run`:
+  `fetchAndVerifyLayers` returns a path for every layer or an error). Package
+  coverage 81.3% → 86.7%.
+
+  **20 of the 112 cells reach the mount with nothing verified**, because a nil
+  `Verifier` or a nil `BundleFetcher` still skips verification entirely (#93(a),
+  open). Those cells assert today's behaviour — including that `Mount` was
+  reached and `Verify` was never called — and fail with instructions when the
+  hole closes, so the enumeration cannot quietly certify the fail-open it was
+  built to measure.
+
+  No production behaviour changes: this is test-only, and the count of fail-open
+  cells is the measurement, not a new tolerance.
 - **Documented profile snippets are checked mechanically** (#53). Every fenced
   YAML block in the repository's markdown with a top-level `software:` or
   `defaults:` key must unmarshal as a profile. Blocks are matched by shape rather
