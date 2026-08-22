@@ -92,6 +92,152 @@ func Bases() []BasisKind {
 	}
 }
 
+// Rank returns the position of a basis's coverage in the coverage order:
+// asserted 0, chosen 1, sampled 2, exhaustive 3.
+//
+// This is the ordering on Coverage alone, which section 2 states is total and
+// means it. It is *not* the seven-basis sorting convention, which ranks pairs the
+// evidence does not — Reduce refuses to compare two bases differing in Subject
+// rather than consulting a rank for them.
+func (k BasisKind) Rank() int {
+	switch k.Coverage {
+	case CoverageAsserted:
+		return 0
+	case CoverageChosen:
+		return 1
+	case CoverageSampled:
+		return 2
+	case CoverageExhaustive:
+		return 3
+	}
+	// An unrecognised coverage ranks at the bottom rather than panicking: a
+	// hand-built BasisKind carrying a typo should weaken a meet, never strengthen
+	// one, and Reduce's whole purpose is to not overstate.
+	return 0
+}
+
+// ScopedBasis is one entry of a Basis cell: a basis, the part of the
+// proposition's domain that basis covers, and the citation carrying it.
+//
+// A proposition quantifying over several execution routes is not covered equally
+// on all of them, and one basis for the whole cell cannot say so — which is the
+// defect this type exists to remove (#135).
+type ScopedBasis struct {
+	// Tier is the canonical spelling of one of the seven bases, or TierNone for a
+	// scope declared uncovered.
+	Tier string
+	// Scope is the declared bound: which part of the proposition's domain this
+	// entry covers. Empty only for a single-entry cell, whose scope is whatever
+	// the proposition's own text quantifies over.
+	Scope string
+	// Citation is the evidence for this scope.
+	Citation string
+}
+
+// Reduction is what a Basis cell's entries reduce to: the honest floor over the
+// scopes the cell covers.
+//
+// The reduction is a **meet** (greatest lower bound), not a max. A max over
+// unevenly covered scopes reports the best-covered scope's strength as the
+// proposition's, which overstates silently and is what #135 was filed about. A
+// meet reports the weakest, which is the most that holds everywhere the cell
+// claims to cover.
+//
+// But a meet needs an order, and the seven bases do not have one: Coverage is
+// totally ordered and Subject is not (§2.1 rule 1). So the meet exists only where
+// all covered scopes share a Subject, and where they do not there is no single
+// answer to report — hence Set, and hence Comparable.
+type Reduction struct {
+	// Meet is the greatest lower bound of the covered scopes' bases. Valid only
+	// when Comparable; the zero BasisKind otherwise.
+	Meet BasisKind
+	// Set is every distinct basis the cell claims, in the order section 2
+	// tabulates them. Always populated, and it is the whole of the answer when
+	// Comparable is false.
+	Set []BasisKind
+	// Comparable reports whether a meet exists — that is, whether every covered
+	// scope whose evidence executed something shares a Subject with every other.
+	Comparable bool
+	// Scopes is the union of the declared bounds, in cell order. It is part of the
+	// claim, not decoration: the reduction is a floor over *these* scopes and says
+	// nothing about a part of the domain no entry names (§2.1 rule 2 and rule 10).
+	Scopes []string
+}
+
+// Reduce returns what a set of scoped bases reduces to, and whether any entry
+// named a basis at all.
+//
+// asserted is the bottom of the coverage order and is treated as comparable with
+// every other basis, because the incomparability of Subject arises from *what was
+// executed* and asserted executed nothing: there is no model-versus-implementation
+// disagreement to have. Note what this does and does not claim. It is a floor on
+// **coverage**. It is not a claim that a `model` result outranks asserted in
+// usefulness — section 2's ranking note says it does not, and this function does
+// not consult that ranking.
+//
+// TierNone short-circuits the whole reduction: a scope declared uncovered means
+// nothing is established over the union, however well covered the other scopes
+// are. That is the mechanism by which a cell can state the bound honestly instead
+// of leaving an uncovered route to be inferred from prose.
+func Reduce(entries []ScopedBasis) (Reduction, bool) {
+	var r Reduction
+	var kinds []BasisKind
+	uncovered := false
+	for _, e := range entries {
+		if e.Scope != "" {
+			r.Scopes = append(r.Scopes, e.Scope)
+		}
+		if e.Tier == TierNone {
+			uncovered = true
+			continue
+		}
+		if k, ok := lookupBasis(e.Tier); ok {
+			kinds = append(kinds, k)
+		}
+	}
+	if uncovered || len(kinds) == 0 {
+		return r, false
+	}
+
+	// Distinct, in section 2's order, so two cells claiming the same bases report
+	// the same set whatever order they were authored in.
+	for _, b := range Bases() {
+		for _, k := range kinds {
+			if k == b {
+				r.Set = append(r.Set, b)
+				break
+			}
+		}
+	}
+
+	// Subject agreement, checked over the entries that executed something.
+	r.Comparable = true
+	subject := SubjectNone
+	for _, k := range kinds {
+		if k.Coverage == CoverageAsserted {
+			continue
+		}
+		if subject == SubjectNone {
+			subject = k.Subject
+			continue
+		}
+		if k.Subject != subject {
+			r.Comparable = false
+		}
+	}
+	if !r.Comparable {
+		return r, true
+	}
+
+	r.Meet = kinds[0]
+	for _, k := range kinds[1:] {
+		if k.Rank() < r.Meet.Rank() {
+			r.Meet = k
+		}
+	}
+	return r, true
+}
+
 // lookupBasis finds the kind a Basis cell's tier token names, accepting either
 // the legacy name or the pair notation.
 func lookupBasis(token string) (BasisKind, bool) {

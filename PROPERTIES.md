@@ -31,8 +31,8 @@ finding is §0.2.
 > 2026-08-22, where `T7` moved from `REFUTED (1 of 4 live)` to
 > `REFUTED (3 of 4 live)` and every number above held — so it is stated once here
 > as what it is. `Distribution` tallies `Kind(status)`
-> (`internal/propdoc/propdoc.go:252`) and `Kind` discards the parenthesised detail
-> by construction (`:261`), so a movement expressible only in an `(n of m live)`
+> (`internal/propdoc/propdoc.go:339`) and `Kind` discards the parenthesised detail
+> by construction (`:348`), so a movement expressible only in an `(n of m live)`
 > count **cannot** appear in these totals. No future amendment demonstrates this
 > again; a movement that leaves the totals unchanged is the expected reading, and
 > the number to check is the cell.
@@ -326,13 +326,42 @@ not:
    nothing about the code, and `asserted` at least does not imply otherwise.
 
 **A column that cannot be totally ordered is more useful than one that can be and
-lies about it.** Note what this ranking is not: nothing in this repository
-consumes it. No tool sorts propositions by basis, so the list above is a note,
-and notes do not fire. The first time something does sort by basis — a triage
-script, a dashboard, a release gate — the order and this list move into
-`internal/propdoc` together, and the list acquires the guard that makes it
-non-vacuous: **every pair named here must be one the order actually ranks**, or
-the caveat is a caveat about nothing.
+lies about it.**
+
+**Something now consumes part of this ordering, and the guard promised here has
+come due** (2026-08-22, #135; §7 item 80). The paragraph that stood here said
+nothing in the repository consumed the ranking, that the list above was therefore
+a note and notes do not fire, and that the first consumer would bring the list into
+`internal/propdoc` with a guard making it non-vacuous. `propdoc.Reduce` is that
+consumer, and the guard is
+`internal/propdoc/basis_scope_test.go:192 TestReduceRefusesSection2sIncomparablePairs`.
+What it consumes is narrower than "sorting by basis", and the difference is the
+whole reason the four cases above survive intact:
+
+- **`Reduce` consumes the order on `Coverage` alone** — `BasisKind.Rank`,
+  `internal/propdoc/basis.go:102` — which §2 states is total and means it. It never
+  consults the tie-break by subject, because it refuses to compare two bases whose
+  subjects differ instead of ranking them.
+- **It computes a meet, not a sort.** A floor over a set of scopes is not a ranking
+  of one scope against another: it reports the weakest thing true anywhere in the
+  union, which is well defined even where the scopes cover different domains.
+- **Items 1 and 2 are refused**, and the guard asserts the refusal names both bases
+  rather than discarding one. **Item 4 is not refused**, and the guard states why in
+  the narrowest terms available: `asserted` is the bottom of the *coverage* order, so
+  a floor over coverage is defined for it. Item 4's complaint is about *usefulness* —
+  whether something that ran but was not about the code beats a bare assertion — and
+  `Reduce` does not compute a usefulness ranking and does not claim to.
+- **Item 3 is not expressible as a pair of bases at all.** It says that comparing the
+  Basis cells of two propositions whose bounds differ compares nothing, which is a
+  statement about two *cells*. `Reduce`'s answer to it is structural rather than a
+  verdict: every entry carries its own scope, and a multi-entry cell that declines to
+  name them is rejected
+  (`internal/propdoc/basis_scope_test.go:364 TestParseBasisRejectsUnscopedMultiEntryCells`).
+
+Still true, and still a note: **no tool sorts propositions by basis.** Nothing
+ranks one proposition against another, and the seven-way order remains
+unconsumed — a triage script, a dashboard or a release gate would be the first to
+consume *that*, and would owe the same guard for the part it used.
 
 ### 2.1 Rules
 
@@ -477,7 +506,7 @@ the caveat is a caveat about nothing.
     nothing mechanical can close this gap.
 
     **Half of this rule is now enforced, and the boundary matters more than the
-    enforcement.** `propdoc.Doc.DischargeDefects` (`internal/propdoc/propdoc.go:363`)
+    enforcement.** `propdoc.Doc.DischargeDefects` (`internal/propdoc/propdoc.go:450`)
     reports every `Yes` row that names no basis or cites no artifact; `propgen`
     refuses to run and `TestPropertiesRegisterMeetsRule11` fails the build
     (`internal/propdoc/discharge_citation_test.go:143`). It is a report over a parsed
@@ -506,6 +535,49 @@ the caveat is a caveat about nothing.
     comparing subjects, which is the §6.1 audit obligation and nothing else. So the
     green from `TestPropertiesRegisterMeetsRule11` bounds the closure-for-citation
     conflation only, and must not be read as covering the class above.
+12. **A proposition covered unevenly across its domain reduces to its weakest
+    covered scope, not its strongest.** Where a proposition quantifies over several
+    execution routes, one basis for the whole cell cannot say that one route was
+    enumerated and another merely exercised. The Basis cell therefore takes one
+    entry per scope — `tier @ scope — citation`, entries separated by semicolons —
+    and the basis it claims is the **meet** over them.
+
+    The reason is that the old definition was a **max**. §3 defined the Basis cell as
+    *the strongest basis claimed*, so a proposition covered exhaustively on one route
+    and by three examples on another reported `exhaustive/implementation`, and nothing
+    in the column said which route that came from. The overstatement is silent, which
+    is the property that makes it worth a rule rather than a correction.
+
+    **A meet needs an order, and the seven bases do not have one.** Coverage is
+    totally ordered; Subject is not (rule 1). So:
+
+    - Where every covered scope shares a Subject, the reduction is a **pair**: the
+      lowest coverage reached on any of them, with that Subject.
+    - Where they do not, there is **no meet**, and the reduction is the **set** of
+      bases claimed. Status renders the set rather than choosing from it.
+    - In both cases the reduction is over the **union of the declared bounds**, and
+      says nothing about a part of the domain no entry names. A scope known to be
+      uncovered may be declared with `none`, which collapses the whole cell: nothing
+      is established over the union however well covered the rest is.
+
+    Four things a multi-scope cell must do, each enforced with its own error so the
+    author is told which one was missed: name every scope, name none of them twice,
+    cite every scope that claims a basis, and **lead with the entry it reduces to**.
+    The last is not cosmetic. The reduction is derived and appears only in the
+    generated Status column, so the first entry is the only basis a reader of the
+    Basis column actually sees — a cell leading with its strongest scope reproduces
+    the overstatement with every derived number correct.
+
+    Enforced by `internal/propdoc.parseBasis` and `Reduce`
+    (`internal/propdoc/basis.go:182`, `internal/propdoc/propdoc.go:582`), tested at
+    `internal/propdoc/basis_scope_test.go:42`. Two cells are scoped today, `T1` and
+    `T5`, each reducing from `exhaustive/implementation` to `chosen/implementation`;
+    the other 32 are single-scope and unchanged. **What the document's own green does
+    not show:** both scoped propositions are `REFUTED`, and a live refutation
+    outranks any basis (rule 5), so neither Status cell displays its reduction and
+    the generated column is byte-identical before and after this rule. The
+    renderings are covered by constructed cells, not by this document — see §7
+    item 80. (Added 2026-08-22, #135.)
 
 ---
 
@@ -517,12 +589,22 @@ Three columns, two authored and one generated:
   `SOUND`, `TOO WEAK` (satisfiable by an implementation that still has the defect
   the proposition was written to exclude — the broken implementation is named),
   `TOO STRONG`, or `ILL-FORMED` (with the falsifiable replacement).
-- **Basis** — *authored.* The strongest basis claimed for the proposition — a
-  (coverage, subject) pair from §2, written either in pair notation or under its
-  legacy E-name — and the citation carrying it; `none` if nothing is cited, or
-  `withdrawn` naming what superseded it. A basis with no citation is not a basis.
-  "Strongest" is not a total order: see §2 on which pairs the ranking convention
-  ranks and the evidence does not.
+- **Basis** — *authored.* What the proposition's evidence establishes across the
+  domain the cell declares: a (coverage, subject) pair from §2, written either in
+  pair notation or under its legacy E-name, and the citation carrying it; `none` if
+  nothing is cited, or `withdrawn` naming what superseded it. A basis with no
+  citation is not a basis.
+
+  Where the cell names one scope it claims one basis. Where it names several —
+  `tier @ scope — citation`, semicolon-separated — the basis is the **meet** over
+  them, the weakest reached on any scope the cell covers, and the cell leads with
+  that entry. This was *the strongest basis claimed* until 2026-08-22, which is a
+  **max** and overstates a proposition covered unevenly across its routes; §2.1
+  rule 12 states the replacement and §7 item 80 the correction. Neither "strongest"
+  nor "weakest" is a total order over the seven bases: Coverage is ordered and
+  Subject is not, so where the scopes' subjects differ there is no meet and the set
+  is reported instead. See §2 on which pairs the ranking convention ranks and the
+  evidence does not.
 - **Status** — **generated** from the Basis cell and the §4 register by
   `internal/propdoc.DeriveStatus`. Do not edit it by hand; run
   `go run ./cmd/propgen -write`.
@@ -535,12 +617,24 @@ The status function, in the order it applies:
    rule 5. Where a proposition has more than one row the count is reported as
    `REFUTED (n of m live)`, so discharging one of several counterexamples is
    visible here rather than only in prose.
-3. Otherwise the Basis decides. `asserted` coverage renders `ASSERTED (…)`,
+3. Otherwise the Basis decides — the **meet** over the cell's scopes, per §2.1
+   rule 12, not the strongest of them. `asserted` coverage renders `ASSERTED (…)`,
    naming the basis in parentheses — `ASSERTED (E0)` for the legacy spelling.
    Anything else renders `ENFORCED` followed by the canonical spelling:
    `ENFORCED E1`, `ENFORCED E2`, `ENFORCED E3`, or
    `ENFORCED exhaustive/implementation` for a pair with no legacy name. A cell
    citing nothing renders `UNPOPULATED` whatever it claims.
+4. A cell naming more than one scope says so in the status, because a basis that is
+   the weakest of several routes must not read as a claim about all of them:
+   `ENFORCED E1 (weakest of 2 scopes)`, or
+   `ASSERTED (E0, weakest of 2 scopes)`. Where the scopes share no Subject there is
+   no meet and the set is named:
+   `ENFORCED (no meet over 2 scopes: chosen/model, exhaustive/implementation)`.
+   Where one scope is declared uncovered: `UNPOPULATED (a scope of 2 is uncovered)`.
+   All of this is parenthesised detail, so the distribution the header quotes tallies
+   these with their single-scope counterparts and does not grow a bucket — except the
+   no-meet case, whose class is `ENFORCED` with no basis, since that is what it is.
+   No cell renders any of these today; see §2.1 rule 12 on why, and §7 item 80.
 
 A `SOUND` verdict and a `REFUTED` status are the healthy combination: the
 proposition is worth having and the system does not yet satisfy it.
@@ -595,11 +689,11 @@ This group is the core of Strata's differentiating claim.
 
 | # | Proposition | Verdict | Basis | Status | Evidence |
 |---|-------------|---------|-------|--------|----------|
-| **T1** | *No unverified mount.* There exists no execution path from *layer declared in a lockfile* to *layer mounted in an assembled environment* that does not pass a successful signature verification under the trust policy in force. | **TOO WEAK** | exhaustive/implementation — `internal/agent/boot_matrix_test.go:464`, **the agent boot route only**; the `strata run` route stands at chosen/implementation, `cmd/strata/run_verify_test.go:370,519` | REFUTED (1 of 4 live) | *The most important finding in this review.* Broken-but-satisfying implementation: ship an agent whose default policy is `allow-unverified`, and route every layer through a verifier that returns success when a layer names no bundle. Every mount then "passes a successful verification under the trust policy in force" and T1 holds — which is precisely the shape of the five fail-opens this document was written about. T1 defers its content to "the policy in force" and never says what the policy is when the operator selects nothing. It is only worth having when read together with T5's second sentence, and it should be restated to quantify over the *default* configuration (see H1, §1.4). Status under that reading: refuted at `internal/agent/agent.go:285` (nil verifier ⇒ skip — still open, #93) and, at `339329fb`, `:285-293` (layer with `Bundle: ""` dropped from the set; empty set ⇒ success — #92, **closed by #104**, which replaces the filter with a refusal naming every bundle-less layer at `:310-323`; witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`). Probe 3 on #92 boots READY with a verifier that refuses every artifact, `VerifierCalled=false`. Closed on the `strata run` route by #55: `cmd/strata/run_verify_test.go:519 TestRunRun_MissingKeyIsARefusalNotASkip`, `:370 TestVerifyRunLayers_ReportsEveryFailure`. **Basis raised 2026-08-21 (#129), and it is route-scoped for a reason T1's own text creates.** `TestBootMatrix_DecisionSurface` enumerates all 112 cells of the agent boot route's decision surface — `Config.Verifier` × the bytes a bundle fetch yields × `layer.Bundle` × content-against-`SHA256` — asserting per cell which check fired, whether `Mount` was reached, and how many times the verifier was called. That last is what makes it T1 evidence rather than T5-only: *"`Run` returned nil"* does not distinguish verification succeeding from verification never happening, which is the whole of #92. **20 of the 112 cells reach the mount with nothing verified**, pinned as a literal so the hole cannot shrink without a diff. Two limits on what this cites. (a) It covers the **agent** route; T1 quantifies over *every* execution path, and the `strata run` route is covered separately and only at `chosen`. A single Basis cell holding "the strongest basis" cannot say that without saying which route, which is why this one does — §2.1 rule 2, the declared bound is part of the claim. (b) The table's expectation ladder makes a boot with no verifier a **refusal**, so it measures T1 under the strengthened reading rule 9 prescribes and not under T1's literal text, which a fail-open still satisfies — the `TOO WEAK` verdict, unchanged. The 20 cells therefore carry `knownOpen` and assert *today's* behaviour, failing loudly when #93(a) closes rather than certifying it. |
+| **T1** | *No unverified mount.* There exists no execution path from *layer declared in a lockfile* to *layer mounted in an assembled environment* that does not pass a successful signature verification under the trust policy in force. | **TOO WEAK** | chosen/implementation @ the `strata run` route — `cmd/strata/run_verify_test.go:370,519`; exhaustive/implementation @ the agent boot route — `internal/agent/boot_matrix_test.go:464` | REFUTED (1 of 4 live) | *The most important finding in this review.* Broken-but-satisfying implementation: ship an agent whose default policy is `allow-unverified`, and route every layer through a verifier that returns success when a layer names no bundle. Every mount then "passes a successful verification under the trust policy in force" and T1 holds — which is precisely the shape of the five fail-opens this document was written about. T1 defers its content to "the policy in force" and never says what the policy is when the operator selects nothing. It is only worth having when read together with T5's second sentence, and it should be restated to quantify over the *default* configuration (see H1, §1.4). Status under that reading: refuted at `internal/agent/agent.go:285` (nil verifier ⇒ skip — still open, #93) and, at `339329fb`, `:285-293` (layer with `Bundle: ""` dropped from the set; empty set ⇒ success — #92, **closed by #104**, which replaces the filter with a refusal naming every bundle-less layer at `:310-323`; witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`). Probe 3 on #92 boots READY with a verifier that refuses every artifact, `VerifierCalled=false`. Closed on the `strata run` route by #55: `cmd/strata/run_verify_test.go:519 TestRunRun_MissingKeyIsARefusalNotASkip`, `:370 TestVerifyRunLayers_ReportsEveryFailure`. **Basis raised 2026-08-21 (#129), and it is route-scoped for a reason T1's own text creates.** `TestBootMatrix_DecisionSurface` enumerates all 112 cells of the agent boot route's decision surface — `Config.Verifier` × the bytes a bundle fetch yields × `layer.Bundle` × content-against-`SHA256` — asserting per cell which check fired, whether `Mount` was reached, and how many times the verifier was called. That last is what makes it T1 evidence rather than T5-only: *"`Run` returned nil"* does not distinguish verification succeeding from verification never happening, which is the whole of #92. **20 of the 112 cells reach the mount with nothing verified**, pinned as a literal so the hole cannot shrink without a diff. Two limits on what this cites. (a) It covers the **agent** route; T1 quantifies over *every* execution path, and the `strata run` route is covered separately and only at `chosen`. The Basis cell says so per route rather than in prose, and reduces to the weaker of the two — §2.1 rule 2 and rule 12, the declared bound is part of the claim (#135). (b) The table's expectation ladder makes a boot with no verifier a **refusal**, so it measures T1 under the strengthened reading rule 9 prescribes and not under T1's literal text, which a fail-open still satisfies — the `TOO WEAK` verdict, unchanged. The 20 cells therefore carry `knownOpen` and assert *today's* behaviour, failing loudly when #93(a) closes rather than certifying it. |
 | **T2** | *Verification soundness.* Verification succeeds for a layer only if a signature exists, by an identity admitted by the trust policy, over the digest of the exact bytes that will be mounted. | SOUND | E1 — `cmd/strata/run_verify_test.go:466` | REFUTED | The "exact bytes" clause is the load-bearing part and it is satisfied deliberately: `cmd/strata/run.go` adds a check absent from `trust.VerifyLayer` — that the bundle attests *this lockfile's* digest — with the reason stated in its doc comment (*"a missing cosign must not be the difference between 'wrong layer's bundle' and 'accepted'"*). Witnessed by `cmd/strata/run_verify_test.go:466 TestRunRun_RefusesLayerWhoseBundleAttestsAnotherArtifact`. For the *lockfile*, no signature verification exists at all (#60), so T2 does not hold of the artifact that names the layer set. Weakness worth recording: "an identity admitted by the trust policy" is satisfied here by possession of one `--key`; there is no identity policy to admit or refuse anything. |
 | **T3** | *Transparency binding.* A transparency-log entry accepted as evidence for artifact *A* has a body that corresponds to *A*'s attestation. Under **A4**, the existence of the referenced entry is not itself evidence about *A*. | SOUND | E1 — `cmd/strata/verify_rekor_test.go:80,147,217` | REFUTED (2 of 3 live) | Discharged for the verify command by #59, which replaced a log-index existence check that discarded the bundle: `cmd/strata/verify_rekor_test.go:80 TestVerifyRekorEntries_PassesTheBundle`, with `:217 TestVerifyRekorEntries_BadIndexIsNotVerified` and `:147 TestVerifyRekorEntries_UnfetchableBundleIsAFailure` as the failing controls. Refuted on the resolver path: stage 7 holds a bundle *URI*, not bundle bytes, so it cannot compare anything (#85). Two open objections to the *evidence*, not to the proposition: #88 — the `hashedrekord` body shape is inferred from our own `Log`, so writer and verifier can be wrong together, which is rule 3's tautology at the level of a design; #86 — `TestStage7_RekorVerification` asserts a negative case its body never exercises, which is rule 6. |
 | **T4** | *Trust-anchor independence.* The root of trust used to verify artifacts is not obtained from the authority that serves those artifacts. Under **A1**, an attacker who can replace an artifact cannot also replace the material that decides who may sign it. | SOUND | none | REFUTED (2 of 2 live) | #62 — the agent fetches its cosign public key from the same S3 bucket that serves the layers, so A1 alone replaces both. #63 — `ec2runner` downloads the cosign binary itself with no checksum or signature check, which is the §1.2 clause "obtaining the verification binary is in scope under A3" paying out. |
-| **T5** | *Fail-closed.* Any inability to complete verification — absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material — results in refusal. Degradation to a weaker check occurs only when a weaker policy has been explicitly selected by the operator. | SOUND | exhaustive/implementation — `internal/agent/boot_matrix_test.go:464`, **the agent boot route only**; the `strata run` and verifier-construction routes stand at chosen/implementation, `cmd/strata/run_verify_test.go:264`, `cmd/strata-agent/cosign_verifier_test.go:127,187,249` | REFUTED (1 of 4 live) | The strongest proposition in this document: it names absence alongside invalidity, so A5 cannot slip past it, and it fixes the default in its second sentence, which is what T1 fails to do. Refuted at `internal/agent/agent.go:285` (#93, still open) and, at `339329fb`, `:285-293` (#92) — an absent bundle was a skip, not a refusal. **#104 closes the #92 half**: absence is now refused at `:310-323`, witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`. Enforced at E1 on the routes already fixed: `cmd/strata/run_verify_test.go:264 TestNewRunVerifier_NeverReturnsANilVerifier` (#55) and `cmd/strata-agent/cosign_verifier_test.go:127 TestResolveVerifier_NilVerifierOnlyWithAnExplicitOptOut`, `:187 TestAllowUnverified_DefaultsToClosed`, `:249 TestProductionPrereqs_ClosedByDefault` (#56). **Basis raised 2026-08-21 (#129), agent route only.** T5's list of failure modes — *absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material* — is close to an enumeration of a domain, and `TestBootMatrix_DecisionSurface` now runs one: the bundle-bytes dimension covers no fetcher, valid-for-this-content, valid-for-*other*-content, `(nil, nil)`, non-JSON, well-formed JSON with the wrong media type, and a fetch error, crossed with four verifier dispositions, `layer.Bundle` empty or named, and content matching or not matching its declared `SHA256` — 112 cells, each asserting *which* check fired rather than merely that one did. Where T5's own list stops short of the shipping surface, the enumeration is derived from the code's inputs and covers more (valid-for-other-content is a substitution, not an inability), and where it goes beyond this route it is not covered here at all: **an absent cosign binary and an absent Rekor entry are neither of them dimensions of this table**, so T5's "absent tool" and "absent log entry" clauses remain at `chosen` on the routes cited above. **20 of the 112 cells reach the mount unverified** because `Verifier` or `BundleFetcher` is nil (#93(a), open), which is the same live half that keeps T5 refuted; they assert today's behaviour and fail when it changes. |
+| **T5** | *Fail-closed.* Any inability to complete verification — absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material — results in refusal. Degradation to a weaker check occurs only when a weaker policy has been explicitly selected by the operator. | SOUND | chosen/implementation @ the `strata run` route — `cmd/strata/run_verify_test.go:264`; chosen/implementation @ verifier construction — `cmd/strata-agent/cosign_verifier_test.go:127,187,249`; exhaustive/implementation @ the agent boot route — `internal/agent/boot_matrix_test.go:464` | REFUTED (1 of 4 live) | The strongest proposition in this document: it names absence alongside invalidity, so A5 cannot slip past it, and it fixes the default in its second sentence, which is what T1 fails to do. Refuted at `internal/agent/agent.go:285` (#93, still open) and, at `339329fb`, `:285-293` (#92) — an absent bundle was a skip, not a refusal. **#104 closes the #92 half**: absence is now refused at `:310-323`, witnessed at `internal/agent/verify_bundles_test.go:187,252,291` and `cmd/strata-agent/s3_bundle_contract_test.go:22`. Enforced at E1 on the routes already fixed: `cmd/strata/run_verify_test.go:264 TestNewRunVerifier_NeverReturnsANilVerifier` (#55) and `cmd/strata-agent/cosign_verifier_test.go:127 TestResolveVerifier_NilVerifierOnlyWithAnExplicitOptOut`, `:187 TestAllowUnverified_DefaultsToClosed`, `:249 TestProductionPrereqs_ClosedByDefault` (#56). **Basis raised 2026-08-21 (#129), and scoped per route 2026-08-22 (#135): the cell now reduces to `chosen/implementation`, the weakest of its three routes, rather than reporting the strongest.** T5's list of failure modes — *absent tool, absent key, absent bundle, absent log entry, network failure, unparseable material* — is close to an enumeration of a domain, and `TestBootMatrix_DecisionSurface` now runs one: the bundle-bytes dimension covers no fetcher, valid-for-this-content, valid-for-*other*-content, `(nil, nil)`, non-JSON, well-formed JSON with the wrong media type, and a fetch error, crossed with four verifier dispositions, `layer.Bundle` empty or named, and content matching or not matching its declared `SHA256` — 112 cells, each asserting *which* check fired rather than merely that one did. Where T5's own list stops short of the shipping surface, the enumeration is derived from the code's inputs and covers more (valid-for-other-content is a substitution, not an inability), and where it goes beyond this route it is not covered here at all: **an absent cosign binary and an absent Rekor entry are neither of them dimensions of this table**, so T5's "absent tool" and "absent log entry" clauses remain at `chosen` on the routes cited above. **20 of the 112 cells reach the mount unverified** because `Verifier` or `BundleFetcher` is nil (#93(a), open), which is the same live half that keeps T5 refuted; they assert today's behaviour and fail when it changes. |
 | **T6** | *Policy explicitness.* The trust policy under which a result was produced is recorded alongside that result, so that a verification outcome is interpretable without knowledge of the invoking environment. | **ILL-FORMED** | none | REFUTED | "Recorded alongside that result" names neither an artifact nor a lifetime. A line on stderr satisfies it on one reading and no durable record satisfies it on another, so as written it cannot be failed. Falsifiable form: *the lockfile, or an attestation deposited with it, carries a field naming the trust policy in force, and a consumer reading only the artifact can determine what was checked.* Under that form: refuted by absence. `grep -rn 'TrustPolicy\|VerifiedAt' --include='*.go' . \| grep -v _test.go` returns 0 lines, and no lockfile field records what was checked. Filed as #100. |
 | **T7** | *Command-name honesty.* A command's name and documented behaviour do not claim a stronger check than it performs. A flag that purports to disable a check disables a check that was otherwise performed. | **TOO WEAK** | E1 — `cmd/strata/run_verify_test.go:350,497` | REFUTED (3 of 4 live) | Broken-but-satisfying implementation: keep the fail-open and fix the *documentation*. T7 constrains names and docs, so the cheapest way to satisfy it is to document the weakness while leaving the command called `verify` and the behaviour unchanged — the operator's attention is displaced exactly as before. Repair: pair T7 with a requirement that a weaker check announces itself **at use time**, not only in prose. `strata run --no-verify` already meets the repaired form (`cmd/strata/run.go:184` prints the warning; `cmd/strata/run_verify_test.go:350 TestVerifyRunLayers_NoVerifyAnnouncesTheSkip` with `:497 TestRunRun_NoVerifyReachesTheMount` as its pair), and so does `STRATA_AGENT_ALLOW_UNVERIFIED` (#56). `strata verify` does not: without `--rekor` it performs presence checks only (`cmd/strata/verify.go:82-98 collectPresenceFailures`) under a name that claims verification — #60. And `verifyBundles`'s doc comment stated the skip as intended design (`internal/agent/agent.go:272-283`) — T7's broken-but-satisfying implementation occurring in the wild rather than as a hypothetical: the weakness was documented accurately and the behaviour left alone, so T7 as written was *satisfied* by the artifact that recorded the fail-open. #104 rewrites the comment and inverts the behaviour together, which is the only combination that discharges anything. |
 | **T8** | *(new)* *Freshness.* A verifier can determine that the artifact set it has been given is the current one, and refuses a set that is older than a stated bound. | SOUND | none | REFUTED | Added 2026-08-21 (§7). §5 asked for group T to be checked against TUF's taxonomy; **A6 was in the model and no proposition used it.** Doing the check: nothing records a freshness threshold, an expiry, or a timestamp/snapshot role, so rollback and freeze both succeed against a genuinely signed old artifact, and `strata update` moves forward only when a human runs it. Filed as #101. |
@@ -911,6 +1005,18 @@ with the evidence. **Editing a Status cell directly is now a build failure rathe
 than a divergence nobody notices**, which is the point — the first population of
 this document maintained status beside the register, and the two disagreed within
 one PR.
+
+**When a proposition's evidence covers its routes unequally, the Basis cell says so
+per route.** A proposition quantifying over every execution path is rarely covered
+the same way on all of them, and one basis for the whole cell reports the
+best-covered route's strength as the proposition's. So write one entry per route —
+`tier @ scope — citation`, separated by `;` — lead with the entry the cell reduces
+to, and let the Status column derive the floor (`weakest of N scopes`). A route known
+to be uncovered is declared `none @ that route`, which collapses the cell to
+`UNPOPULATED` rather than leaving the gap to be inferred from the Evidence prose.
+§2.1 rule 12 states the reduction and the four obligations; `propgen` refuses a cell
+that breaks any of them. Recording only the best-covered route is a rejected
+document, not a style choice.
 
 A change to a proposition's text is an amendment with a date and a reason, not a
 silent edit: a proposition that quietly narrows until it is satisfied is not
@@ -2194,7 +2300,7 @@ states the standard it violated and puts a cadence on finding the next.
 
     **T7's live count moves 1 → 3 of 4, and this is the failure mode the derived column
     was supposed to prevent.** `Refutation.Live()` is `Discharged != "Yes"`
-    (`internal/propdoc/propdoc.go:87`), so both cells counted as discharged and §3
+    (`internal/propdoc/propdoc.go:117`), so both cells counted as discharged and §3
     reported `REFUTED (1 of 4 live)` — a false statement, in a trust proposition, sitting
     inside a *generated* cell. Deriving the column removed the drift between §3 and §4
     and could not remove the error, because the error was in the input the derivation
@@ -2215,7 +2321,7 @@ states the standard it violated and puts a cadence on finding the next.
     name, and putting the check in the wrong place was caught by a test written for
     something else.** Rule 11 has been enforceable since the day it was written and was
     not enforced, which is why item 78 exists. `Doc.DischargeDefects`
-    (`internal/propdoc/propdoc.go:363`) now reports every `Yes` row naming no basis or
+    (`internal/propdoc/propdoc.go:450`) now reports every `Yes` row naming no basis or
     citing no artifact, `propgen` refuses before it rewrites the Status column
     (`cmd/propgen/main.go:51-57`), and `TestPropertiesRegisterMeetsRule11`
     (`internal/propdoc/discharge_citation_test.go:143`) fails the build.
@@ -2290,9 +2396,143 @@ states the standard it violated and puts a cadence on finding the next.
     **The distribution caveat is restated as a property of the generator.** This is the
     fourth session in which a movement failed to appear in the header's totals (items 46,
     55, 62, and 78's `T7` count). `Distribution` tallies `Kind(status)`
-    (`internal/propdoc/propdoc.go:252`) and `Kind` discards parenthesised detail by
-    construction (`:261`), so a movement expressible only in an `(n of m live)` count
+    (`internal/propdoc/propdoc.go:339`) and `Kind` discards parenthesised detail by
+    construction (`:348`), so a movement expressible only in an `(n of m live)` count
     **cannot** appear there — it is derivable, not a tally of four coincidences. The block
     quote in the header now says so and says that no future amendment demonstrates it
     again. Four rediscoveries is the cost of recording a trap as a note: a note does not
     fire.
+80. **The Basis column was a max, and a max over unevenly covered routes overstates.**
+    §3 defined the cell as *the strongest basis claimed*. `T1` and `T5` each quantify over
+    every execution path and are covered unequally across them — 112 enumerated cells on
+    the agent boot route, example tests on the `strata run` route — so both cells read
+    `exhaustive/implementation`, and nothing in the column said which route that came from.
+    The overstatement is silent, which is what made it worth a rule rather than an edit
+    (#135, filed after #129's PR worked around it by naming the route in prose beside each
+    pair).
+
+    **The replacement is a meet, and the correction to the obvious form of it is the point.**
+    A min over covered routes is the honest reduction, but a min needs an order and the seven
+    bases do not have one: Coverage is totally ordered, Subject is not (rule 1). So the rule
+    is **a pair where all covered scopes share a Subject, the set otherwise, over the union of
+    the declared bounds** — and a scope known to be uncovered may be declared with `none`,
+    which collapses the cell, because a floor over a union says nothing about a part of the
+    domain no entry names. Stated as §2.1 rule 12; implemented as `Reduce`
+    (`internal/propdoc/basis.go:182`) and `parseBasis` (`internal/propdoc/propdoc.go:582`).
+
+    | Cell | Scopes | Old (max) | New (meet) | Status before | Status after |
+    |---|---|---|---|---|---|
+    | `T1` | 2 | `exhaustive/implementation` | `chosen/implementation` | `REFUTED (1 of 4 live)` | `REFUTED (1 of 4 live)` |
+    | `T5` | 3 | `exhaustive/implementation` | `chosen/implementation` | `REFUTED (1 of 4 live)` | `REFUTED (1 of 4 live)` |
+
+    **The two right-hand columns are the finding about this change's own evidence.** Both
+    scoped propositions are `REFUTED`, and a live refutation outranks any basis (rule 5), so
+    neither Status cell moves. `go run ./cmd/propgen` reports `no drift` and the identical
+    distribution — `ASSERTED (E0) 1, ENFORCED E1 2, REFUTED 27, UNPOPULATED 2, WITHDRAWN 2` —
+    before and after. **The document's own green therefore says nothing about whether the
+    reduction is right**, and a corpus test asserting today's rows pass would have been
+    vacuous in the precise sense: it would pass equally if `Reduce` returned the max. So the
+    corpus test asserts the *parsed reduction* and asserts it **differs from the max**
+    (`internal/propdoc/basis_scope_test.go:460`), and the renderings are covered by
+    constructed cells (`:376`). Cardinality stated: 2 multi-scope cells, 32 single-scope,
+    34 propositions.
+
+    **The migration was forced, not offered.** Both cells carried their second route as prose
+    after a semicolon, and under the new grammar neither parses — six inherited tests went red
+    on the unmigrated document, which is how a half-migrated document is prevented rather
+    than discouraged. Recorded as a test in its own right (`:560`).
+
+    **The guard §2 promised in advance came due, and the promise was well drafted.** The
+    ranking note said no tool consumed the basis ordering, that the list of pairs the order
+    ranks and the evidence does not was therefore "a note, and notes do not fire", and that
+    the first consumer would owe a guard making the list non-vacuous. `Reduce` is that
+    consumer. The guard exists (`:192`) and the answers are narrower than the promise
+    anticipated: `Reduce` consumes the **Coverage** order only and refuses items 1 and 2
+    outright; item 4 is *not* refused, because `asserted` is the bottom of the coverage order
+    and a floor over coverage is defined for it, while item 4's complaint is about usefulness,
+    which `Reduce` does not compute; and **item 3 is not expressible as a pair of bases at
+    all** — it is a statement about two cells — so its answer is structural, every entry
+    carrying its own scope, enforced separately (`:364`). Three of four ranked pairs
+    machine-checked, the fourth stated as inexpressible rather than silently dropped.
+
+    **Nine mutation probes, all nine red, eight failing sets predicted exactly.** The two
+    departures are worth more than the eight matches. Probe C ranked `chosen` as high as `exhaustive`
+    and I predicted one failing test; three failed, because the tie also disables the
+    lead-with-the-reduction rule (the meet equals the first entry, so a strongest-first cell
+    is accepted) and because two separate tests assert their own fixtures *discriminate* — each
+    row records whether its meet and max coincide and fails if a supposedly discriminating row
+    stops discriminating. That assertion, not any expected value, is what caught the probe: a
+    `Reduce` returning the max passes every value assertion on any row where the two agree.
+    Probe H was **VOID** on its first cut — removing `uncovered ||` orphaned the variable and
+    the mutant did not compile, which `go test` reports with exit 1 exactly as it reports a
+    caught defect — and went red at the predicted set after being re-cut as a value swap, per
+    the standing corollary that a probe should swap an expression rather than delete the only
+    use of something.
+
+    `zsh /tmp/mutprobe_135.sh` (baseline green asserted first; patch asserted to apply exactly
+    once; mutant asserted to build; tree restored from a `trap`):
+
+    | Probe | Mutation | Predicted | Failing | Verdict |
+    |---|---|---|---|---|
+    | A | meet becomes max | 10 | 10 | RED |
+    | B | subject agreement inverted | 4 | 4 | RED |
+    | C | `chosen` ranks as high as `exhaustive` | 1 | 3 | RED |
+    | D | weakest-first check disabled | 1 | 1 | RED |
+    | E | scope-uniqueness never records | 1 | 1 | RED |
+    | F | `@` recognised anywhere, not as a prefix | 1 | 1 | RED |
+    | G | scope count dropped from the status | 1 | 1 | RED |
+    | H | uncovered scope no longer collapses the cell | 2 | 2 | RED |
+    | I | the reported set is built wrong | 2 | 2 | RED |
+
+    Nine probes, seven distinct failing sets, sizes 1 to 10 — output that varies with its
+    input, which is the instrument check. The three that coincide are D, E and F, each caught
+    by the grammar table alone. Probe A's 10 is the whole package, the shape to expect from
+    inverting the reduction itself, since every corpus test parses the document through it.
+
+    **And a defect in the practice, found by this change and not fixed by it: seven
+    `path:line` citations elsewhere in this document were invalidated by inserting code above
+    their targets, and nothing checks them.**
+
+    | Anchor as written | Target | Actually at | Cited | Broken by |
+    |---|---|---|---|---|
+    | `propdoc.go:252` | `out[Kind(status)]++` | `:339` | 2× | this change |
+    | `propdoc.go:261` | `func Kind` | `:348` | 2× | this change |
+    | `propdoc.go:363` | `DischargeDefects` | `:450` | 2× | this change |
+    | `propdoc.go:87` | `Refutation.Live` | `:117` | 1× | never correct |
+
+    Seven citation instances across four cited lines, enumerated by extracting every anchor the
+    diff removes:
+
+    ```sh
+    git diff -U0 4d5ba47^..4d5ba47 -- PROPERTIES.md | grep '^-' \
+      | grep -o '[a-z_]*\.go:[0-9]*\|`:[0-9]*`' | sort | uniq -c
+    ```
+
+    The range is the repair commit alone, and it has to be: widened to include this change's
+    first commit the same command reports twelve anchors, because rewriting the `T1` and `T5`
+    cells re-emits every citation inside them as a removal. A diff-based enumeration of
+    citations counts *lines touched*, not citations broken, unless the range is the one that
+    touched only pointers.
+
+    Six were broken by inserting code above their targets in this change. The seventh,
+    `propdoc.go:87` for `Refutation.Live`, was **already wrong when it was written**: at
+    `041e50f` `Live()` was at line 95. All are repaired here, and only the
+    pointers changed — every claim they support is unchanged, which is why repairing them
+    inside §7 is not rewriting the log.
+
+    **This is not a new issue; it is a measurement that contradicts an existing one's
+    premise.** #105 already scopes a citation checker and states that its level 1 — the
+    path resolves, the line is within the file, a `func <Name>(` sits at the line where a
+    test name is given — **finds zero defects today**, and therefore that level 1 is
+    insurance against future drift rather than a bug-finder. Five of these seven instances
+    are written repo-relative and land inside the file and within its length, and none of
+    the seven names a symbol; the remaining two are written bare (`` `:261` ``), the form
+    #105 measures as not machine-resolvable at all. So **level 1 as scoped is green on every
+    one of them** — silent on five and unable to read two. The class is not a dangling
+    pointer but a
+    pointer at the wrong valid line, and its base rate is not zero: seven instances in this
+    document, six of them created by one commit, in the one file this change happened to
+    touch. What separates a checkable citation from an uncheckable one is whether it names
+    what it points at, which is why #105's *"make test names mandatory alongside line
+    numbers"* is the part that buys the detection — recorded on #105 rather than filed
+    again here. (2026-08-22, #135.)

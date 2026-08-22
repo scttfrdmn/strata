@@ -9,9 +9,13 @@
 // authoritative. Discharging one of a proposition's two counterexamples used to
 // leave its Status cell untouched, which made a real movement unreportable.
 //
-// The authored inputs are the Basis cell (the highest evidence tier claimed,
-// with its citation) and the register rows. Everything in the Status column is
-// output.
+// The authored inputs are the Basis cell (one or more scoped bases, each with its
+// citation) and the register rows. Everything in the Status column is output.
+//
+// A Basis cell claiming several scopes reduces to the **weakest** of them, not the
+// strongest — see Reduce. A proposition quantifying over several execution routes
+// is rarely covered equally on all of them, and reporting the best-covered route's
+// strength as the proposition's overstates silently (#135).
 package propdoc
 
 import (
@@ -31,6 +35,10 @@ const (
 	// TierWithdrawn means the proposition has been superseded and is no longer
 	// measured; the citation names what replaced it.
 	TierWithdrawn = "withdrawn"
+	// TierIncomparable is the reduction of a multi-scope Basis cell whose scopes
+	// do not share a Subject, so no meet exists. It is not a tier an author may
+	// write: parseBasis derives it, and Reduce's Set names the bases it stands for.
+	TierIncomparable = "incomparable"
 )
 
 // Discharge values accepted in a register row's Discharged cell.
@@ -40,18 +48,32 @@ const (
 	DischargedPartially = "Partially"
 )
 
-// Basis is the authored half of a proposition's status: the strongest basis
-// claimed for it, and the citation carrying that claim. "Strongest" is not a
-// total order — section 2 states the ranking convention and the pairs it ranks
-// that the evidence does not.
+// Basis is the authored half of a proposition's status: what the cell claims, and
+// the citation carrying the claim.
+//
+// Where the cell claims one basis, Tier is it. Where the cell claims a basis per
+// scope, Tier is what those scopes **reduce** to — the meet, per Reduce — and
+// Scoped holds the entries the reduction was taken over. Reading Tier therefore
+// cannot overstate, which reading "the strongest claimed" did (#135). "Strongest"
+// was never a total order either: section 2 states the ranking convention and the
+// pairs it ranks that the evidence does not.
 type Basis struct {
 	// Tier is the canonical spelling of one of the seven bases — a legacy name
 	// E0 through E3, or pair notation such as "exhaustive/implementation" for a
-	// pair that has none — or TierNone or TierWithdrawn. Pair decodes it.
+	// pair that has none — or TierNone, TierWithdrawn or TierIncomparable. Pair
+	// decodes it.
 	Tier string
-	// Citation is whatever the Basis cell says after the tier. For
+	// Citation is whatever the Basis cell says after the tier, or for a
+	// multi-scope cell every entry's citation joined with "; ". For
 	// TierWithdrawn it names the replacement propositions.
 	Citation string
+	// Scoped holds the cell's entries when it names any scope at all, in cell
+	// order. Nil for a Basis built by hand and for a single-entry cell that names
+	// no scope, whose Tier and Citation are the whole claim.
+	//
+	// len(Scoped) > 1 is what makes Tier a reduction rather than a transcription,
+	// and DeriveStatus says so in the status it renders.
+	Scoped []ScopedBasis
 }
 
 // Proposition is one row of a section 3 group table.
@@ -105,6 +127,44 @@ var (
 	// the case "Yes — closed completed" is, where the only thing offered is a
 	// fact about the tracker.
 	ErrDischargeNoCitation = errors.New("propdoc: a Discharged: Yes cell must cite the evidence, not the closure")
+)
+
+// Rejection reasons for a multi-scope Basis cell, exported for the same reason as
+// the discharge sentinels above: a test asserts which authoring mistake was
+// caught, not merely that one was.
+//
+// All but ErrBasisScopeUnterminated apply only to a cell claiming more than one
+// scope, that one being a malformed entry wherever it appears. A single-entry cell
+// naming no scope parses exactly as it did before per-scope bases existed, which is
+// why the twelve such cells in the document needed no edit (#135).
+var (
+	// ErrBasisScopeUnnamed is returned when a multi-scope cell leaves an entry's
+	// bound unnamed. A set of bases over unnamed scopes says nothing: the pair
+	// says *how* a domain was covered and only the bound says *which* domain
+	// (§2.1 rules 2 and 10).
+	ErrBasisScopeUnnamed = errors.New("propdoc: every entry of a multi-scope Basis cell must name its scope with @")
+	// ErrBasisScopeRepeated is returned when two entries name the same scope.
+	// Two bases for one scope puts the choice between them back on the reader,
+	// and the strongest-wins reading is the one this grammar exists to remove.
+	ErrBasisScopeRepeated = errors.New("propdoc: two entries of a Basis cell name the same scope; merge them")
+	// ErrBasisScopeUncited is returned when an entry of a multi-scope cell cites
+	// nothing. A basis with no citation is not a basis, per section 3, and
+	// per-scope bases mean per-scope evidence.
+	ErrBasisScopeUncited = errors.New("propdoc: every entry of a multi-scope Basis cell must cite its evidence")
+	// ErrBasisNotWeakestFirst is returned when a multi-scope cell does not lead
+	// with the entry it reduces to. The reduction is not written in the cell — it
+	// is derived — so the only thing a reader's eye lands on is the first entry,
+	// and a cell leading with its strongest scope reproduces the overstatement
+	// even though every derived number is right.
+	ErrBasisNotWeakestFirst = errors.New("propdoc: a multi-scope Basis cell must lead with the scope it reduces to")
+	// ErrBasisWithdrawnScoped is returned when withdrawn appears as one entry of
+	// a multi-scope cell. Withdrawal is a fact about the whole proposition — it
+	// is no longer measured — so it cannot be true of one scope and not another.
+	ErrBasisWithdrawnScoped = errors.New("propdoc: withdrawn describes a whole proposition and cannot be one scope of a Basis cell")
+	// ErrBasisScopeUnterminated is returned when an entry opens a scope with @ and
+	// never closes it with an em dash, so the citation cannot be told from the
+	// bound.
+	ErrBasisScopeUnterminated = errors.New("propdoc: a Basis entry opening a scope with @ must close it with an em dash before its citation")
 )
 
 // dischargeCitation matches a backtick-quoted span naming a file, optionally
@@ -184,6 +244,12 @@ func (d *Doc) Register() []Refutation { return d.reg }
 //   - Otherwise the authored tier decides, and a tier with no citation is not
 //     a tier.
 //
+// Where the Basis cell claims more than one scope, the tier that decides is the
+// **meet** over those scopes and the rendered status says how many scopes it is the
+// weakest of, so that a number derived from unevenly covered routes cannot be read
+// as a claim about the whole domain (#135). Where the scopes do not share a Subject
+// there is no meet, and the status names the set instead of picking from it.
+//
 // The function is total: every input yields a status, so no proposition can be
 // left without one.
 func DeriveStatus(b Basis, live, total int) string {
@@ -200,7 +266,25 @@ func DeriveStatus(b Basis, live, total int) string {
 		return "REFUTED"
 	}
 	if b.Tier == TierNone || b.Tier == "" || b.Citation == "" {
+		if n := len(b.Scoped); n > 1 && b.Tier == TierNone {
+			return fmt.Sprintf("UNPOPULATED (a scope of %d is uncovered)", n)
+		}
 		return "UNPOPULATED"
+	}
+	// A cell claiming several scopes reports what its tier is the weakest of.
+	// Parenthesised so that Kind tallies it with the single-scope statuses: this
+	// is detail about the claim, not a different class of claim.
+	scopes := ""
+	if n := len(b.Scoped); n > 1 {
+		scopes = fmt.Sprintf(", weakest of %d scopes", n)
+	}
+	if b.Tier == TierIncomparable {
+		red, _ := Reduce(b.Scoped)
+		names := make([]string, 0, len(red.Set))
+		for _, k := range red.Set {
+			names = append(names, k.Spelling())
+		}
+		return fmt.Sprintf("ENFORCED (no meet over %d scopes: %s)", len(b.Scoped), strings.Join(names, ", "))
 	}
 	// Asserted coverage enforces nothing, so it renders as what it is. Naming the
 	// basis in parentheses rather than hard-coding "E0" keeps the rendering keyed
@@ -208,7 +292,10 @@ func DeriveStatus(b Basis, live, total int) string {
 	// and therefore exactly one spelling, so this can only print "ASSERTED (E0)".
 	if k, ok := lookupBasis(b.Tier); ok {
 		if k.Coverage == CoverageAsserted {
-			return "ASSERTED (" + k.Canonical() + ")"
+			return "ASSERTED (" + k.Canonical() + scopes + ")"
+		}
+		if scopes != "" {
+			return "ENFORCED " + k.Canonical() + " (" + strings.TrimPrefix(scopes, ", ") + ")"
 		}
 		return "ENFORCED " + k.Canonical()
 	}
@@ -482,14 +569,55 @@ func parseProposition(cells []string, lineIdx int) (*Proposition, error) {
 	}, nil
 }
 
-// parseBasis reads a Basis cell: a tier token, then an optional citation
-// separated by an em dash, a colon or whitespace.
+// parseBasis reads a Basis cell: one or more entries separated by semicolons,
+// each a tier token, an optional "@ scope" closed by an em dash, and a citation.
+//
+//	E1 — `x_test.go:1`
+//	chosen/implementation @ the `strata run` route — `a_test.go:1`; exhaustive/implementation @ the agent boot route — `b_test.go:2`
+//
+// A cell with one entry and no scope is the whole of the old grammar, and parses
+// to the same Basis it always did — Scoped stays nil. A cell with several entries
+// reduces to their meet (Reduce), and the returned Tier is that reduction rather
+// than any one entry's claim.
 func parseBasis(cell string, lineIdx int) (Basis, error) {
 	text := strings.TrimSpace(cell)
 	if text == "" {
 		return Basis{}, fmt.Errorf("propdoc: line %d: empty Basis cell", lineIdx+1)
 	}
-	tier, rest, _ := strings.Cut(text, " ")
+	parts := strings.Split(text, ";")
+	entries := make([]ScopedBasis, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return Basis{}, fmt.Errorf("propdoc: line %d: Basis cell has an empty entry; "+
+				"a semicolon separates two scoped bases", lineIdx+1)
+		}
+		e, err := parseBasisEntry(part, lineIdx)
+		if err != nil {
+			return Basis{}, err
+		}
+		entries = append(entries, e)
+	}
+
+	if len(entries) == 1 {
+		e := entries[0]
+		if e.Tier == TierNone && e.Citation != "" {
+			return Basis{}, fmt.Errorf("propdoc: line %d: tier %q carries a citation %q; "+
+				"cite a tier or claim none", lineIdx+1, TierNone, e.Citation)
+		}
+		b := Basis{Tier: e.Tier, Citation: e.Citation}
+		if e.Scope != "" {
+			b.Scoped = entries
+		}
+		return b, nil
+	}
+	return reduceCell(entries, lineIdx)
+}
+
+// parseBasisEntry reads one entry of a Basis cell. The scope is recognised only
+// when @ is the first thing after the tier token, so a citation containing an @ —
+// a formation filename, say — is not mistaken for a bound.
+func parseBasisEntry(text string, lineIdx int) (ScopedBasis, error) {
+	tier, rest, _ := strings.Cut(strings.TrimSpace(text), " ")
 	switch tier {
 	case TierNone, TierWithdrawn:
 	default:
@@ -498,16 +626,102 @@ func parseBasis(cell string, lineIdx int) (Basis, error) {
 		// written "E1" and the column stays uniform.
 		canonical, err := parseTier(tier, lineIdx)
 		if err != nil {
-			return Basis{}, err
+			return ScopedBasis{}, err
 		}
 		tier = canonical
 	}
-	citation := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(rest), "—:-"))
-	if tier == TierNone && citation != "" {
-		return Basis{}, fmt.Errorf("propdoc: line %d: tier %q carries a citation %q; "+
-			"cite a tier or claim none", lineIdx+1, TierNone, citation)
+	rest = strings.TrimSpace(rest)
+	var scope string
+	if strings.HasPrefix(rest, "@") {
+		bound, cited, ok := strings.Cut(rest[1:], "—")
+		if !ok {
+			// TierNone is exempt, and only TierNone: a scope declared uncovered has
+			// nothing to cite, so there is nothing for the em dash to separate. Every
+			// other tier claims evidence, and an entry that opens a bound and never
+			// closes it leaves the bound and the citation indistinguishable.
+			if tier != TierNone {
+				return ScopedBasis{}, fmt.Errorf("propdoc: line %d: entry %q: %w",
+					lineIdx+1, strings.TrimSpace(text), ErrBasisScopeUnterminated)
+			}
+			bound, cited = rest[1:], ""
+		}
+		scope, rest = strings.TrimSpace(bound), cited
+		if scope == "" {
+			return ScopedBasis{}, fmt.Errorf("propdoc: line %d: entry %q names an empty scope: %w",
+				lineIdx+1, strings.TrimSpace(text), ErrBasisScopeUnnamed)
+		}
 	}
-	return Basis{Tier: tier, Citation: strings.TrimSpace(citation)}, nil
+	citation := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(rest), "—:-"))
+	return ScopedBasis{Tier: tier, Scope: scope, Citation: citation}, nil
+}
+
+// reduceCell applies the rules a multi-scope Basis cell must satisfy and returns
+// the Basis its entries reduce to.
+//
+// The rules are not stylistic. Unnamed or repeated scopes make the reduction
+// meaningless or ambiguous; an uncited entry contributes a tier on no evidence; and
+// a cell not leading with its reduction leaves the overstatement in the one place a
+// reader actually looks, since the reduction itself is derived and appears only in
+// the generated Status column.
+//
+// TierNone is the one tier exempt from the citation requirement, and required to
+// carry no citation: it declares a scope *uncovered*, and an uncovered scope has
+// nothing to cite. That is the same rule the single-entry path applies to a bare
+// "none" cell.
+func reduceCell(entries []ScopedBasis, lineIdx int) (Basis, error) {
+	seen := make(map[string]bool, len(entries))
+	var citations []string
+	for _, e := range entries {
+		if e.Tier == TierWithdrawn {
+			return Basis{}, fmt.Errorf("propdoc: line %d: %w", lineIdx+1, ErrBasisWithdrawnScoped)
+		}
+		if e.Scope == "" {
+			return Basis{}, fmt.Errorf("propdoc: line %d: the entry claiming %q names no scope: %w",
+				lineIdx+1, e.Tier, ErrBasisScopeUnnamed)
+		}
+		if seen[e.Scope] {
+			return Basis{}, fmt.Errorf("propdoc: line %d: scope %q is claimed twice: %w",
+				lineIdx+1, e.Scope, ErrBasisScopeRepeated)
+		}
+		seen[e.Scope] = true
+		switch {
+		case e.Tier == TierNone && e.Citation != "":
+			return Basis{}, fmt.Errorf("propdoc: line %d: scope %q is declared uncovered and cites "+
+				"%q; cite a tier or claim none", lineIdx+1, e.Scope, e.Citation)
+		case e.Tier != TierNone && e.Citation == "":
+			return Basis{}, fmt.Errorf("propdoc: line %d: scope %q claims %q and cites nothing: %w",
+				lineIdx+1, e.Scope, e.Tier, ErrBasisScopeUncited)
+		}
+		if e.Citation != "" {
+			citations = append(citations, e.Citation)
+		}
+	}
+
+	// Every case below leads with the entry the cell reduces to, and the check is
+	// the same check: an uncovered scope is the weakest thing a cell can say, a
+	// meet is the weakest of what it claims, and an incomparable cell has no
+	// weakest entry to lead with — so that case carries no ordering rule and
+	// DeriveStatus prints the whole set instead.
+	b := Basis{Citation: strings.Join(citations, "; "), Scoped: entries}
+	red, ok := Reduce(entries)
+	if !ok {
+		if entries[0].Tier != TierNone {
+			return Basis{}, fmt.Errorf("propdoc: line %d: the cell leads with %q while a scope is "+
+				"declared uncovered: %w", lineIdx+1, entries[0].Tier, ErrBasisNotWeakestFirst)
+		}
+		b.Tier = TierNone
+		return b, nil
+	}
+	if !red.Comparable {
+		b.Tier = TierIncomparable
+		return b, nil
+	}
+	if first, known := lookupBasis(entries[0].Tier); !known || first != red.Meet {
+		return Basis{}, fmt.Errorf("propdoc: line %d: the cell leads with %q but reduces to %q: %w",
+			lineIdx+1, entries[0].Tier, red.Meet.Canonical(), ErrBasisNotWeakestFirst)
+	}
+	b.Tier = red.Meet.Canonical()
+	return b, nil
 }
 
 func parseRefutation(cells []string, lineIdx int) (Refutation, error) {
