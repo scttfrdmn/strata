@@ -1883,6 +1883,10 @@ states the standard it violated and puts a cadence on finding the next.
     would be precisely the overclaim §2.1 exists to catch. The exclusion is recorded
     in the document and in the code, not silently avoided.
 
+    **Amended 2026-08-22 (#148, item 81):** three of those four classes no longer have a
+    control in that file, and one of them is no longer a class — #117 was fixed by #147. The
+    count in this paragraph is the count as it stood on 2026-08-21.
+
 58. **The exclusion list cannot outlive the defects it describes.**
     `spec/environment_id_r7_exclusions_test.go` holds one control per exclusion,
     each asserting the spurious distinction **still reproduces**. Those tests fail when
@@ -1898,6 +1902,11 @@ states the standard it violated and puts a cadence on finding the next.
     the fuzz target would pass on every input and read exactly as it does now — and
     these five tests would fail. A generator with no such control cannot distinguish
     holding from being unable to see.
+
+    **Amended 2026-08-22 (#148, item 81):** *one control per exclusion* and *these five tests*
+    were both true when written and are neither now. Two controls remain, both #95, and the
+    machinery-control argument in the paragraph above rests on those two — which is why they were
+    kept rather than deleted with the others.
 
 59. **Two counterexamples filed, and they run in opposite directions.**
     **#117** (R7): a package set's inner `Packages` slice hashes differently when
@@ -2536,3 +2545,83 @@ states the standard it violated and puts a cadence on finding the next.
     what it points at, which is why #105's *"make test names mandatory alongside line
     numbers"* is the part that buys the detection — recorded on #105 rather than filed
     again here. (2026-08-22, #135.)
+
+### 2026-08-22 — three controls that could not fail, and one that failed with the wrong instruction
+
+81. **The exclusion list's guard against rot was itself unguarded.** §58 claimed the file holds one
+    control per exclusion, each failing when its defect is fixed. #148 probed all 46 assertions of
+    that shape in the repo by applying each fix locally and reading the verdict, and four could not
+    do the job — three of them in this file. The classes, and the treatment each got:
+
+    | Class | Instance | Failure mode | Treatment |
+    |---|---|---|---|
+    | A | `TestR7Exclusion_NilVersusEmptyInnerPackages` (#117) | mutated the whole `Packages` field, not nil against empty — true before *and* after #147 | deleted; `TestEnvironmentID_NilAndEmptyInnerPackagesAgree` is the assertion the fix holds |
+    | B | `TestR7Exclusion_MutateOnReady` (#69), `TestR7Exclusion_MutatePackageDigest` (#98) | read `EnvironmentID()`; the fixes land in an executor and an installer argv | deleted, not repaired — the observable each needs is named on its issue |
+    | C | `assertStillSpurious`'s message (#95 ×2) | goes red correctly, then instructs the reader to apply #95's *refuted* prescription | message repaired; controls kept |
+    | D | `knownOpenCells` comment (`internal/agent/boot_matrix_test.go:87`) | claimed a tripwire role; both sides of the check derive from `wantFor()` | comment repaired, constant untouched |
+
+    **Class B is the finding this document has to absorb, because it is not a repairable control.**
+    A mutation of a lockfile's identity cannot observe a fix that lands in an installer's argv. There
+    is no better mutation; writing one means a different control against a different observable,
+    which is a new control wearing the old one's name. So the treatment is deletion plus a **named
+    absence** on the issue — and the rule that follows is that *a control aimed at an instrument that
+    cannot observe its subject reads as coverage and supplies none*, which no green run can tell you.
+
+    **Class C is the sharper one, and it is not machine-detectable.** *Does it go red* is answerable
+    by a probe; *does the red say the right thing* is not. Both #95 controls fail correctly and then
+    say *"appears to be FIXED … move this transformation into liveTransforms()"* — widening R7 over
+    package order, which `TestEnvironmentID_PackageOrderIsContent` refutes and #95 records as
+    refuted. A control that fails correctly and prescribes wrongly is worse than one that never
+    fires, because it converts a real signal into a wrong action. The review rule adopted from it:
+    **when a control goes red, read what it tells the reader to do.**
+
+    **Class D is R6's error, alive inside the document that retired R6.** The comment claimed the
+    constant was the tripwire against the code. Check (5) compares `fired[reasonNoVerifier]` against
+    `const knownOpenCells = 20`, and `fired` is built from `c.want` — so **both sides derive from
+    `wantFor()`**, the expectation table. It is a consistency check between two representations of
+    one claim, refutable only by the two disagreeing, which is exactly the ground on which R6 was
+    withdrawn rather than narrowed (item 54) and the ground rule 11 was adopted on (item 79). Fixing
+    #93(a) leaves both sides at 20 and check (5) green. The real tripwire is the `knownOpen` branch
+    in `runCell` — `Run` refuses where the cell says it boots — and it fires **twenty times**, once
+    per cell, each failure carrying the instruction to lower the constant. The treatment is the
+    comment, because the constant and the check are both correct for what they actually do: they
+    bound the *table*. What is worth recording is the date. This shape was named in items 54 and 79
+    on 2026-08-21, and the table carrying it was added the **same day**:
+
+    ```sh
+    git log --diff-filter=A --format='%h %ad %s' --date=short -- internal/agent/boot_matrix_test.go
+    # a76ef34 2026-08-21 test(agent): enumerate the boot verification decision surface (112 cells)
+    ```
+
+    Knowing the pattern did not prevent it, and no green run could have said so. What found it was
+    asking, of a check that passes, *where does each side of the comparison come from* — which is
+    rule 11's question pointed at an instrument instead of at a register row.
+
+    Two consequences beyond the repairs. The `why` strings these two controls pass are documented as
+    *the specification-level reason the environment is unchanged*, and they assert something the
+    suite contradicts — so **the R7 half of #95's register row rests on a premise
+    `TestEnvironmentID_PackageOrderIsContent` denies**, and a transformation whose premise fails
+    belongs in the opposite-reason list beside `Defaults` (#118) rather than among R7's
+    counterexamples. That is a refutation-register change and travels alone; raised on #95. And
+    #117's fix left three artifacts describing it as live — this register's #117 R7 row, §59's *"two
+    counterexamples filed"*, and a transformation that is now neither excluded nor in the live set —
+    filed as #150.
+
+    **Two stale citations were created and corrected inside this change**, which is item 80's class
+    arriving one item later: `runCell (:513-517)` was already wrong at `origin/main` before the
+    branch existed, and `environment_id_scope_test.go:838` was correct when one commit wrote it and
+    one line off after the next commit added a line above the function. Both are the *valid wrong
+    line* form an existence check reads as green. Both replacements name the symbol they point at —
+    #105's prescription — which is what makes them checkable rather than merely correct today.
+
+    Neither the sweep nor this change fixes a defect. Both are apparatus, and the apparatus/defect
+    purpose counter does not advance: 46 assertions probed, 3 controls deleted, 10 comment or string
+    sites corrected across 4 files — one of them the failure message that prescribed the defect — 0
+    lines of shipped code touched, 0 issues closed. The two counts a reader can re-derive on `main`:
+
+    ```sh
+    grep -c 'assertStillSpurious(t,' spec/environment_id_r7_exclusions_test.go   # 2, was 5
+    grep -c '^func Test' spec/environment_id_r7_exclusions_test.go                # 3, was 6
+    ```
+
+    (2026-08-22, #148.)
