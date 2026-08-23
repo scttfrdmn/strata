@@ -356,9 +356,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BaseCapabilities.HasCapability` had the same first-match shape and no shipped
   caller; it is fixed rather than left as a trap for the first one.
 
-  **Which resolutions change**, and the shapes are reachable today even though no
-  shipped formation is one of them — `ls cmd/strata/formations/*.yaml | wc -l`
-  gives 6 and none contains two providers of one capability name:
+  **Which resolutions change under the new rule — highest satisfying version,
+  ties broken by lowest layer ID** — and the shapes are reachable today even
+  though no shipped formation is one of them —
+  `ls cmd/strata/formations/*.yaml | wc -l` gives 6 and none contains two
+  providers of one capability name:
   - **A profile naming two versions of the same software** now resolves where it
     could previously fail, and may mount in a different order. Eight recipes ship
     more than one version —
@@ -377,9 +379,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Zenodo deposition id. Unaffected profiles — every one with at most one
     provider per capability name, which is all six shipped formations — keep the
     id they had.
-  - **No change to the mounter, the overlay stack semantics, or the lockfile
-    schema.** Only which layer is chosen as a requirement's provider, and
-    therefore the sequence stage 8 numbers.
+  - **`strata diff` does not report a mount-order change**, so the tool a user
+    reaches for to answer "what changed between these two lockfiles" cannot
+    answer it for the change this entry describes. `diffLayers` keys both
+    lockfiles by layer name and compares `Version` and `SHA256` only
+    (`cmd/strata/diff.go:152-182`); `MountOrder` is in neither the key nor the
+    comparison, so a re-resolve whose only effect is a reordering is reported as
+    a set of unchanged layers. This is a pre-existing limitation of `diff` (#154)
+    that this fix makes reachable, not a behaviour introduced here. Measured
+    against a resolver-produced lockfile and a copy with its two `mount_order`
+    values swapped and nothing else altered:
+    - **unfrozen**, which is what `strata resolve` emits — `ami_sha256` is empty,
+      so `EnvironmentID()` returns `""` for both sides
+      (`spec/lockfile_hash.go:100-102`) and the id comparison is skipped:
+      **exit 0, `No differences found.`**
+    - **frozen**: **exit 1**, an `EnvironmentID: 45ef2726… → c6489460…` line
+      followed by `Layers (2 unchanged)` — the identity changed, every layer is
+      reported unchanged, and no field is named as the cause.
+
+    ```sh
+    go build -o /tmp/strata ./cmd/strata
+    go run ./internal/testregistry/mkregistry /tmp/fx
+    STRATA_REGISTRY_URL=file:///tmp/fx/registry \
+      /tmp/strata resolve /tmp/fx/profiles/offline-minimal.yaml -o /tmp/a.yaml
+    sed 's/mount_order: 1/mount_order: 9/; s/mount_order: 2/mount_order: 1/; s/mount_order: 9/mount_order: 2/' \
+      /tmp/a.yaml > /tmp/b.yaml
+    diff /tmp/a.yaml /tmp/b.yaml          # exactly the two mount_order lines
+    /tmp/strata diff /tmp/a.yaml /tmp/b.yaml; echo "exit $?"   # unfrozen
+    for f in a b; do sed "s/ami_sha256: \"\"/ami_sha256: $(printf 'a%.0s' $(seq 64))/" \
+      /tmp/$f.yaml > /tmp/f$f.yaml; done
+    /tmp/strata diff /tmp/fa.yaml /tmp/fb.yaml; echo "exit $?"  # frozen
+    ```
+  - **No change to the mounter, the overlay stack semantics, the lockfile schema,
+    or the set of layers in a lockfile.** Stage 6 orders the layers it is given;
+    it does not choose which ones are present, so an affected profile resolves to
+    the same layers with different `mount_order` values. What that reordering
+    then means is unchanged but not nothing: `lowerdir` is assembled highest
+    `MountOrder` first (`internal/overlay/mount_fuse_linux.go:40-48`), so which
+    layer's copy of a shared path is the visible one follows mount order, and
+    `internal/export/oci.go:47-78` emits OCI diff layers in ascending
+    `MountOrder`, so an affected profile's exported image lists its layers in a
+    different sequence.
 
 ### Changed
 - **Three test controls that could not detect the fixes they guarded are removed,
