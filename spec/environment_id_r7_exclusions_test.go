@@ -3,33 +3,64 @@ package spec
 import "testing"
 
 // The R7-refuting exclusions named in environment_id_r7_fuzz_test.go's stated
-// domain — same environment, different identity — each asserted to still
-// reproduce.
+// domain, each asserted to still distinguish two lockfiles.
 //
-// The stated domain has a second kind of exclusion which is NOT controlled here,
-// and the gap is structural rather than an oversight: the opposite-reason
-// exclusions (Defaults #118, ProfileName and RekorEntry #120, the layer
-// manifest's Name/Version/InstallLayout #122) are cases where the environment
-// differs and the identity does not. Witnessing one means calling
-// overlay.ConfigureEnvironment and comparing the assembled roots, and
-// internal/overlay imports spec, so a control for them cannot live in this
-// package. It has to live in internal/overlay; #120 and #122 carry that as a
-// task. Until it does, this file controls the four R7-refuting exclusions and
-// every opposite-reason exclusion rests on its issue alone.
+// Two controls remain, both #95, and the list of what is *not* controlled here is
+// longer than the list of what is. That is deliberate. #148 probed every assertion
+// in this repo that a defect still reproduces by applying the fix locally and
+// watching the assertion go red, and three of the controls that used to live in
+// this file could not fail:
 //
-// These tests fail when a defect is FIXED. That is the intent. An exclusion list
-// is a claim about the present, and the way such a list rots is that someone
-// repairs the code and the list keeps quietly narrowing the property for years
-// afterwards. Here the list cannot outlive the defects: fix #95 and
-// TestR7Exclusion_ReorderPackageSets fails, which is the instruction to delete
-// the exclusion and move the transformation into liveTransforms().
+//   - #117 (nil versus empty inner Packages) was fixed by #147, and its control was
+//     mis-constructed: it replaced two entries with none rather than varying nil
+//     against empty, so it asserted something true before and after the fix.
+//     Deleted. TestEnvironmentID_NilAndEmptyInnerPackagesAgree in
+//     environment_id_scope_test.go is the assertion that the fix holds.
+//   - #98 (the installer ignores a package entry's recorded sha256) and #69
+//     (on_ready is hashed and executed by nothing) had controls that read
+//     EnvironmentID(). Neither fix goes anywhere near it: #98's is an installer
+//     argv carrying --require-hashes and --hash=sha256:, #69's is an executor that
+//     runs the commands. No mutation of a lockfile's identity can observe either,
+//     so there is no better mutation to write — the instrument cannot see the
+//     subject. Both are deleted and the observable each should watch is recorded on
+//     its own issue. A named absence is better than a control that reads as
+//     coverage.
 //
-// They are also the control for the fuzz target's machinery, which is why they
-// use the same clone-and-compare path rather than a private one. If clone()
+// The stated domain has a second kind of exclusion which is NOT controlled here
+// either, and that gap is structural rather than an oversight: the opposite-reason
+// exclusions (Defaults #118, ProfileName and RekorEntry #120, the layer manifest's
+// Name/Version/InstallLayout #122) are cases where the environment differs and the
+// identity does not. Witnessing one means calling overlay.ConfigureEnvironment and
+// comparing the assembled roots, and internal/overlay imports spec, so a control
+// for them cannot live in this package. It has to live in internal/overlay; #120
+// and #122 carry that as a task.
+//
+// An exclusion list is a claim about the present, and the way such a list rots is
+// that someone repairs the code and the list keeps quietly narrowing the property
+// for years afterwards. What follows from that, for the two controls left, is not
+// what it was when there were four.
+//
+// A failure here does NOT mean #95 has been fixed and the transformation should
+// move into liveTransforms(). #95 prescribes sorting both dimensions of Packages,
+// and that prescription is refuted on the issue by the consumer:
+// internal/agent/package_installer.go:37 iterates the sets and :99, :113 run one
+// install command per entry, so a later entry can change what an earlier one
+// installed. TestEnvironmentID_PackageOrderIsContent
+// (environment_id_scope_test.go:839) pins the behaviour that refutation implies,
+// and it asserts the same distinction from the other side, so the two fail
+// together. A red here is a regression in envHashInput, or someone applying the
+// refuted prescription — never an instruction to widen R7 over package order.
+// assertStillSpurious's message says so, because #148 found two controls that go
+// red while telling the reader to implement the defect, and these were them.
+//
+// These two are also the control for the fuzz target's machinery, which is why
+// they use the same clone-and-compare path rather than a private one. If clone()
 // returned an alias, or EnvironmentID() returned a constant, or the comparison
 // were inverted, FuzzR7NoSpuriousDistinctions would pass on everything and look
-// exactly as it does now. These tests are what makes that distinguishable:
-// a harness that cannot see a changed identity fails here.
+// exactly as it does now. These tests are what makes that distinguishable: a
+// harness that cannot see a changed identity fails here. Two callers are enough
+// for that role, and it is why these two survive the deletions above — a control
+// is not retired for being redundant to its stated purpose.
 
 // r7Fixture is a frozen lockfile with one layer and one package set, built
 // explicitly rather than drawn from a stream so each control below is readable
@@ -55,9 +86,16 @@ func r7Fixture() *LockFile {
 	}
 }
 
-// assertStillSpurious asserts that mutate changes the EnvironmentID even though
-// the assembled environment is unchanged — i.e. that the named R7 counterexample
-// still reproduces.
+// assertStillSpurious asserts that mutate changes the EnvironmentID across a
+// transformation the named issue claims preserves the assembled environment.
+//
+// The name is from when this file held four controls, each asserting a live R7
+// counterexample that would expire when its defect was fixed. Both remaining
+// callers are #95, whose environment-preserving premise the repo contradicts
+// elsewhere (see the file comment), so what these assertions buy is a regression
+// pin plus the fuzz target's machinery control — not an exclusion waiting to
+// expire. The failure message reflects that; whether #95's pair are R7
+// counterexamples at all is recorded on #95.
 func assertStillSpurious(t *testing.T, issue, why string, mutate func(l *LockFile)) {
 	t.Helper()
 
@@ -80,22 +118,33 @@ func assertStillSpurious(t *testing.T, issue, why string, mutate func(l *LockFil
 
 	after := mutated.EnvironmentID()
 	if after == before {
-		t.Errorf("%s appears to be FIXED: the identity no longer distinguishes these "+
-			"lockfiles.\n"+
-			"  the environment was unchanged because: %s\n"+
-			"  This test failing is the instruction to act, not a regression:\n"+
-			"    1. move this transformation into liveTransforms() in "+
-			"environment_id_r7_fuzz_test.go\n"+
-			"    2. delete this control and its entry from that file's stated domain\n"+
-			"    3. update the R7 row and %s's register row in PROPERTIES.md\n"+
-			"  id: %s", issue, why, issue, before)
+		t.Errorf("%s: the identity no longer distinguishes these two lockfiles.\n"+
+			"  the transformation, and what the issue claims about it: %s\n"+
+			"  This is a REGRESSION. It is NOT an instruction to move the "+
+			"transformation into liveTransforms():\n"+
+			"    - package order is content. internal/agent/package_installer.go:37 "+
+			"iterates the sets; :99 and :113 run one install command per entry, so a "+
+			"later entry can change what an earlier one installed.\n"+
+			"    - TestEnvironmentID_PackageOrderIsContent "+
+			"(environment_id_scope_test.go:839) pins that behaviour and should be "+
+			"failing beside this test. If it is passing, this test is the wrong one.\n"+
+			"    - #95 prescribes sorting both dimensions of Packages. That "+
+			"prescription is refuted on the issue for the reason above: it would give "+
+			"two different install sequences one identity.\n"+
+			"  Repair envHashInput, or revert the sort. Do not widen R7 over package "+
+			"order, and do not delete this control — it is also what proves the fuzz "+
+			"target can see a changed identity at all.\n"+
+			"  id: %s", issue, why, before)
 	}
 }
 
 func TestR7Exclusion_ReorderPackageSets(t *testing.T) {
 	assertStillSpurious(t, "#95",
-		"the order two package sets are listed in does not change which packages are "+
-			"installed; every version is exactly pinned",
+		"#95 claims the order two package sets are listed in does not change which "+
+			"packages are installed, since every version is exactly pinned. That claim "+
+			"is contradicted by internal/agent/package_installer.go:37,99,113 and the "+
+			"contradiction is recorded on the issue; what is asserted here is only that "+
+			"the identity distinguishes the two orders",
 		func(l *LockFile) {
 			l.Packages[0], l.Packages[1] = l.Packages[1], l.Packages[0]
 		})
@@ -103,40 +152,14 @@ func TestR7Exclusion_ReorderPackageSets(t *testing.T) {
 
 func TestR7Exclusion_ReorderPackageEntries(t *testing.T) {
 	assertStillSpurious(t, "#95",
-		"a package set is a set; listing numpy before scipy installs the same two "+
-			"exactly-pinned packages as the reverse",
+		"#95 claims a package set is a set, so listing numpy before scipy installs the "+
+			"same two exactly-pinned packages as the reverse. One pip command runs per "+
+			"entry, in order (internal/agent/package_installer.go:99), so the claim does "+
+			"not hold; what is asserted here is only that the identity distinguishes the "+
+			"two orders",
 		func(l *LockFile) {
 			p := l.Packages[0].Packages
 			p[0], p[1] = p[1], p[0]
-		})
-}
-
-func TestR7Exclusion_MutateOnReady(t *testing.T) {
-	assertStillSpurious(t, "#69",
-		"on_ready is hashed into the identity and executed by nothing — declared "+
-			"spec/lockfile.go:39-40, copied internal/resolver/stages.go:434, no executor "+
-			"in non-test code — so changing it cannot change what is assembled",
-		func(l *LockFile) {
-			l.OnReady = []string{"echo something entirely different"}
-		})
-}
-
-func TestR7Exclusion_MutatePackageDigest(t *testing.T) {
-	assertStillSpurious(t, "#98",
-		"the installer resolves name@version from upstream and ignores the recorded "+
-			"sha256, so two lockfiles differing only in that digest install identical bytes",
-		func(l *LockFile) {
-			l.Packages[0].Packages[0].SHA256 = "ffffffff"
-		})
-}
-
-func TestR7Exclusion_NilVersusEmptyInnerPackages(t *testing.T) {
-	assertStillSpurious(t, "#117",
-		"a package set with no entries installs nothing whether the slice is nil or "+
-			"empty; ResolvedPackageSet.Packages carries json:\"packages\" without "+
-			"omitempty (spec/packages.go:49), so one marshals as null and the other as []",
-		func(l *LockFile) {
-			l.Packages = []ResolvedPackageSet{{Manager: "pip", Packages: nil}}
 		})
 }
 

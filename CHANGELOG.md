@@ -338,6 +338,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout. Completes the two work items left unchecked in #36.
 
 ### Changed
+- **Three test controls that could not detect the fixes they guarded are removed,
+  and one that detects its fix correctly no longer prescribes the defect** (#148).
+  No behaviour change: no non-test file is touched, and `go test ./spec/
+  ./internal/agent/ -count=1` returns 0 before and after every commit on the
+  branch. Nothing was red and nothing becomes green — what changes is that four
+  assertions stop claiming coverage they never supplied.
+
+  `spec/environment_id_r7_exclusions_test.go` held four controls asserting that a
+  named defect *still reproduces*, so that fixing the defect would fail the test
+  and force the exclusion list to be updated. #148 probed all 46 assertions of
+  that shape in the repo by applying each fix locally; three of these four could
+  not do the job:
+  - **#117's** control mutated the whole `Packages` field rather than varying
+    `nil` against empty, so it passed both before and after #147 fixed the
+    defect. Deleted;
+    `TestEnvironmentID_NilAndEmptyInnerPackagesAgree` is the assertion that the
+    fix holds.
+  - **#69's** and **#98's** controls read `EnvironmentID()`, but those fixes land
+    in an on-ready executor and in an installer's argv respectively — nothing a
+    lockfile identity can observe. Both would have stayed green through their own
+    repair. Deleted rather than rewritten, because a control against a different
+    observable is a new control wearing the old one's name. The observable each
+    one should watch is now recorded on
+    [#69](https://github.com/scttfrdmn/strata/issues/69) and
+    [#98](https://github.com/scttfrdmn/strata/issues/98) instead.
+
+  **#95's two controls are kept.** They fire correctly and they are also the only
+  control that the R7 fuzz target's clone-and-compare machinery works at all. What
+  was wrong was their failure message: it said the defect "appears to be FIXED"
+  and told the reader to widen R7 over package order — the prescription #95 itself
+  records as refuted, since one install command runs per package entry and two
+  orders are two install sequences. A red there now reads as a regression in
+  `envHashInput`, names the test that should be failing beside it, and says not to
+  delete the control.
+
+  Also corrected: the comments on `knownOpenCells` in
+  `internal/agent/boot_matrix_test.go`, which claimed the constant was a tripwire
+  against the code. Both sides of that check derive from the same expectation
+  table, so it catches an edit to the table, not a fix to the defect; the real
+  tripwire fires once per affected cell and is now named. The constant and the
+  check are unchanged.
+
+  **What changes per consumer:** nothing. `gh pr diff 152 --name-only` lists only
+  `*_test.go`, `PROPERTIES.md` and this file, so no build, no binary and no
+  on-disk artifact differs. The audience for this entry is whoever next
+  fixes #69, #95, #98 or #93(a) and would otherwise read a green suite as evidence
+  their fix was detected.
+
 - **`EnvironmentID` now covers the fields the assembler actually reads** (#145,
   closing #117, #118, #120, #121, #122, #123). The six issues above each
   described the identity as too *narrow* — a sound subset missing a field. It was

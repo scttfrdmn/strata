@@ -29,20 +29,32 @@ import (
 //
 // # Stated domain, and why each exclusion is named rather than avoided
 //
-// Four transformations preserve the assembled environment and still change the
-// identity. They are R7 counterexamples, all filed, and they are excluded from
-// the live set here because a target that fails on every input searches nothing:
+// Three transformations change the identity while the reason they are said to
+// preserve the assembled environment stands on record. They are excluded from the
+// live set here because a target that fails on every input searches nothing:
 //
 //   - reordering package sets or their entries — #95
 //   - mutating on_ready, which is hashed and executed nowhere — #69
 //   - mutating a package entry's sha256, which the installer ignores — #98
-//   - a nil versus empty inner Packages slice — #117
 //
-// Each exclusion has a control in environment_id_r7_exclusions_test.go that
-// asserts the distinction is *still* there. When one is fixed the control fails,
-// which is the signal to delete the exclusion and move the transformation into
-// the live set below. The exclusion list cannot silently outlive the defects it
-// describes.
+// A fourth, a nil versus empty inner Packages slice (#117), was fixed by #147 and
+// is no longer a counterexample. It is not in the live set either: adding it widens
+// the property this target asserts and needs a seed that reaches an entry-free
+// package set, so it travels on its own change (#150). Until then it is neither
+// excluded nor live, and saying so is what this paragraph is for.
+//
+// #95's two transformations have controls in environment_id_r7_exclusions_test.go
+// asserting the distinction is still there. #69's and #98's do not, and the absence
+// is named rather than left to be found: #148 measured that a control reading
+// EnvironmentID() cannot observe either fix — #69's lands in an executor, #98's in
+// an installer's argv — so those controls were deleted and the observable each one
+// needs is recorded on its issue.
+//
+// Whether #95's pair are R7 counterexamples at all is an open question recorded on
+// the issue: TestEnvironmentID_PackageOrderIsContent holds that package order *is*
+// content, and a transformation whose environment-preserving premise fails is not
+// R7's business. Either way they stay out of the live set; what would change is
+// which list they belong in, and what PROPERTIES.md's R7 row may claim.
 //
 // Excluded for the opposite reason — these change the environment, so R7's
 // premise does not hold and they are not R7's business:
@@ -175,8 +187,10 @@ func buildLockFile(s *r7Stream) *LockFile {
 	nSets := s.intn(3)
 	for i := 0; i < nSets; i++ {
 		set := ResolvedPackageSet{Manager: PackageManager(s.str()), Env: s.str()}
-		// Non-nil so the nil-versus-empty distinction (#117) is reached only by
-		// the transformation that means to reach it, not incidentally here.
+		// Non-nil so the nil-versus-empty distinction is reached only by a
+		// transformation that means to reach it, not incidentally here. #147 fixed
+		// that distinction (#117); this stays non-nil because the transformation
+		// varying it is not in the live set yet — see the stated domain above.
 		set.Packages = []ResolvedPackageEntry{}
 		nEntries := s.intn(4)
 		for j := 0; j < nEntries; j++ {
