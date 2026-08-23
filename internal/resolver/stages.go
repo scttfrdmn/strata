@@ -251,6 +251,52 @@ func (r *Resolver) stage5DetectConflicts(layers []resolvedLayer) error {
 	return nil
 }
 
+// selectProvider returns the index of the layer, among cands, whose capability
+// best satisfies req. The bool reports whether any candidate satisfies it at all
+// — false means no dependency edge is drawn, which is correct when the
+// requirement is met by the base image instead.
+//
+// Selection is by highest satisfying version, ties broken by lowest layer ID.
+// Both parts are deliberate, and the alternative is worth naming because it
+// looks simpler: picking the FIRST satisfying candidate would also close #67 as
+// stated, since the stated property is only that the consumer sorts after a
+// provider that satisfies it. It was rejected because cands is in layer slice
+// order, which comes from the order the profile author listed the layers. That
+// would leave the dependency edge — and therefore mount order, and therefore the
+// lockfile — a function of an author-visible ordering rather than of content,
+// which is the same order-dependence class as the defect being fixed. Highest
+// version is a function of the capabilities alone, and the ID tie-break makes it
+// total, so two profiles naming the same layers in different orders resolve
+// identically.
+//
+// Highest is also the defensible semantic on its own: given two providers that
+// both satisfy a constraint, the newer is the one a user asking for ">= X"
+// expects to be wired to.
+func selectProvider(layers []resolvedLayer, cands []int, req spec.Requirement) (int, bool) {
+	best, bestVersion := -1, ""
+	for _, idx := range cands {
+		for _, cap := range layers[idx].manifest.Provides {
+			if !cap.Satisfies(req) {
+				continue
+			}
+			if best >= 0 {
+				cmp := spec.CompareVersions(cap.Version, bestVersion)
+				if cmp < 0 {
+					continue
+				}
+				if cmp == 0 && layers[idx].manifest.ID >= layers[best].manifest.ID {
+					continue
+				}
+			}
+			best, bestVersion = idx, cap.Version
+		}
+	}
+	if best < 0 {
+		return 0, false
+	}
+	return best, true
+}
+
 // stage6TopoSort performs a topological sort of layers based on their
 // capability dependency edges using Kahn's algorithm. The returned slice
 // is in dependency order (dependencies before dependents). MountOrder
@@ -261,12 +307,19 @@ func (r *Resolver) stage6TopoSort(layers []resolvedLayer) ([]resolvedLayer, erro
 		return layers, nil
 	}
 
-	// Map capability name → layer index for resolving which layer satisfies
-	// a requirement (used to build dependency edges).
-	capProviderIdx := make(map[string]int, n*4)
+	// Map capability name → every layer index providing it, for resolving which
+	// layer satisfies a requirement (used to build dependency edges).
+	//
+	// Every provider is kept. The previous form was a map[string]int assigned
+	// inside this loop, so the LAST provider of a name won the edge with no
+	// version check at all — #67's stage-6 half. Stage 4 would validate the
+	// requirement against a satisfying provider and stage 6 would wire the
+	// dependency to a different, non-satisfying one, which puts the consumer
+	// ahead of the layer it needs in mount order.
+	capProviders := make(map[string][]int, n*4)
 	for i, rl := range layers {
 		for _, cap := range rl.manifest.Provides {
-			capProviderIdx[cap.Name] = i
+			capProviders[cap.Name] = append(capProviders[cap.Name], i)
 		}
 	}
 
@@ -278,7 +331,7 @@ func (r *Resolver) stage6TopoSort(layers []resolvedLayer) ([]resolvedLayer, erro
 	for i, rl := range layers {
 		seen := make(map[int]bool)
 		for _, req := range rl.manifest.Requires {
-			j, ok := capProviderIdx[req.Name]
+			j, ok := selectProvider(layers, capProviders[req.Name], req)
 			if !ok || j == i || seen[j] {
 				continue // satisfied by base, self-dep, or already counted
 			}
