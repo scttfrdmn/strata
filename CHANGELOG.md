@@ -336,6 +336,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `newClientForURL`. A `file://` registry also no longer reaches for SSM when
   probing the base OS, which would have traded the missing lockfile for an IMDS
   timeout. Completes the two work items left unchecked in #36.
+- **Two layers providing the same capability no longer make resolution depend on
+  the order they were listed** (#67). The defect was one disagreement showing up
+  in two stages, which is why one commit fixes both — separated, the first fix
+  doubles the exposure of the second.
+
+  `spec.BaseCapabilities.SatisfiesRequirement` decided on the *first* entry whose
+  name matched, so a set containing `python@3.9` before `python@3.13` was reported
+  as failing `python >= 3.10` even though a satisfying provider was present, and
+  stage 4 rejected a satisfiable profile. `stage6TopoSort` assigned
+  `capProviderIdx[cap.Name] = i` with no version check at all, so the *last*
+  provider of a name won the dependency edge — stage 4 could validate a
+  requirement against one provider while stage 6 wired the consumer to a
+  different, non-satisfying one, which puts a layer ahead of the layer it needs in
+  the OverlayFS stack. Both rules are now one predicate, `spec.Capability.Satisfies`,
+  so they cannot drift apart again; the edge is chosen by highest satisfying
+  version with ties broken by lowest layer ID, which makes it a function of the
+  capabilities rather than of the order a profile author typed.
+  `BaseCapabilities.HasCapability` had the same first-match shape and no shipped
+  caller; it is fixed rather than left as a trap for the first one.
+
+  **Which resolutions change**, and the shapes are reachable today even though no
+  shipped formation is one of them — `ls cmd/strata/formations/*.yaml | wc -l`
+  gives 6 and none contains two providers of one capability name:
+  - **A profile naming two versions of the same software** now resolves where it
+    could previously fail, and may mount in a different order. Eight recipes ship
+    more than one version —
+    `ls -d cmd/strata/recipes/*/*/*/ | awk -F/ '{print $5}' | sort | uniq -d`
+    lists `cuda gcc hdf5 julia nodejs openblas python R` — and stage 5 permits
+    them to coexist, both having the default versioned layout.
+  - **A profile naming two different packages that provide one capability**, the
+    same. `grep -l 'name: htslib' cmd/strata/recipes/*/*/*/meta.yaml` names the
+    one such pair in the shipped catalogue, `bcftools` and `samtools`.
+  - **`environment_id` changes for any lockfile whose mount order changes.** The
+    identity hashes layers in mount sequence (`spec/lockfile_hash.go:99-110`), so
+    a re-resolve of an affected profile produces a different id — which is the
+    published lockfile's storage key (`locks/<id>.yaml` in both
+    `internal/registry/s3client.go:617` and `localclient.go:374`), the
+    `strata:environment-id` instance tag, the OCI `image.revision` label and the
+    Zenodo deposition id. Unaffected profiles — every one with at most one
+    provider per capability name, which is all six shipped formations — keep the
+    id they had.
+  - **No change to the mounter, the overlay stack semantics, or the lockfile
+    schema.** Only which layer is chosen as a requirement's provider, and
+    therefore the sequence stage 8 numbers.
 
 ### Changed
 - **Three test controls that could not detect the fixes they guarded are removed,

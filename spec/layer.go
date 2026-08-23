@@ -173,31 +173,58 @@ type BaseCapabilities struct {
 	Provides []Capability `yaml:"provides" json:"provides"`
 }
 
+// Satisfies reports whether c satisfies r: the names match and c's version is
+// within r's bounds. MinVersion is inclusive, MaxVersion exclusive, and an empty
+// bound is unbounded in that direction.
+//
+// This is the single definition of capability satisfaction. It exists because
+// #67 was two stages disagreeing about it: stage 4 compared versions and stage 6
+// did not, so a profile could be validated against one provider and wired to
+// another. Three call sites walked a Provides slice with their own inline
+// version logic; they now share this one, which is what stops the two rules
+// drifting apart again rather than merely realigning them once.
+func (c Capability) Satisfies(r Requirement) bool {
+	if c.Name != r.Name {
+		return false
+	}
+	if r.MinVersion != "" && !semverGTE(c.Version, r.MinVersion) {
+		return false
+	}
+	if r.MaxVersion != "" && !semverLT(c.Version, r.MaxVersion) {
+		return false
+	}
+	return true
+}
+
+// CompareVersions compares two dotted version strings numerically, returning
+// -1, 0 or 1 analogous to strings.Compare. Exported so callers outside this
+// package can rank providers by version without reimplementing the comparison
+// — internal/resolver needs it to pick among several satisfying providers, and a
+// second implementation there would be a second chance to disagree.
+func CompareVersions(a, b string) int { return compareVersions(a, b) }
+
 // HasCapability reports whether the base provides the named capability
 // at or above the specified minimum version.
 // An empty minVersion means any version satisfies.
+//
+// Scans every entry rather than deciding on the first name match: a base
+// providing mpi@1.0.0 and mpi@3.0.0 in that order satisfies mpi >= 2.0.0. No
+// shipped caller reaches this today (only tests do), but it is exported, and the
+// first-match form was the same defect as #67's stage-4 half waiting for a
+// caller — so it is fixed here rather than left as a trap.
 func (b BaseCapabilities) HasCapability(name, minVersion string) bool {
-	for _, cap := range b.Provides {
-		if cap.Name == name {
-			if minVersion == "" {
-				return true
-			}
-			return semverGTE(cap.Version, minVersion)
-		}
-	}
-	return false
+	return b.SatisfiesRequirement(Requirement{Name: name, MinVersion: minVersion})
 }
 
 // SatisfiesRequirement reports whether the base satisfies a Requirement.
+//
+// Any provider satisfying r is enough. The previous form returned on the first
+// entry whose NAME matched, so a base providing python@3.9 before python@3.13
+// was reported as failing python >= 3.10 even though a satisfying provider was
+// present — #67's stage-4 half, which could reject a satisfiable profile.
 func (b BaseCapabilities) SatisfiesRequirement(r Requirement) bool {
 	for _, cap := range b.Provides {
-		if cap.Name == r.Name {
-			if r.MinVersion != "" && !semverGTE(cap.Version, r.MinVersion) {
-				return false
-			}
-			if r.MaxVersion != "" && !semverLT(cap.Version, r.MaxVersion) {
-				return false
-			}
+		if cap.Satisfies(r) {
 			return true
 		}
 	}
