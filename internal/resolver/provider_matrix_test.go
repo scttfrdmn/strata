@@ -4,23 +4,35 @@ package resolver
 // completeness), both of which stood SOUND with a Basis of `none` — asserted by
 // the document and executed by nothing.
 //
-// Both are refuted by issue #67, whose two halves live in different stages:
+// Both were refuted by issue #67, whose two halves lived in different stages:
 //
-//	stage 4 (R5) `spec.BaseCapabilities.SatisfiesRequirement` walks Provides and
-//	  decides on the FIRST entry whose name matches, so a satisfiable profile is
-//	  rejected when a non-satisfying provider of the same capability name is
+//	stage 4 (R5) `spec.BaseCapabilities.SatisfiesRequirement` walked Provides and
+//	  decided on the FIRST entry whose name matched, so a satisfiable profile was
+//	  rejected when a non-satisfying provider of the same capability name was
 //	  merged in first.
-//	stage 6 (R4) `stage6TopoSort` builds `capProviderIdx[cap.Name] = i` in a
-//	  nested loop with no guard, so the LAST provider of a capability wins the
+//	stage 6 (R4) `stage6TopoSort` built `capProviderIdx[cap.Name] = i` in a
+//	  nested loop with no guard, so the LAST provider of a capability won the
 //	  dependency edge irrespective of version.
 //
+// Both are fixed as of #67, and the counts below are now zero. That changes what
+// this file is for without changing a line of its structure: it was a
+// reproduction, and it is now a regression barrier. The distinction matters when
+// reading a failure — a nonzero count here no longer means "the defect is where
+// we said it was", it means the defect is back.
+//
 // These tests enumerate a declared, finite domain of the shipping resolver
-// rather than sampling it, so what they establish is the exact boundary of the
-// defect: which cells violate and which hold. That makes the refutation
-// reproducible, which is what #67's register row needs in order to be
-// dischargeable at all — and it makes the tests fail in BOTH directions. A
-// regression widens the violating set; a fix empties it. Either way the stated
-// counts stop matching and someone has to look.
+// rather than sampling it, so what they establish is the exact boundary: which
+// cells violate and which hold. That is what made the refutation reproducible,
+// which is what #67's register row needed in order to be dischargeable at all —
+// and it makes the tests fail in BOTH directions. A regression makes a count
+// nonzero; a change in the enumeration makes the cardinality mismatch. Either
+// way the stated numbers stop matching and someone has to look.
+//
+// One assertion is deliberately NOT a count: stage 4's verdict is now asserted
+// to be the same for both provider orders of the same pair. A count of known
+// defects has to be maintained by hand and says nothing once it reaches zero,
+// whereas order-independence is the property the fix actually established and it
+// stays falsifiable forever.
 //
 // The version oracle here is deliberately NOT the implementation's semverGTE and
 // semverLT. Expectations computed with the code under test would hold by
@@ -113,23 +125,57 @@ func consumer(req spec.Requirement) resolvedLayer {
 //
 // The converse is asserted too, and it is what stops R5 being "fixed" by never
 // rejecting anything: when NO provider satisfies, stage 4 must reject.
+//
+// Since the fix, the load-bearing assertion is neither of those counts but
+// order-independence: the same pair of providers must produce the same verdict in
+// either slice order. A count of known defects stops discriminating once it is
+// zero — every implementation that rejects nothing scores zero too — whereas the
+// order comparison has no such fixed point.
 func TestStage4ProviderCompleteness(t *testing.T) {
 	// Cardinality is stated rather than derived from the same slices the loops
 	// iterate: computing it from len(versions)*len(versions)*len(reqs)*2 would
 	// let a dropped dimension value shrink both sides and pass.
 	const wantCells = 72
-	// #67's stage-4 half. This is a count of KNOWN DEFECTS: it must go to zero
-	// when #67 is fixed, and this test must then be updated on purpose.
-	const wantViolations = 12
+	// #67's stage-4 half, fixed: SatisfiesRequirement now scans every provider
+	// instead of deciding on the first name match. This was 12 — the cells where a
+	// satisfiable set was rejected because the first provider of the name did not
+	// satisfy — and it is a count of KNOWN DEFECTS, so zero is the post-fix value
+	// and any nonzero is a regression.
+	const wantViolations = 0
+	// Non-vacuity bound for the order-independence assertion, which compares two
+	// verdicts and therefore asserts nothing about a pair whose providers agree.
+	// A pair discriminates only when exactly one of the two satisfies: 4 for each
+	// of the three constrained requirements (satisfying set size s of 3 gives
+	// 2*s*(3-s) discordant ordered pairs, so 4, 4, 4) and 0 for the unconstrained
+	// one, where all three satisfy. That is the same 12 wantViolations used to
+	// hold, and not by coincidence — a discordant pair has exactly one order whose
+	// first provider fails, which is exactly what produced one violating cell. The
+	// arithmetic is why the assertion can REPLACE the count rather than sit
+	// alongside it.
+	const wantDiscriminating = 12
 
 	versions := matrixVersions()
 	reqs := matrixRequirements()
 	base := &spec.BaseCapabilities{} // Provides nothing, so the layer path decides.
 
-	cells, violations, satisfiableCells := 0, 0, 0
+	cells, violations, satisfiableCells, discriminating := 0, 0, 0, 0
 	for _, vA := range versions {
 		for _, vB := range versions {
 			for _, req := range reqs {
+				// Stage 4's verdict must not depend on which of the two
+				// providers comes first in the slice. This is the property the
+				// stage-4 half actually broke, and it is asserted instead of
+				// merely counted because it survives the fix: a count of known
+				// defects says nothing once it reaches zero, whereas this stays
+				// falsifiable forever. On the first-match implementation the two
+				// orders disagree in exactly the 12 cells wantViolations used to
+				// hold, so this assertion subsumes that count rather than
+				// duplicating it.
+				accepted := make(map[bool]bool, 2)
+				if satisfiesOracle(t, vA, req) != satisfiesOracle(t, vB, req) {
+					discriminating++
+				}
+
 				for _, aFirst := range []bool{true, false} {
 					cells++
 
@@ -146,6 +192,7 @@ func TestStage4ProviderCompleteness(t *testing.T) {
 						satisfiableCells++
 					}
 					err := (&Resolver{}).stage4ValidateGraph(base, layers)
+					accepted[aFirst] = err == nil
 					name := req.String() + " providers=" + firstVersion + " then " +
 						map[bool]string{true: vB, false: vA}[aFirst]
 
@@ -159,18 +206,19 @@ func TestStage4ProviderCompleteness(t *testing.T) {
 						// looks at order.
 						if satisfiesOracle(t, firstVersion, req) {
 							t.Errorf("%s: stage 4 rejected a satisfiable set whose FIRST provider satisfies (%v); "+
-								"R5 is violated by a mechanism other than #67's first-match", name, err)
+								"R5 is violated by a mechanism other than the old first-match", name, err)
 						}
 					case !satisfiable && err == nil:
 						t.Errorf("%s: no provider satisfies the constraint and stage 4 accepted; "+
 							"totality is broken, or R5 was 'fixed' by never rejecting", name)
-					case satisfiable && err == nil:
-						// R5 holds here, and it must be for the right reason.
-						if !satisfiesOracle(t, firstVersion, req) {
-							t.Errorf("%s: stage 4 accepted although the first provider does not satisfy; "+
-								"#67's stage-4 half no longer reproduces — update wantViolations", name)
-						}
 					}
+				}
+
+				if accepted[true] != accepted[false] {
+					t.Errorf("%s providers={%s,%s}: stage 4 accepts with one provider first and "+
+						"rejects with the other (a-first accepted=%v, b-first accepted=%v); "+
+						"the verdict depends on slice order",
+						req.String(), vA, vB, accepted[true], accepted[false])
 				}
 			}
 		}
@@ -180,15 +228,26 @@ func TestStage4ProviderCompleteness(t *testing.T) {
 		t.Errorf("enumerated %d cells, want %d", cells, wantCells)
 	}
 	if violations != wantViolations {
-		t.Errorf("R5 violated in %d cells, want %d (#67's stage-4 half). "+
-			"Fewer means the defect is being fixed and this test needs updating on purpose; "+
-			"more means a regression", violations, wantViolations)
+		t.Errorf("R5 violated in %d cells, want %d. #67's stage-4 half is fixed, so nonzero "+
+			"here is a regression: a satisfiable requirement is being rejected. Do not restate "+
+			"this constant to match — SatisfiesRequirement must scan every provider",
+			violations, wantViolations)
 	}
 	// Non-vacuity: an oracle that called nothing satisfiable would make every
 	// R5 assertion above unreachable while the table still passed.
 	if satisfiableCells == 0 || satisfiableCells == cells {
 		t.Errorf("%d of %d cells are satisfiable; a table with no mix of both cannot "+
 			"exercise R5 and its converse", satisfiableCells, cells)
+	}
+	// Non-vacuity for the order-independence assertion specifically. Stated as an
+	// exact count rather than >0 because both directions are informative: fewer
+	// discriminating pairs means the version domain or the constraint domain lost
+	// the asymmetry the assertion needs, and more means the domain grew and the
+	// arithmetic in the constant's derivation no longer describes it.
+	if discriminating != wantDiscriminating {
+		t.Errorf("%d of %d (vA,vB,req) combinations have exactly one satisfying provider, want %d; "+
+			"only those can falsify order-independence, so a change here changes what that "+
+			"assertion covers", discriminating, len(versions)*len(versions)*len(reqs), wantDiscriminating)
 	}
 }
 
@@ -233,13 +292,24 @@ func permutations(items []string) [][]string {
 //
 //	stage 5 must not reject the two same-name providers (it does not: both have
 //	  the default InstallLayout, so canCoexist exempts them), and
-//	stage 4 must accept, which it only does when the first mpi provider in slice
-//	  order satisfies — so #67's stage-4 half MASKS its stage-6 half in half the
-//	  permutations, and the reachable count is stated below.
+//	stage 4 must accept, which before the fix it only did when the first mpi
+//	  provider in slice order satisfied — so the stage-4 half MASKED the stage-6
+//	  half in half the permutations. Fixing stage 4 unmasks them, which is why the
+//	  reachable count below went from 12 to 24 in the same change that took
+//	  violations to zero. The two halves were coupled through this number, and
+//	  that coupling is the reason they had to be fixed together: closing stage 4
+//	  alone would have doubled the exposure of stage 6.
 func TestStage6ProviderSoundness(t *testing.T) {
-	const wantCells = 24     // 4! input orders.
-	const wantReachable = 12 // Those stage 4 accepts: mpi-3 before mpi-1.
-	const wantViolations = 3 // #67's stage-6 half, at min-index tie-breaking.
+	const wantCells = 24 // 4! input orders.
+	// Every order now reaches stage 6, because stage 4 no longer rejects on the
+	// basis of which provider comes first. This was 12 — the orders with mpi-3
+	// ahead of mpi-1 — and the change from 12 to 24 is the masking being removed,
+	// not the domain growing.
+	const wantReachable = 24
+	// #67's stage-6 half, fixed: the edge is chosen by highest satisfying version
+	// (ties by lowest layer ID) instead of by whichever provider happened to be
+	// assigned last. This was 3.
+	const wantViolations = 0
 
 	build := func(name string) resolvedLayer {
 		switch name {
@@ -280,8 +350,15 @@ func TestStage6ProviderSoundness(t *testing.T) {
 
 		r := &Resolver{}
 		if err := r.stage4ValidateGraph(base, layers); err != nil {
-			// Masked by #67's other half. Recorded, not asserted clean: the
-			// rejection is itself an R5 violation, enumerated by the test above.
+			// Before #67 this was the masking path and was recorded rather than
+			// asserted clean, the rejection being an R5 violation enumerated by
+			// the test above. It is now a fault in its own right: mpi-3 satisfies
+			// mpi>=2.0.0 in every one of these orders, so a rejection here means
+			// stage 4 has regressed to deciding on slice order. Asserted per-order
+			// as well as counted below, because "12 reached stage 6, want 24" does
+			// not say WHICH orders stopped or why.
+			t.Errorf("%s: stage 4 rejected a set in which mpi-3 satisfies mpi>=2.0.0 (%v); "+
+				"the stage-4 half has regressed and is masking this table again", label, err)
 			continue
 		}
 		reachable++
@@ -314,9 +391,12 @@ func TestStage6ProviderSoundness(t *testing.T) {
 			// The harm, spelled out so the failure is legible without the
 			// issue: the consumer requires mpi>=2.0.0, mpi-3 is the only
 			// provider satisfying that, and the consumer mounts first.
+			t.Errorf("%s: consumer (requires mpi>=2.0.0) sorts at %d, before its only satisfying "+
+				"provider mpi-3 at %d; the dependency edge points at the wrong layer",
+				label, pos["consumer"], pos["mpi-3"])
 			if pos["mpi-1"] >= pos["consumer"] {
-				t.Errorf("%s: consumer sorts before mpi-3 and NOT after mpi-1 either; "+
-					"R4 is violated by a mechanism other than #67's last-wins index", label)
+				t.Errorf("%s: and NOT after mpi-1 either; R4 is violated by a mechanism other "+
+					"than the old last-wins index", label)
 			}
 		}
 	}
@@ -325,17 +405,135 @@ func TestStage6ProviderSoundness(t *testing.T) {
 		t.Errorf("enumerated %d input orders, want %d", cells, wantCells)
 	}
 	if reachable != wantReachable {
-		t.Errorf("%d cells reached stage 6, want %d; #67's stage-4 half masks the rest, "+
-			"so a change here means one of the two halves moved", reachable, wantReachable)
+		t.Errorf("%d cells reached stage 6, want %d; every input order must reach it now that "+
+			"stage 4 is order-independent, so fewer means the stage-4 half regressed and is "+
+			"masking this table", reachable, wantReachable)
 	}
 	if violations != wantViolations {
-		t.Errorf("R4 violated in %d of %d reachable cells, want %d (#67's stage-6 half). "+
-			"Zero means the defect is fixed and this test needs updating on purpose",
-			violations, reachable, wantViolations)
+		t.Errorf("R4 violated in %d of %d reachable cells, want %d. #67's stage-6 half is fixed, "+
+			"so nonzero here is a regression: the edge is being drawn to a provider that does not "+
+			"satisfy. Do not restate this constant to match", violations, reachable, wantViolations)
 	}
 	// Non-vacuity, stated separately from the count above: a table where nothing
 	// reached stage 6 would report zero violations and look like a clean pass.
 	if reachable == 0 {
 		t.Error("no cell reached stage 6; every R4 assertion above was unreachable")
+	}
+}
+
+// TestStage6SelectsHighestSatisfyingProvider pins the selection rule, which R4
+// does not constrain and which #67's fix therefore had to choose.
+//
+// R4 only requires the edge to point at SOME satisfying provider. When two
+// providers both satisfy, that leaves the choice open, and the two candidates are
+// not equivalent: "first satisfying in slice order" is a function of the order the
+// profile author listed the layers, while "highest satisfying version" is a
+// function of the capabilities alone. Since the edge determines mount order and
+// mount order goes into the lockfile, the first rule would make the lockfile
+// depend on an author-visible ordering — the same class of defect as #67 itself.
+// So the rule is highest version, ties broken by lowest layer ID, and this test
+// is what holds it in place.
+//
+// TestStage6ProviderSoundness cannot do that job: there, mpi-1 does not satisfy
+// mpi>=2.0.0, so every rule that picks a satisfying provider picks mpi-3 and the
+// two candidate rules are indistinguishable. Here BOTH providers satisfy, and
+// that premise is asserted rather than assumed.
+//
+//	yy-provider  provides yy
+//	mpi-3        provides mpi@3.0.0, requires yy   <- highest; blocked behind yy
+//	mpi-2        provides mpi@2.0.0                <- also satisfies mpi>=2.0.0
+//	consumer     requires mpi>=2.0.0
+//
+// mpi-3 is blocked behind yy-provider for the same reason as in the soundness
+// table, and the reason is worth restating because without it this test passes
+// under both rules: with no prerequisite, the consumer is the only layer with any
+// in-degree, so Kahn's algorithm emits it last whichever provider owns the edge
+// and the wrong choice is invisible. The block gives the wrong edge a way to
+// release the consumer early.
+func TestStage6SelectsHighestSatisfyingProvider(t *testing.T) {
+	const wantCells = 24 // 4! input orders.
+
+	req := spec.Requirement{Name: capName, MinVersion: "2.0.0"}
+	if !satisfiesOracle(t, "2.0.0", req) || !satisfiesOracle(t, "3.0.0", req) {
+		t.Fatalf("both providers must satisfy %s, or this table cannot distinguish "+
+			"highest-version selection from first-in-slice selection", req)
+	}
+
+	build := func(name string) resolvedLayer {
+		switch name {
+		case "yy-provider":
+			return resolvedLayer{manifest: &spec.LayerManifest{
+				ID: name, Name: name, Version: "1.0.0",
+				Provides: []spec.Capability{{Name: "yy", Version: "1.0.0"}},
+			}}
+		case "mpi-3":
+			l := provider(name, "3.0.0")
+			l.manifest.Requires = []spec.Requirement{{Name: "yy"}}
+			return l
+		case "mpi-2":
+			return provider(name, "2.0.0")
+		case "consumer":
+			return consumer(req)
+		default:
+			t.Fatalf("no fixture for %q", name)
+			return resolvedLayer{}
+		}
+	}
+
+	base := &spec.BaseCapabilities{}
+	cells := 0
+	for _, order := range permutations([]string{"yy-provider", "mpi-3", "mpi-2", "consumer"}) {
+		cells++
+		layers := make([]resolvedLayer, 0, len(order))
+		for _, name := range order {
+			layers = append(layers, build(name))
+		}
+		label := ""
+		for i, name := range order {
+			if i > 0 {
+				label += " "
+			}
+			label += name
+		}
+
+		r := &Resolver{}
+		// Both premises asserted per-order, because either one failing would make
+		// the assertion below unreachable for that order while the loop still ran
+		// to completion and the test still passed.
+		if err := r.stage4ValidateGraph(base, layers); err != nil {
+			t.Errorf("%s: stage 4 rejected a set where both mpi providers satisfy (%v)", label, err)
+			continue
+		}
+		if err := r.stage5DetectConflicts(layers); err != nil {
+			t.Fatalf("%s: stage 5 rejected two coexisting mpi providers (%v); the selection "+
+				"rule's domain is unreachable and this table would be vacuous", label, err)
+		}
+
+		ordered, err := r.stage6TopoSort(layers)
+		if err != nil {
+			t.Fatalf("%s: stage 6 failed: %v", label, err)
+		}
+		pos := make(map[string]int, len(ordered))
+		for i, rl := range ordered {
+			pos[rl.manifest.ID] = i
+		}
+		if len(pos) != len(layers) {
+			t.Fatalf("%s: stage 6 output names %d distinct layers, want %d", label, len(pos), len(layers))
+		}
+
+		// The observable consequence of selecting mpi-3: the consumer inherits
+		// mpi-3's own prerequisite and cannot mount before it. Under a
+		// first-satisfying rule the edge points at mpi-2 in the orders where mpi-2
+		// precedes mpi-3, and the consumer is released as soon as mpi-2 is emitted
+		// — ahead of mpi-3 in some of them.
+		if pos["consumer"] < pos["mpi-3"] {
+			t.Errorf("%s: consumer sorts at %d, before mpi-3 at %d; the edge was drawn to "+
+				"mpi-2 (also satisfying, lower version), so selection is following slice "+
+				"order rather than version", label, pos["consumer"], pos["mpi-3"])
+		}
+	}
+
+	if cells != wantCells {
+		t.Errorf("enumerated %d input orders, want %d", cells, wantCells)
 	}
 }
