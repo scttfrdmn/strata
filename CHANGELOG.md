@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **A layer whose contents contradict its manifest is refused at mount** (#146).
+  The cosign bundle attests layer *bytes*, not the manifest *document*, so under a
+  registry-write (A1) an attacker could edit `name`, `version` or `install_layout`
+  in a served manifest — breaking no signature — and redirect `PATH`: bump the
+  version so `PATH` points at a directory the squashfs does not contain, or relabel
+  a versioned layer `flat` so it still mounts but drops off `PATH`, silently
+  falling back to host binaries. The runtime mount paths (`strata run`, the agent)
+  now derive the layout from the mounted bytes and refuse a layer whose
+  `<name>/<version>/bin` presence disagrees with its manifest triple
+  (`overlay.VerifyLayerLayout`, gated by `Config.VerifyLayerLayout`;
+  build-environment mounts are not affected). This is detection-and-refusal on the
+  assembly path; signing the manifest document itself remains future work and
+  composes with it. The PROPERTIES.md T2/T9 register row travels separately.
 - **The build instance verifies the cosign binary against a pinned digest** (#63).
   The EC2 build user-data downloaded `cosign-linux-<arch>` from GitHub releases
   with no integrity check, then signed every layer with it via KMS. A substituted
