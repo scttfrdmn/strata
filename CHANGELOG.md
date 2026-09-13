@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **The build instance verifies the cosign binary against a pinned digest** (#63).
+  The EC2 build user-data downloaded `cosign-linux-<arch>` from GitHub releases
+  with no integrity check, then signed every layer with it via KMS. A substituted
+  cosign would call `kms:Sign` with the real `strata-builder` credentials and
+  produce bundles that verify against the published key — no downstream artifact
+  of the substitution, and the weakest link in the KMS hardening #32 built. The
+  download is now checked with `sha256sum -c` against an in-repo pinned digest
+  (`cosignReleaseDigests`, copied from the release's published
+  `cosign_checksums.txt`) **before** the binary is made executable, and the build
+  refuses a cosign version that is not pinned rather than fetch it unverified.
 - **`strata verify` no longer prints "verified" over an unverifiable bundle** (#60).
   Without `--rekor` it was a field-presence check (`Bundle != ""`), yet its output
   said "N layer(s) verified" — so a bundle whose file contents were the sentence

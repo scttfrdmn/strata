@@ -200,6 +200,44 @@ func (r *EC2Runner) uploadRecipe(ctx context.Context, jobID string, recipe *Reci
 	return nil
 }
 
+// cosignReleaseDigests pins the SHA-256 of each cosign release binary the build
+// pipeline may install, keyed by release tag then linux arch suffix.
+//
+// The build instance downloads cosign from GitHub releases (see the user-data
+// template) and signs every layer with it via KMS. A substituted cosign calls
+// kms:Sign with the real strata-builder instance credentials and produces
+// bundles that verify against the published key, so an unpinned fetch is the
+// weakest link in the KMS-key hardening #32 built (#63). This is what the
+// download is checked against before it is trusted.
+//
+// Provenance: each value is from cosign's published cosign_checksums.txt for
+// that tag —
+// https://github.com/sigstore/cosign/releases/download/<tag>/cosign_checksums.txt
+// — fetched 2026-09-12. To add a version, fetch its checksums file and copy the
+// cosign-linux-amd64 and cosign-linux-arm64 lines here.
+var cosignReleaseDigests = map[string]map[string]string{
+	"v3.0.5": {
+		"amd64": "db15cc99e6e4837daabab023742aaddc3841ce57f193d11b7c3e06c8003642b2",
+		"arm64": "d098f3168ae4b3aa70b4ca78947329b953272b487727d1722cb3cb098a1a20ab",
+	},
+}
+
+// cosignReleaseDigest returns the pinned SHA-256 for a cosign release binary, or
+// an error if the (version, arch) pair is not pinned. An unpinned version cannot
+// be installed: there is no trusted digest to check the download against, and
+// fetching the checksum alongside the binary would be circular (#63).
+func cosignReleaseDigest(version, arch string) (string, error) {
+	byArch, ok := cosignReleaseDigests[version]
+	if !ok {
+		return "", fmt.Errorf("no pinned cosign digest for version %q: add it to cosignReleaseDigests from that release's cosign_checksums.txt", version)
+	}
+	digest, ok := byArch[arch]
+	if !ok {
+		return "", fmt.Errorf("no pinned cosign digest for version %q arch %q", version, arch)
+	}
+	return digest, nil
+}
+
 // buildUserData generates the EC2 user-data shell script.
 func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (string, error) {
 	bucket, _, ok := parseObjectURI(r.cfg.BucketURL + "/placeholder")
@@ -210,6 +248,11 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 	cosignVersion := r.cfg.CosignVersion
 	if cosignVersion == "" {
 		cosignVersion = "v3.0.5"
+	}
+	// Fail early with a clean message if the requested cosign is not pinned,
+	// rather than only through the template's cosignDigest func at Execute time.
+	if _, err := cosignReleaseDigest(cosignVersion, r.cfg.BinaryArch); err != nil {
+		return "", fmt.Errorf("buildUserData: %w", err)
 	}
 
 	// If the key is an S3 URI, the user-data downloads it to a local path.
@@ -409,7 +452,9 @@ func ArchForEC2(normalizedArch string) string {
 // ec2UserDataTmpl is the user-data script template for EC2 build instances.
 // On success: rebuilds registry index, tags success, self-terminates.
 // On failure: tags failed, self-stops (instance kept for log retrieval).
-var ec2UserDataTmpl = template.Must(template.New("userdata").Parse(`#!/usr/bin/env bash
+var ec2UserDataTmpl = template.Must(template.New("userdata").
+	Funcs(template.FuncMap{"cosignDigest": cosignReleaseDigest}).
+	Parse(`#!/usr/bin/env bash
 set -uo pipefail
 LOG=/var/log/strata-build.log
 exec > >(tee -a "$LOG") 2>&1
@@ -457,10 +502,14 @@ dnf install -y \
 aws s3 cp "s3://{{.Bucket}}/build/bin/strata-linux-{{.BinaryArch}}" /usr/local/bin/strata || fail
 chmod +x /usr/local/bin/strata
 
-# Download cosign (required for signing layers)
+# Download cosign (required for signing layers) and verify it against a pinned
+# digest before trusting it. A substituted cosign would sign malicious layers
+# with the real KMS key and every bundle would verify downstream (#63), so a
+# mismatch aborts the build rather than warning.
 curl -fsSL \
   "https://github.com/sigstore/cosign/releases/download/{{.CosignVersion}}/cosign-linux-{{.BinaryArch}}" \
   -o /usr/local/bin/cosign || fail
+echo "{{cosignDigest .CosignVersion .BinaryArch}}  /usr/local/bin/cosign" | sha256sum -c - || fail
 chmod +x /usr/local/bin/cosign
 
 {{- if .KeyS3URI}}
