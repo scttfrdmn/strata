@@ -95,7 +95,10 @@ jobs:
       # replaces and still 13.7x below measured throughput, so a slower runner or
       # a heavier generator does not produce a false failure. If this ever trips,
       # it is evidence about the run or about the generator; it is not a reason to
-      # lower the floor to whatever was observed.
+      # lower the floor to whatever was observed. The per-run execs, rate, floor
+      # and basis are emitted to the job step summary and fuzz.log is uploaded
+      # every run (#127), so the floor can be revisited against a series rather
+      # than the single hand-transcribed measurement above.
       - name: Assert the search actually ran
         env:
           FUZZTIME: ${{ inputs.fuzztime || '600s' }}
@@ -161,14 +164,56 @@ jobs:
             echo "::error::fuzz.log reports no exec count at all — the search did not start."
             exit 1
           fi
+          # The last reported throughput. go prints "(N/sec)" on each elapsed
+          # line; this is the number #125 calibrated the floor from, and the one
+          # #127 found the workflow measured every night and discarded. Parsed
+          # here so it is emitted as data rather than left in a comment.
+          rate="$(sed -n 's/.*(\([0-9]*\)\/sec).*/\1/p' fuzz.log | tail -1)"
+
+          result="ok"
           if [ "$execs" -lt "$floor" ]; then
+            result="below floor"
+          fi
+
+          # Persist the measurement in the run summary so MIN_EXECS_PER_SEC can be
+          # revisited against a series of real runs instead of the single
+          # hand-transcribed datapoint it was set from (#127). A committed results
+          # file would violate hygiene rule 1, so the step summary and the
+          # unconditionally-uploaded fuzz.log are the record.
+          {
+            echo "### Fuzz search — ${{ matrix.target }}"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| package | ${{ matrix.pkg }} |"
+            echo "| fuzztime | ${FUZZTIME} |"
+            echo "| execs | ${execs} |"
+            echo "| execs/sec | ${rate:-unknown} |"
+            echo "| floor | ${floor} |"
+            echo "| basis | ${basis} |"
+            echo "| result | ${result} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$result" != "ok" ]; then
             echo "::error::Only $execs executions against a floor of $floor ($basis)."
             echo "The search ran but covered far less ground than its duration implies."
             echo "Check for an early crash, a generator that rejects most inputs, or a"
             echo "throughput regression. Do not lower the floor to match the observation."
             exit 1
           fi
-          echo "search executed $execs inputs (floor $floor — $basis)"
+          echo "search executed $execs inputs at ${rate:-unknown}/sec (floor $floor — $basis)"
+
+      - name: Upload fuzz log
+        # Unconditionally, including on success (#127): the search measures its
+        # own throughput every run, and the failure-only "Upload crashers" step
+        # below discarded that measurement on every green night. The parsed
+        # numbers are in the step summary; this keeps the raw log too.
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-log-${{ matrix.target }}
+          path: fuzz.log
+          if-no-files-found: warn
 
       - name: Upload crashers
         if: always() && steps.search.outputs.search_rc != '0'
