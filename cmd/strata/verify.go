@@ -21,9 +21,14 @@ func newVerifyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "verify <lock.yaml>",
-		Short: "Verify all layer signatures in a lockfile",
-		Long: `Without --rekor, performs field-presence checks: every layer must have
-non-empty Bundle and RekorEntry fields and the lockfile itself must be signed.
+		Short: "Check layer attestation bundles in a lockfile",
+		Long: `Without --rekor, checks each layer's attestation bundle without contacting
+the network: the lockfile must be signed, every layer must name a Bundle and a
+RekorEntry, and each bundle must parse as a Sigstore bundle carrying a Rekor
+entry. This catches a bundle whose contents are not a bundle at all — a
+presence check alone would accept prose. It is NOT signature verification: the
+layer content is not present to hash and no trust root is consulted. A bundle
+still held as an s3:// URI is reported as needing a fetch, not skipped.
 All failures are collected and reported together.
 
 With --rekor, each layer's log entry is fetched from the live Rekor transparency
@@ -42,6 +47,7 @@ Requires network access to pypi.org.`,
 			}
 
 			failures := collectPresenceFailures(lf)
+			failures = append(failures, collectBundleFailures(lf)...)
 
 			if rekorFlag && len(failures) == 0 {
 				failures = append(failures,
@@ -64,10 +70,18 @@ Requires network access to pypi.org.`,
 			for _, ps := range lf.Packages {
 				pkgCount += len(ps.Packages)
 			}
+			// The default path does not verify — it confirms each bundle is
+			// well-formed and carries a Rekor entry. Only --rekor verifies the
+			// bundle against the live transparency log, so only --rekor may say
+			// "verified" of a layer (#60).
+			pkgSuffix := ""
 			if packagesFlag && pkgCount > 0 {
-				fmt.Printf("ok: %s (%d layer(s), %d package(s) verified)\n", args[0], len(lf.Layers), pkgCount)
+				pkgSuffix = fmt.Sprintf(", %d package(s) verified against PyPI", pkgCount)
+			}
+			if rekorFlag {
+				fmt.Printf("ok: %s (%d layer(s) verified against the transparency log%s)\n", args[0], len(lf.Layers), pkgSuffix)
 			} else {
-				fmt.Printf("ok: %s (%d layer(s) verified)\n", args[0], len(lf.Layers))
+				fmt.Printf("ok: %s (%d layer(s): bundle well-formed, attestation present%s — layers not verified against the transparency log; run 'strata verify --rekor')\n", args[0], len(lf.Layers), pkgSuffix)
 			}
 			return nil
 		},
@@ -92,6 +106,37 @@ func collectPresenceFailures(lf *spec.LockFile) []string {
 		}
 		if layer.RekorEntry == "" {
 			failures = append(failures, fmt.Sprintf("layer %s: RekorEntry field is empty", layer.ID))
+		}
+	}
+	return failures
+}
+
+// collectBundleFailures parses each layer's bundle and confirms it is a
+// well-formed Sigstore bundle carrying a Rekor entry.
+//
+// This is what turns "verified" from a lie into a check without a trust root or
+// network (#60): a presence test accepts a Bundle field whose file contents are
+// prose, and printed "verified" over it. Parsing rejects that. It is still short
+// of signature verification — the layer squashfs is not present to hash and no
+// key/identity is consulted (that needs a fetch and #62), and --rekor is what
+// checks the bundle against the live log. A bundle held as an unfetchable URI
+// (s3://) is reported as needing a fetch rather than skipped, via loadLocalBundle.
+//
+// Layers with an empty Bundle are left to collectPresenceFailures, which names
+// that field; parsing "" here would only duplicate the report.
+func collectBundleFailures(lf *spec.LockFile) []string {
+	var failures []string
+	for _, layer := range lf.Layers {
+		if layer.Bundle == "" {
+			continue
+		}
+		bundle, err := loadLocalBundle(layer.Bundle)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("layer %s: %v", layer.ID, err))
+			continue
+		}
+		if !bundle.HasRekorEntry() {
+			failures = append(failures, fmt.Sprintf("layer %s: bundle is not a signed Sigstore bundle (no Rekor entry)", layer.ID))
 		}
 	}
 	return failures
