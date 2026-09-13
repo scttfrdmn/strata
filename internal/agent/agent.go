@@ -248,10 +248,13 @@ func (a *Agent) fetchAndVerifyLayers(ctx context.Context, lf *spec.LockFile) ([]
 			}
 
 			results <- result{path: overlay.LayerPath{
-				ID:         layer.ID,
-				SHA256:     layer.SHA256,
-				Path:       localPath,
-				MountOrder: layer.MountOrder,
+				ID:            layer.ID,
+				SHA256:        layer.SHA256,
+				Path:          localPath,
+				MountOrder:    layer.MountOrder,
+				Name:          layer.Name,
+				Version:       layer.Version,
+				InstallLayout: layer.InstallLayout,
 			}}
 		}()
 	}

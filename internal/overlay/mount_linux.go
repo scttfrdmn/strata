@@ -163,6 +163,15 @@ func MountWithConfig(layers []LayerPath, cfg Config) (*Overlay, error) {
 			return nil, fmt.Errorf("overlay: mounting squashfs %q at %q: %w", layer.ID, mp, err)
 		}
 		squashPoints = append(squashPoints, mp)
+
+		// Refuse a layer whose mounted contents contradict its (unsigned) manifest
+		// triple, before any assembly surface reads those fields to build PATH (#146).
+		if cfg.VerifyLayerLayout {
+			if err := VerifyLayerLayout(mp, layer.Name, layer.Version, layer.InstallLayout); err != nil {
+				cleanupWith(strategy, squashPoints)
+				return nil, err
+			}
+		}
 	}
 
 	// rw dir: tmpfs (syscall) or regular directory (FUSE).
@@ -213,7 +222,7 @@ func MountWithConfig(layers []LayerPath, cfg Config) (*Overlay, error) {
 // tmpfs for the upper and work directories, then assembles the OverlayFS at
 // /strata/env. It is a thin wrapper around MountWithConfig with production defaults.
 func Mount(layers []LayerPath) (*Overlay, error) {
-	return MountWithConfig(layers, Config{})
+	return MountWithConfig(layers, Config{VerifyLayerLayout: true})
 }
 
 // MountBuildEnv mounts the given squashfs layers as a read-only OverlayFS

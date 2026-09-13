@@ -130,9 +130,10 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 
 	// 8. Mount overlay with user-local paths and auto-detected strategy.
 	cfg := overlay.Config{
-		LayersDir: filepath.Join(workDir, "layers"),
-		RWDir:     filepath.Join(workDir, "rw"),
-		MergedDir: filepath.Join(workDir, "env"),
+		LayersDir:         filepath.Join(workDir, "layers"),
+		RWDir:             filepath.Join(workDir, "rw"),
+		MergedDir:         filepath.Join(workDir, "env"),
+		VerifyLayerLayout: true, // refuse a layer whose contents contradict its manifest triple (#146)
 	}
 	ov, err := overlay.MountWithConfig(layerPaths, cfg)
 	if err != nil {
@@ -437,10 +438,13 @@ func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) 
 				return nil, fmt.Errorf("cached layer %q: %w (remove the file to re-download it)", layer.ID, err)
 			}
 			paths = append(paths, overlay.LayerPath{
-				ID:         layer.ID,
-				SHA256:     layer.SHA256,
-				Path:       cachePath,
-				MountOrder: layer.MountOrder,
+				ID:            layer.ID,
+				SHA256:        layer.SHA256,
+				Path:          cachePath,
+				MountOrder:    layer.MountOrder,
+				Name:          layer.Name,
+				Version:       layer.Version,
+				InstallLayout: layer.InstallLayout,
 			})
 			continue
 		}
@@ -484,10 +488,13 @@ func fetchLayersToCache(ctx context.Context, lf spec.LockFile, cacheDir string) 
 		}
 
 		paths = append(paths, overlay.LayerPath{
-			ID:         layer.ID,
-			SHA256:     layer.SHA256,
-			Path:       cachePath,
-			MountOrder: layer.MountOrder,
+			ID:            layer.ID,
+			SHA256:        layer.SHA256,
+			Path:          cachePath,
+			MountOrder:    layer.MountOrder,
+			Name:          layer.Name,
+			Version:       layer.Version,
+			InstallLayout: layer.InstallLayout,
 		})
 	}
 	return paths, nil

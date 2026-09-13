@@ -43,6 +43,13 @@ type Config struct {
 	RWDir     string        // default: /strata/rw
 	MergedDir string        // default: /strata/env
 	Strategy  MountStrategy // nil → selectMountStrategy() (Linux only)
+
+	// VerifyLayerLayout, when true, makes MountWithConfig refuse any layer whose
+	// on-disk structure contradicts the Name/Version/InstallLayout its manifest
+	// claims (#146). The runtime boot paths (Mount, strata run) set it; the build
+	// environment (MountBuildEnv) does not — build_requires layers are inputs to a
+	// build, not a runtime environment a user trusts, and are not the A1 target.
+	VerifyLayerLayout bool
 }
 
 // LayerPath is a pulled squashfs layer ready to be mounted.
@@ -51,6 +58,14 @@ type LayerPath struct {
 	SHA256     string // hex SHA256, used as cache key
 	Path       string // local .sqfs file path
 	MountOrder int    // from lockfile; 1 = bottom of stack
+
+	// Name, Version and InstallLayout are the manifest triple that decides how
+	// this layer contributes to PATH/LD_LIBRARY_PATH. They are unsigned (#146),
+	// so when Config.VerifyLayerLayout is set the mount checks them against the
+	// layer's actual contents. Empty on paths that do not verify layout.
+	Name          string
+	Version       string
+	InstallLayout string
 }
 
 // Overlay is a mounted OverlayFS assembly. Call Cleanup when done.
