@@ -136,41 +136,114 @@ func TestPropertiesGuardCanFail(t *testing.T) {
 		}
 	}
 
-	// Find a live row and discharge it. Every proposition it names must move.
-	var target Refutation
+	// Discharge every live row and require each to move a status. Iterating all
+	// of them (not just the first) makes this a check that no live row is inert
+	// in the derivation, and the mutation is by column position, not text — the
+	// counterexample column is free prose and can begin with "No"/"Yes"/
+	// "Partially", so a search for "| "+Discharged could land on it (#111).
+	before := doc.Statuses()
+	liveRows := 0
+	for _, r := range doc.Register() {
+		if !r.Live() {
+			continue
+		}
+		liveRows++
+
+		mutated := dischargeRow(string(src), doc.lines[r.lineIdx])
+		if mutated == string(src) {
+			t.Fatalf("discharging %s changed nothing; the mutation missed the Discharged cell", r.Tracking)
+		}
+		mutatedDoc, err := Parse([]byte(mutated))
+		if err != nil {
+			t.Fatalf("Parse after discharging %s: %v", r.Tracking, err)
+		}
+		after := mutatedDoc.Statuses()
+		moved := 0
+		for _, id := range r.Props {
+			if before[id] != after[id] {
+				moved++
+			}
+		}
+		if moved == 0 {
+			t.Errorf("discharging %s moved no status among %v; that live row is inert in the derivation",
+				r.Tracking, r.Props)
+		}
+		if len(mutatedDoc.Drifts()) == 0 {
+			t.Errorf("discharging %s produced no drift against the written Status column; the guard cannot fail on it",
+				r.Tracking)
+		}
+	}
+	if liveRows == 0 {
+		t.Fatal("no live register row found; this control cannot run")
+	}
+}
+
+// dischargeRow rewrites a register row's Discharged cell — the last cell before
+// the trailing pipe — to a synthetic valid discharge (a basis and a cited
+// artifact, so it passes rule 11's guard, #143). It locates the cell by position
+// rather than by searching for the Discharged token: the counterexample column
+// is free prose and can begin with "No"/"Yes"/"Partially", so a text search
+// could rewrite it instead and leave the Discharged cell untouched (#111 — the
+// failure observed when #54 was reopened with a "No profile…" counterexample).
+func dischargeRow(src, rowLine string) string {
+	lastPipe := strings.LastIndex(rowLine, "|")
+	if lastPipe < 0 {
+		return src
+	}
+	secondLast := strings.LastIndex(rowLine[:lastPipe], "|")
+	if secondLast < 0 {
+		return src
+	}
+	mutatedLine := rowLine[:secondLast+1] +
+		" Yes — E1, `internal/propdoc/guard_probe_test.go:1` " +
+		rowLine[lastPipe:]
+	return strings.Replace(src, rowLine, mutatedLine, 1)
+}
+
+// TestDischargeRowTargetsDischargedNotCounterexample is the #111 regression: a
+// register row whose *counterexample* begins with "No" (the shape #54 took when
+// reopened) must have its Discharged cell flipped, not its counterexample. The
+// old text-based mutation rewrote the counterexample and left the row live.
+func TestDischargeRowTargetsDischargedNotCounterexample(t *testing.T) {
+	const head = "## 3. Propositions\n\n| # | P | Verdict | Basis | Status | Evidence |\n" +
+		"|---|---|---|---|---|---|\n" +
+		"| **R1** | p | SOUND | none | REFUTED | e |\n"
+	const reg = "\n## 4. Refutation register\n\n| Proposition | C | Capability | Tracking | Discharged |\n" +
+		"|---|---|---|---|---|\n" +
+		"| R1 | No profile could resolve offline | H1 | #1 | No |\n"
+	src := head + reg
+
+	doc, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var row Refutation
 	for _, r := range doc.Register() {
 		if r.Live() {
-			target = r
+			row = r
 			break
 		}
 	}
-	if target.Tracking == "" {
-		t.Fatal("no live register row found; this control cannot run")
+	if row.Tracking == "" {
+		t.Fatal("no live row in fixture")
 	}
-	before := doc.Statuses()
-	mutated := strings.Replace(string(src),
-		doc.lines[target.lineIdx],
-		strings.Replace(doc.lines[target.lineIdx], "| "+target.Discharged, "| "+DischargedYes, 1), 1)
-	if mutated == string(src) {
-		t.Fatal("mutation did not change the document; the control is vacuous")
+
+	mutated := dischargeRow(src, doc.lines[row.lineIdx])
+	if !strings.Contains(mutated, "No profile could resolve offline") {
+		t.Fatal("mutation rewrote the counterexample cell instead of the Discharged cell (#111)")
 	}
-	mutatedDoc, err := Parse([]byte(mutated))
+
+	mdoc, err := Parse([]byte(mutated))
 	if err != nil {
 		t.Fatalf("Parse mutated: %v", err)
 	}
-	after := mutatedDoc.Statuses()
-	moved := 0
-	for _, id := range target.Props {
-		if before[id] != after[id] {
-			moved++
+	for _, r := range mdoc.Register() {
+		if r.Tracking == "#1" && r.Live() {
+			t.Error("row #1 is still live after discharge; the mutation did not reach the Discharged cell")
 		}
 	}
-	if moved == 0 {
-		t.Errorf("discharging %s moved no status among %v; the derivation is not reading the register",
-			target.Tracking, target.Props)
-	}
-	if len(mutatedDoc.Drifts()) == 0 {
-		t.Error("a discharged row produced no drift against the written column; the guard cannot fail")
+	if before, after := doc.Statuses()["R1"], mdoc.Statuses()["R1"]; before == after {
+		t.Errorf("R1 status did not move off %q after its only live row was discharged", after)
 	}
 }
 
