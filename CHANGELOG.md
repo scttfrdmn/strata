@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `os.MkdirAll` **write** primitive), and `internal/export/oci.go` (unpack). One
   validator, three call sites — the same shape as the existing
   `spec.ValidateLayerDigest` / `LayerCachePath` gate for digest-derived paths.
+- **`strata publish` now refuses a dirty or unsigned lockfile** (#66). Publishing
+  mints a permanent Zenodo DOI, and `parsePublishableLockFile`
+  (`cmd/strata/publish.go`) gated on `IsFrozen()` alone — so a lockfile carrying a
+  `mutable_layer:` (an unattested writable upper) or no `rekor_entry` at all
+  reached the network and would have received a DOI, the exact opposite of what
+  `docs/package-management.md` promised. Publish now also calls the two predicates
+  that already existed and were never wired in: `HasMutableLayer()` refuses the
+  dirty environment (run `strata freeze-layer` first) and `IsSigned()` refuses the
+  unsigned one. Frozen-but-`ami_sha256`-is-any-non-empty-string is a separate gap
+  (#96) on `IsFrozen()` itself; these refusals sit on top of whatever it decides.
 - **A layer that names no attestation bundle no longer mounts** (#92). With a
   verifier and a bundle fetcher both configured — the shape `cmd/strata-agent`
   always wires — `internal/agent.verifyBundles` dropped any layer whose `Bundle`
