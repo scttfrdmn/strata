@@ -2,6 +2,13 @@
 bin/
 *.test
 
+# Ad-hoc build outputs committed to repo root (#74). Root-anchored so cmd/strata/
+# and the recipes are untouched; these are what `make build` should write to bin/.
+/strata
+/strata-agent
+/strata-arm64
+/strata-x86_64
+
 # Coverage
 coverage.out
 coverage.html
