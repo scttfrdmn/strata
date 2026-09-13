@@ -69,6 +69,11 @@ func main() {
 		Verifier:         verifier,
 		Signaler:         signaler,
 		PackageInstaller: agent.ExecPackageInstaller{},
+		// verifier is nil only when the operator opted out above (resolveVerifier
+		// errors otherwise), so the agent must be told the nil is deliberate —
+		// else it refuses to boot (#93). Passing the same predicate keeps the two
+		// decisions in step.
+		AllowUnverified: allowUnverified(os.Getenv),
 	})
 	if err != nil {
 		log.Fatal(err)

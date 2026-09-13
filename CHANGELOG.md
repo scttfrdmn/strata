@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **The agent refuses to boot when it cannot verify layer authenticity** (#93).
+  `internal/agent.verifyBundles` returned nil — mounting every layer unverified —
+  whenever `Verifier` or `BundleFetcher` was nil. In production that path is only
+  reached through the deliberate `STRATA_AGENT_ALLOW_UNVERIFIED` opt-out, but the
+  agent *package* failed open, so any caller that passed a nil verifier booted
+  unverified and silently. It now refuses unless the new, explicit
+  `Config.AllowUnverified` is set — which `cmd/strata-agent` sets only under that
+  same env opt-out. SHA-256 content integrity was and remains checked either way;
+  what this closes is the silent loss of *authenticity*. The three inherited agent
+  tests that asserted the old fail-open (a "happy path" that skipped verification)
+  are rewritten to verify, and the 112-cell boot-decision matrix's 20 fail-open
+  cells now assert the refusal.
 - **`pkg/strata.Resolve`'s doc no longer claims offline resolution verifies bundle
   payloads** (#61). It stated "Sigstore bundle payloads are still verified; only
   the live Rekor transparency-log check is omitted" — but the resolver is built
