@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Layer IDs are validated before they build a filesystem path** (#58, #97). A
+  layer ID (e.g. `python-3.13.2-linux-gnu-2.34-x86_64`) is used as a single path
+  component at three sites, each built with `filepath.Join` — which calls `Clean`
+  and *resolves* `..` rather than rejecting it, so a tampered or hand-written
+  lockfile with an id like `../../etc/cron.d/x` escaped the directory it was meant
+  to stay under. The comment at the verify site claimed `filepath.Join` "prevents
+  escape"; it was exactly backwards. New `spec.ValidateLayerID` refuses any id
+  that is not a safe single path element, and the three sites call it first:
+  `internal/trust/verify.go` (read), `internal/overlay/mount_linux.go` (an
+  `os.MkdirAll` **write** primitive), and `internal/export/oci.go` (unpack). One
+  validator, three call sites — the same shape as the existing
+  `spec.ValidateLayerDigest` / `LayerCachePath` gate for digest-derived paths.
 - **`strata publish` now refuses a dirty or unsigned lockfile** (#66). Publishing
   mints a permanent Zenodo DOI, and `parsePublishableLockFile`
   (`cmd/strata/publish.go`) gated on `IsFrozen()` alone — so a lockfile carrying a
