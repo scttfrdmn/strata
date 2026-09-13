@@ -58,6 +58,13 @@ SHA256s they must be built and pushed to the registry first.`,
 					}
 					fmt.Fprintln(os.Stderr, ")") //nolint:errcheck
 				}
+				// IsFrozen() also requires Base.AMISHA256. Name it when it is the
+				// unmet condition, rather than leaving the message pointing only at
+				// layers — resolution populates it (#64), so an empty value here is
+				// a hand-edited or externally-produced lockfile.
+				if lf.Base.AMISHA256 == "" {
+					fmt.Fprintln(os.Stderr, "base ami_sha256 is empty — the base capability digest is missing (a resolver-produced lockfile carries it)") //nolint:errcheck
+				}
 				return errors.New("") // already printed; suppress double-print in main
 			}
 
