@@ -27,12 +27,18 @@ with labels and milestones.
    by an existing issue, create one — with the right milestone and labels — so the
    intent is visible before the implementation begins.
 
-5. **Labels and milestones on every issue.** Every issue needs at minimum one
-   `component:` label, one `priority:` label, and a milestone assignment.
+5. **Labels on every issue; milestone when it's scheduled.** Every issue needs at
+   minimum one `component:` label and one `priority:` label. A **milestone is a
+   release-planning decision, not a filing requirement**: assign it when the issue
+   genuinely belongs to a release's scope. An unmilestoned issue is a valid backlog
+   state, not a violation — do **not** bulk-assign milestones to drive the
+   unmilestoned count to zero, which only makes every milestone unreadable. (This
+   rule was narrowed after 42 of 60 open issues carried no milestone: a rule most
+   of its population violates is failing its own audit, not describing a backlog.)
 
 ## Go Conventions
 
-- Module: `github.com/scttfrdmn/strata` — Go 1.22
+- Module: `github.com/scttfrdmn/strata` — Go 1.24 (the `go` directive in `go.mod`; the module does not build on anything older)
 - Standard layout: `spec/`, `cmd/strata/`, `internal/<component>/`
 - Idiomatic Go: exported types with godoc, no unnecessary abstractions
 - A+ Go Report Card: `gofmt`, `go vet`, and `golangci-lint` must pass clean
