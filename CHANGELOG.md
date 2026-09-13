@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`strata verify` no longer prints "verified" over an unverifiable bundle** (#60).
+  Without `--rekor` it was a field-presence check (`Bundle != ""`), yet its output
+  said "N layer(s) verified" — so a bundle whose file contents were the sentence
+  `THIS IS NOT A VALID SIGSTORE BUNDLE` passed with exit 0. Verify now parses each
+  layer's bundle and requires a well-formed Sigstore bundle carrying a Rekor entry,
+  and the default output states plainly that layers are *not* verified against the
+  transparency log (run `--rekor` for that). This is still short of signature
+  verification — the layer content is not present to hash and no trust root is
+  consulted (that needs a fetch and #62), so #60 stays open for that. **Behaviour
+  change:** a lockfile whose bundles are placeholders or unfetchable `s3://` URIs
+  (including the shipped catalog, #46/#108) now fails `strata verify` where it
+  previously passed — correct, since those environments are not verifiable.
 - **Layer IDs are validated before they build a filesystem path** (#58, #97). A
   layer ID (e.g. `python-3.13.2-linux-gnu-2.34-x86_64`) is used as a single path
   component at three sites, each built with `filepath.Join` — which calls `Clean`
