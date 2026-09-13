@@ -87,8 +87,13 @@ func VerifyLayers(ctx context.Context, lockfile *spec.LockFile, squashfsDir stri
 	for _, layer := range lockfile.Layers {
 		layer := layer // capture
 		go func() {
-			// filepath.Join normalises the path, preventing a layer.ID
-			// containing ".." sequences from escaping squashfsDir.
+			// filepath.Join calls Clean, which *resolves* ".." rather than
+			// rejecting it, so an unvalidated layer.ID can escape squashfsDir.
+			// Validate before building the path.
+			if err := spec.ValidateLayerID(layer.ID); err != nil {
+				results <- result{layerID: layer.ID, err: fmt.Errorf("trust: unsafe layer id: %w", err)}
+				return
+			}
 			path := filepath.Join(squashfsDir, layer.ID+".sqfs")
 			err := VerifyLayer(ctx, &layer.LayerManifest, path, v)
 			results <- result{layerID: layer.ID, err: err}

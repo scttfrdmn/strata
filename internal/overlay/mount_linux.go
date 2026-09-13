@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/scttfrdmn/strata/spec"
 )
 
 const (
@@ -144,6 +146,13 @@ func MountWithConfig(layers []LayerPath, cfg Config) (*Overlay, error) {
 	// Mount each layer as squashfs.
 	var squashPoints []string
 	for _, layer := range sorted {
+		// layer.ID becomes a path component under os.MkdirAll below — a write
+		// primitive. filepath.Join resolves ".." rather than rejecting it, so an
+		// unvalidated id could create directories outside layersDir.
+		if err := spec.ValidateLayerID(layer.ID); err != nil {
+			cleanupWith(strategy, squashPoints)
+			return nil, fmt.Errorf("overlay: %w", err)
+		}
 		mp := filepath.Join(layersDir, layer.ID)
 		if err := os.MkdirAll(mp, 0755); err != nil {
 			cleanupWith(strategy, squashPoints)

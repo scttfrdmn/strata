@@ -60,6 +60,12 @@ func Export(ctx context.Context, lf *spec.LockFile, layerPaths []overlay.LayerPa
 	var layers []ociLayer
 	var diffIDs []string
 	for _, lp := range sorted {
+		// lp.ID becomes a path component under workDir and is then written into
+		// during unpack. filepath.Join resolves ".." rather than rejecting it,
+		// so validate before building the path.
+		if err := spec.ValidateLayerID(lp.ID); err != nil {
+			return fmt.Errorf("oci: %w", err)
+		}
 		unpackDir := filepath.Join(workDir, "layer-"+lp.ID)
 		if err := unpackSquashfs(ctx, lp.Path, unpackDir); err != nil {
 			return fmt.Errorf("oci: unpacking layer %q: %w", lp.ID, err)
