@@ -71,8 +71,16 @@ func NewClientFromRegistry(reg registry.Client, strataVersion string) *Client {
 // Resolve transforms a Profile into a fully resolved LockFile.
 //
 // Base capabilities are synthesised from profile.Base.OS without a live AWS
-// probe, so resolution succeeds offline. Sigstore bundle payloads are still
-// verified; only the live Rekor transparency-log check is omitted.
+// probe, so resolution succeeds offline.
+//
+// This offline resolve does NOT verify any signature. The resolver is built
+// with no Rekor verifier, and stage 7 in that configuration only checks that
+// each layer names a non-empty Bundle and RekorEntry — it parses no bundle,
+// checks no signature, and inspects no certificate identity. A placeholder such
+// as "pending-initial-build" passes. So a lockfile produced here is not a trust
+// decision: verify it out of band (e.g. "strata verify --rekor", which fetches
+// and checks the bundle) before relying on it. Making the offline path verify
+// bundle payloads is tracked in #60/#62.
 //
 // profile.Base.OS must be a recognised alias ("al2023", "rocky9", "ubuntu24").
 func (c *Client) Resolve(ctx context.Context, profile *spec.Profile, opts ResolveOptions) (*spec.LockFile, error) {
