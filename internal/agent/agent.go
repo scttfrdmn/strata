@@ -87,6 +87,14 @@ type Config struct {
 	Mounter          Mounter          // optional; defaults to overlay.Mount
 	PackageInstaller PackageInstaller // optional; nil skips package installation
 	EnvRootDir       string           // defaults to "/" if empty
+
+	// AllowUnverified permits booting when Verifier or BundleFetcher is nil.
+	// Default false: the agent refuses to boot rather than mount layers whose
+	// authenticity it cannot check (#93). Only a caller that has made the skip a
+	// deliberate, logged choice sets this — cmd/strata-agent, under
+	// STRATA_AGENT_ALLOW_UNVERIFIED. It has no effect when both Verifier and
+	// BundleFetcher are set.
+	AllowUnverified bool
 }
 
 // Agent orchestrates the boot sequence for a Strata instance.
@@ -275,10 +283,13 @@ func (a *Agent) fetchAndVerifyLayers(ctx context.Context, lf *spec.LockFile) ([]
 // verifyBundles verifies the Sigstore cosign bundle for each fetched layer in
 // parallel. The first verification failure cancels the rest.
 //
-// Skipped entirely when Verifier or BundleFetcher is nil. That remaining
-// fail-open is tracked by #93 and is not closed here: no shipped caller reaches
-// it (cmd/strata-agent always wires both), but three inherited tests assert it
-// and inverting it is a decision about this package's default contract.
+// Refuses to boot when Verifier or BundleFetcher is nil (#93): mounting layers
+// with no way to check their authenticity is the fail-open this closes. The one
+// deliberate exception is Config.AllowUnverified, which only cmd/strata-agent
+// sets, and only after STRATA_AGENT_ALLOW_UNVERIFIED has made the skip a logged
+// operator choice. A nil verifier is otherwise a misconfiguration, and a
+// misconfiguration that silently skips authenticity is exactly what an attacker
+// supplying a lockfile would want.
 //
 // With both configured, verification is not optional per layer. A layer that
 // names no bundle, or whose bundle fetch yields no bytes, is refused — absent
@@ -286,7 +297,10 @@ func (a *Agent) fetchAndVerifyLayers(ctx context.Context, lf *spec.LockFile) ([]
 // attacker-influenced input and omitting a field is cheaper than forging one.
 func (a *Agent) verifyBundles(ctx context.Context, lf *spec.LockFile, paths []overlay.LayerPath) error {
 	if a.cfg.Verifier == nil || a.cfg.BundleFetcher == nil {
-		return nil
+		if a.cfg.AllowUnverified {
+			return nil
+		}
+		return fmt.Errorf("agent: refusing to boot: no way to verify layer authenticity — set both Verifier and BundleFetcher, or Config.AllowUnverified to boot without it")
 	}
 
 	// Build map from layer ID to local sqfs path.

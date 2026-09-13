@@ -60,7 +60,7 @@ type bootOutcome string
 const (
 	reasonBoots        bootOutcome = ""
 	reasonDigest       bootOutcome = "SHA256 mismatch"
-	reasonNoVerifier   bootOutcome = "no way to verify" // intended by #93(a); not implemented
+	reasonNoVerifier   bootOutcome = "no way to verify" // #93(a), now implemented: nil wiring refuses
 	reasonAbsentBundle bootOutcome = "no attestation bundle"
 	reasonFetchBundle  bootOutcome = "fetching bundle"
 	reasonEmptyBytes   bootOutcome = "no bundle bytes"
@@ -85,17 +85,18 @@ var ladderOutcomes = []bootOutcome{
 }
 
 // knownOpenCells is the number of cells that reach the mount with no authenticity
-// verification because Verifier or BundleFetcher is nil (#93(a)). It is asserted
-// as a literal so the size of the hole is a number in the suite, and so the
-// expectation table cannot shrink it silently: check (5) below compares it against
-// wantFor()'s own output, which means it catches an edit to the *table*.
+// verification because Verifier or BundleFetcher is nil. That was #93(a)'s
+// fail-open; it is now closed — nil wiring refuses unless Config.AllowUnverified
+// is set — so the count is 0. The mechanism (the knownOpen flag on a cell, and
+// the branch in runCell) is retained at 0 rather than removed: it is the general
+// way this table marks a deliberately-tolerated hole, ready for the next one.
 //
-// It is not the tripwire against the code, and #148 measured that: fixing #93(a)
-// leaves this number at 20 and check (5) green, because both sides are derived from
-// wantFor(). What goes red is the knownOpen branch in runCell (:526-530), once per
-// cell — Run refuses where the cell says it does not — and that failure carries the
-// instruction to lower this constant. Twenty cells fail, not one.
-const knownOpenCells = 20
+// When there were cells here, the tripwire against the *code* was not this
+// constant (both it and check (5) derive from wantFor()) but the knownOpen branch
+// in runCell, which went red once per cell when Run began refusing — carrying the
+// instruction that closed #93(a): rule 2 of wantFor() now returns the refusal
+// with knownOpen=false, and those cells assert the refusal like any other.
+const knownOpenCells = 0
 
 // --- dimension 1: the verifier's disposition -------------------------------
 
@@ -241,8 +242,8 @@ func (f *matrixBundleFetcher) askedCount() int {
 // implementation is known to disagree.
 //
 // Authored from the contract, not from verifyBundles. Rule 2 is the disagreement:
-// #93(a) says nil wiring must be a refusal (or an explicit opt-out), and today it
-// returns nil and boots.
+// #93(a) says nil wiring must be a refusal (or an explicit opt-out), and now it
+// is one — rule 2 returns the refusal with knownOpen=false.
 func wantFor(v verifierKind, b bundleKind, namesBundle, digestMatches bool) (want bootOutcome, knownOpen bool) {
 	// 1. Content integrity is checked before authenticity, so a digest mismatch
 	//    pre-empts every other cell value. Asserting this for all 56 mismatched
@@ -250,9 +251,11 @@ func wantFor(v verifierKind, b bundleKind, namesBundle, digestMatches bool) (wan
 	if !digestMatches {
 		return reasonDigest, false
 	}
-	// 2. No verifier, or no way to fetch what it would verify.
+	// 2. No verifier, or no way to fetch what it would verify: a refusal (#93(a),
+	//    closed). The agent boots this only under Config.AllowUnverified, which
+	//    this matrix does not set — so every such cell refuses.
 	if v == verifierNil || b == bundleNoFetcher {
-		return reasonNoVerifier, true
+		return reasonNoVerifier, false
 	}
 	// 3. A layer naming no bundle cannot be verified, and with a verifier
 	//    configured that is a refusal rather than a skip (#92, closed).
@@ -424,7 +427,10 @@ func TestBootMatrix_Shape(t *testing.T) {
 	if fired[reasonBoots] == 0 {
 		t.Error("no cell boots — the table would pass by refusing everything")
 	}
-	refusals := len(cells) - fired[reasonBoots] - fired[reasonNoVerifier]
+	// Every non-boot cell is a refusal now that #93(a) is closed: the
+	// reasonNoVerifier cells refuse rather than fail open, so they are no longer
+	// subtracted out here.
+	refusals := len(cells) - fired[reasonBoots]
 	if refusals == 0 {
 		t.Error("no cell refuses — the table asserts nothing about refusal")
 	}
@@ -436,16 +442,24 @@ func TestBootMatrix_Shape(t *testing.T) {
 		seen[c.name] = true
 	}
 
-	// (5) The size of the open hole, as a literal, checked against the expectation
-	// table it is a claim about. Both sides come from wantFor(), so this catches the
-	// table being edited and not the code being fixed — see knownOpenCells.
-	open := fired[reasonNoVerifier]
+	// (5) The size of the open hole, as a literal. A cell is open when wantFor()
+	// marks it knownOpen — booting where it should refuse — not merely when its
+	// outcome is reasonNoVerifier. Since #93(a) closed, those 20 cells *expect*
+	// that refusal rather than tolerate a boot, so the hole is 0 while the outcome
+	// still fires 20 times. Counting the flag, not the outcome, keeps this a claim
+	// about tolerated holes.
+	open := 0
+	for _, c := range cells {
+		if c.knownOpen {
+			open++
+		}
+	}
 	if open != knownOpenCells {
-		t.Errorf("%d cells are #93(a) fail-open, knownOpenCells says %d — "+
+		t.Errorf("%d cells are marked fail-open, knownOpenCells says %d — "+
 			"if the hole moved, say so here", open, knownOpenCells)
 	}
-	t.Logf("%d cells; %d reach the mount unverified (#93(a)); outcome distribution: %s",
-		len(cells), open, describe(fired))
+	t.Logf("%d cells; %d tolerated fail-open; %d refuse for no-verifier; outcome distribution: %s",
+		len(cells), open, fired[reasonNoVerifier], describe(fired))
 }
 
 func stringifyKeys[K comparable](m map[K]int) map[string]int {
