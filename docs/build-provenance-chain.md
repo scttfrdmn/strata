@@ -40,6 +40,14 @@ of system-provided capabilities including the system gcc version. The combinatio
 `bootstrap_compiler` + `build_env_lock_id` → `BaseCapabilities` → AMI ID gives a complete,
 independently verifiable chain root.
 
+A lockfile's `base.ami_sha256` is that same digest applied to the resolved base: it is the
+SHA256 of the `BaseCapabilities` record (`spec.BaseCapabilities.ContentDigest`), computed at
+resolve time over the AMI ID, OS, arch, ABI, system compiler and provided capabilities, with
+the `probed_at` timestamp excluded so two probes of one AMI agree (#64). It is a digest of the
+capability *record*, not of the AMI's raw bytes — Strata does not read the base filesystem —
+and it is what makes a resolved lockfile freezable (`IsFrozen` requires it) and what pins the
+base within `environment_id`.
+
 This is not a weakness — it's an honest declaration of where the chain starts. A reviewer
 knows exactly what to trust: the AL2023 AMI (independently verifiable via AWS), the recipe
 `build.sh` (SHA256 recorded), and the Rekor transparency log entry (independently

@@ -478,8 +478,12 @@ func (r *Resolver) stage8Assemble(
 		ResolvedAt:    time.Now(),
 		StrataVersion: r.cfg.StrataVersion,
 		Base: spec.ResolvedBase{
-			DeclaredOS:   profile.Base.OS,
-			AMIID:        base.AMIID,
+			DeclaredOS: profile.Base.OS,
+			AMIID:      base.AMIID,
+			// The base's content digest is the hash of its capability record
+			// (#64). Without this the literal left AMISHA256 empty, so IsFrozen()
+			// could never be true and strata freeze structurally could not succeed.
+			AMISHA256:    base.Capabilities.ContentDigest(),
 			Capabilities: *base.Capabilities,
 		},
 		Layers:       resolvedLayers,

@@ -390,6 +390,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fixing it requires correcting two tests that assert the current behaviour.
 
 ### Fixed
+- **`strata freeze` can now succeed** (#64). `IsFrozen()` requires
+  `base.ami_sha256`, but no shipped code ever set it — every assignment was in a
+  test — so freeze, `publish`, and `update` were structurally impossible on a
+  normally resolved profile, and freeze's error misleadingly blamed the layers.
+  `stage8Assemble` now records `AMISHA256` as `spec.BaseCapabilities.ContentDigest()`:
+  the SHA256 of the resolved base's capability record (AMI ID, OS, arch, ABI,
+  system compiler, provided capabilities), with the non-reproducible `probed_at`
+  timestamp excluded, computed from data already in the lockfile — no live AWS,
+  offline and deterministic. This is a digest of the capability *record*, not of
+  the AMI's raw bytes (Strata reads no base filesystem), matching the model
+  `docs/build-provenance-chain.md` already described. freeze's not-frozen message
+  now also names an empty `ami_sha256` when that is the unmet condition.
+  Blast-radius note: `ami_sha256` participates in `environment_id`, but because
+  freeze never succeeded there were no frozen lockfiles — and so no published
+  `environment_id` — to change.
 - **The inline software-ref form parses** (#53). `- python@3.13` — the form every
   documented example uses, including the README's flagship profile — did not
   parse at all. `SoftwareRef` had no `UnmarshalYAML`, so `gopkg.in/yaml.v3`
