@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **`pkg/strata.Resolve`'s doc no longer claims offline resolution verifies bundle
+  payloads** (#61). It stated "Sigstore bundle payloads are still verified; only
+  the live Rekor transparency-log check is omitted" — but the resolver is built
+  with no Rekor verifier, so stage 7 only checks that `Bundle` and `RekorEntry`
+  are non-empty: it parses no bundle and checks no signature, and a placeholder
+  like `pending-initial-build` passes. The doc now says plainly that an offline
+  resolve verifies nothing and is not a trust decision. No behaviour change;
+  making the offline path actually verify payloads is the trust-chain work in
+  #60/#62. A regression test pins the presence-only behaviour the doc describes.
 - **A layer whose contents contradict its manifest is refused at mount** (#146).
   The cosign bundle attests layer *bytes*, not the manifest *document*, so under a
   registry-write (A1) an attacker could edit `name`, `version` or `install_layout`
