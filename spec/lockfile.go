@@ -69,8 +69,13 @@ type ResolvedBase struct {
 	// AMIID is the resolved EC2 AMI ID, e.g. "ami-0abc123def456789".
 	AMIID string `yaml:"ami_id" json:"ami_id"`
 
-	// AMISHA256 is the SHA256 of the AMI snapshot.
-	// Provides a stable content reference independent of AMI ID aliasing.
+	// AMISHA256 is the SHA256 of the base capability *record*
+	// (BaseCapabilities.ContentDigest), not of the AMI's filesystem bytes: it
+	// digests the probed OS/arch/ABI/compiler/Provides that the resolver actually
+	// used, so it is stable across AMI-ID aliasing while committing to nothing
+	// about the underlying image bytes (#64). The field is still keyed
+	// `ami_sha256` for lockfile compatibility; the name overclaims and is due to
+	// become `base_digest` alongside base-digest format validation in #65.
 	AMISHA256 string `yaml:"ami_sha256" json:"ami_sha256"`
 
 	// Capabilities is the probed capability set of the base AMI.
