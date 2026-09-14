@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The shipped example profiles resolve** (#70). All three `examples/*.yaml` named
+  a formation version the catalog does not contain (`@2024.03` vs the shipped
+  `@2026.03`) and standalone layers with no recipe (`alphafold`, `pytorch`,
+  `texlive`, `git`), so `examples/` had a 0% resolve rate and only parse-only tests
+  guarded it. Versions corrected, unrecipe'd software removed (each example is now
+  its formation plus recipe-backed software), and a new test resolves every example
+  against the shipped catalog.
 - **The shipped formations resolve against the embedded catalog** (#108). None of
   the six formations `strata` ships could be resolved offline: the embedded
   catalog carries no Sigstore bundles, so stage 7 refused every layer, and

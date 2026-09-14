@@ -7,9 +7,9 @@ base:
   arch: x86_64
 
 software:
-  - formation: cuda-python-ml@2024.03
-  - name: alphafold
-    version: "3.0"
+  - formation: cuda-python-ml@2026.03
+  # AlphaFold 3 itself is installed as a package on top of this GPU base once its
+  # recipe ships; the formation is the reproducible, resolvable environment.
 
 instance:
   type: p4d.24xlarge
