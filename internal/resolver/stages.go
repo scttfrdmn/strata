@@ -297,6 +297,22 @@ func selectProvider(layers []resolvedLayer, cands []int, req spec.Requirement) (
 	return best, true
 }
 
+// lessByLayerContent is a total order on layers computed from their content —
+// name, then version, then layer ID (which carries the content digest) — and
+// never from their position in the resolver's input. It is the tie-break for
+// mutually-unordered layers in the topological sort, so the mount order the
+// identity depends on follows what the layers are rather than the order they
+// were written down (R2, #95).
+func lessByLayerContent(a, b resolvedLayer) bool {
+	if a.manifest.Name != b.manifest.Name {
+		return a.manifest.Name < b.manifest.Name
+	}
+	if cmp := spec.CompareVersions(a.manifest.Version, b.manifest.Version); cmp != 0 {
+		return cmp < 0
+	}
+	return a.manifest.ID < b.manifest.ID
+}
+
 // stage6TopoSort performs a topological sort of layers based on their
 // capability dependency edges using Kahn's algorithm. The returned slice
 // is in dependency order (dependencies before dependents). MountOrder
@@ -351,7 +367,15 @@ func (r *Resolver) stage6TopoSort(layers []resolvedLayer) ([]resolvedLayer, erro
 
 	ordered := make([]resolvedLayer, 0, n)
 	for len(queue) > 0 {
-		sort.Ints(queue) // deterministic tie-breaking
+		// Tie-break mutually-unordered layers by content, never by input index.
+		// Ordering the ready set by (name, version, ID) makes the topological
+		// order — and therefore the MountOrder stage 8 assigns from it — a
+		// function of the layers' content, so permuting a profile's `software:`
+		// list cannot change it (R2). The previous `sort.Ints(queue)` ordered by
+		// layer index, which is exactly `software:` declaration order (#95).
+		sort.Slice(queue, func(a, b int) bool {
+			return lessByLayerContent(layers[queue[a]], layers[queue[b]])
+		})
 		idx := queue[0]
 		queue = queue[1:]
 		ordered = append(ordered, layers[idx])

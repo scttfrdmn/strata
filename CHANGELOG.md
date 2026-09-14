@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Mount order — and the environment identity derived from it — no longer
+  depends on the order layers are written in a profile** (#95, R2). When the
+  dependency graph left two layers mutually unordered, `stage6TopoSort` broke the
+  tie with `sort.Ints(queue)`, i.e. the layers' position in the input, which is
+  `software:` declaration order. Permuting a profile's `software:` list therefore
+  reassigned `MountOrder` and changed the `EnvironmentID`. The tie-break is now a
+  total order on layer *content* — name, then version, then layer ID — so a
+  resolved lockfile is a function of what the layers are, not the order they were
+  listed. This is the resolver half of #95; the `Packages`-order observation in
+  the same issue is not a defect (package order is content, consumed in order by
+  the installer), and R2 stays formally refuted only because `profile_sha256`
+  still records the input by design.
 - **Publishing a lockfile no longer silently overwrites, and refuses a lockfile
   with no identity** (#124). Both registry backends built the storage key by
   concatenation — `locks/<EnvironmentID()>.yaml` — and wrote unconditionally. An
