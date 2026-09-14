@@ -61,11 +61,16 @@ func (r *Resolver) stage2ExpandFormations(
 			}
 		}
 
-		if formation.Bundle == "" {
-			return nil, nil, errBundleMissing("formation:" + ref.Formation)
-		}
-		if formation.RekorEntry == "" {
-			return nil, nil, errRekorEntryMissing("formation:" + ref.Formation)
+		// An unsigned formation is refused, unless this is the offline-catalog
+		// path, where it is accepted (the layer-level check and stage 7's warning
+		// cover it) so the shipped formations resolve for local use (#108).
+		if !r.cfg.AllowUnsignedOffline {
+			if formation.Bundle == "" {
+				return nil, nil, errBundleMissing("formation:" + ref.Formation)
+			}
+			if formation.RekorEntry == "" {
+				return nil, nil, errRekorEntryMissing("formation:" + ref.Formation)
+			}
 		}
 
 		const pendingPlaceholder = "pending-initial-build"
@@ -407,6 +412,12 @@ func (r *Resolver) stage7VerifyBundles(ctx context.Context, layers []resolvedLay
 		return nil
 	}
 
+	if r.cfg.AllowUnsignedOffline && anyUnsigned(layers) {
+		r.warn("resolving against an unsigned offline catalog — Sigstore bundle and " +
+			"Rekor verification are skipped; this resolve is not a trust decision and the " +
+			"lockfile it produces is not signed (set a registry to require signatures)")
+	}
+
 	errs := make(chan error, len(layers))
 
 	var wg sync.WaitGroup
@@ -430,13 +441,31 @@ func (r *Resolver) stage7VerifyBundles(ctx context.Context, layers []resolvedLay
 	return nil
 }
 
+// anyUnsigned reports whether any layer lacks a bundle or Rekor entry, so the
+// offline-catalog warning fires only when there is actually something unsigned.
+func anyUnsigned(layers []resolvedLayer) bool {
+	for _, rl := range layers {
+		if rl.manifest.Bundle == "" || rl.manifest.RekorEntry == "" {
+			return true
+		}
+	}
+	return false
+}
+
 // verifyBundle checks a single layer's bundle and Rekor entry fields, and
 // optionally verifies the log entry against the Rekor API.
 func (r *Resolver) verifyBundle(ctx context.Context, rl resolvedLayer) error {
-	if rl.manifest.Bundle == "" {
-		return errBundleMissing(rl.manifest.ID)
-	}
-	if rl.manifest.RekorEntry == "" {
+	if rl.manifest.Bundle == "" || rl.manifest.RekorEntry == "" {
+		// An unsigned layer: refuse it, unless this is the offline-catalog path
+		// (warned once in stage7VerifyBundles), where it is accepted so the
+		// shipped formations can resolve for local use (#108). A signed layer is
+		// still fully verified below.
+		if r.cfg.AllowUnsignedOffline {
+			return nil
+		}
+		if rl.manifest.Bundle == "" {
+			return errBundleMissing(rl.manifest.ID)
+		}
 		return errRekorEntryMissing(rl.manifest.ID)
 	}
 

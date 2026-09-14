@@ -20,6 +20,15 @@ import (
 // list, falling back to STRATA_REGISTRY_URL / the embedded catalog when the
 // list is empty. The public Strata registry is always appended last so that
 // private registries shadow public ones.
+// offlineCatalogOnly reports whether resolution will run against nothing but the
+// embedded, unsigned catalog: no registries in the profile and no
+// STRATA_REGISTRY_URL. That is the one path on which stage 7 accepts unsigned
+// layers (#108); any configured registry — federated or via the env var — keeps
+// signature verification strict.
+func offlineCatalogOnly(refs []spec.RegistryRef) bool {
+	return len(refs) == 0 && os.Getenv("STRATA_REGISTRY_URL") == ""
+}
+
 func buildFederatedClient(refs []spec.RegistryRef) registry.Client {
 	if len(refs) == 0 {
 		return buildRegistryClient() // existing single-registry path
@@ -61,6 +70,10 @@ registry; otherwise the embedded Tier 0 catalog is used.`,
 				Probe:         probeClient,
 				StrataVersion: strataVer,
 				Warnings:      os.Stderr,
+				// Only the embedded, unsigned offline catalog (no registry
+				// configured at all) relaxes stage 7; any real registry keeps it
+				// strict (#108).
+				AllowUnsignedOffline: offlineCatalogOnly(profile.Registries),
 			})
 			if err != nil {
 				return fmt.Errorf("resolve: %w", err)

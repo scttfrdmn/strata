@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The shipped formations resolve against the embedded catalog** (#108). None of
+  the six formations `strata` ships could be resolved offline: the embedded
+  catalog carries no Sigstore bundles, so stage 7 refused every layer, and
+  `hpc-mpi@2026.03` failed even earlier at stage 4 because it omitted `openmpi`'s
+  runtime dependencies (`ucx`, `hwloc`, `pmix`, `libfabric`). Now: resolving with
+  **no registry configured** — the embedded offline catalog — accepts unsigned
+  layers with a loud warning that the resolve is not a trust decision and the
+  lockfile is not signed (`resolver.Config.AllowUnsignedOffline`); a resolve
+  against any real registry (`STRATA_REGISTRY_URL` or a profile `registries:`
+  list) is unchanged and still refuses unsigned layers. `hpc-mpi@2026.03` gained
+  its four missing dependency layers. A new test resolves every shipped formation
+  against the embedded catalog — the check that was missing while `catalog_test.go`
+  only asserted the YAML parsed.
 - **Mount order — and the environment identity derived from it — no longer
   depends on the order layers are written in a profile** (#95, R2). When the
   dependency graph left two layers mutually unordered, `stage6TopoSort` broke the
