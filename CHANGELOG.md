@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Publishing a lockfile no longer silently overwrites, and refuses a lockfile
+  with no identity** (#124). Both registry backends built the storage key by
+  concatenation — `locks/<EnvironmentID()>.yaml` — and wrote unconditionally. An
+  *unfrozen* lockfile has an empty `EnvironmentID()`, so it landed at
+  `locks/.yaml`: every unfrozen publish shared one key, last writer winning. And a
+  frozen lockfile whose `EnvironmentID()` collided with an existing one (the shape
+  an X2 identity defect would take) overwrote the incumbent with no error. Both
+  `PutLockfile` implementations now refuse an empty `EnvironmentID()` outright, and
+  write conditionally so a colliding key is a loud error rather than a silent
+  last-writer-wins: the local backend opens with `O_CREATE|O_EXCL`, and the S3
+  backend sends `IfNoneMatch: "*"` and maps the resulting `PreconditionFailed` to a
+  clear collision error. The strength of the collision guard against a *different
+  environment at the same id* is bounded by digest-format validation (#65); the
+  empty-id refusal and the no-overwrite guarantee hold today. Replaces the
+  defect-pinning test from #149.
+
 ## [0.23.0] - 2026-09-12
 
 ### Security
