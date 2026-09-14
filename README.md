@@ -12,27 +12,43 @@ Researchers declare what they want. The system composes, attests, and delivers i
 name: r-quarto-workstation
 base:
   os: al2023
+  arch: x86_64
 
 software:
-  - formation:r-research@2024.03
+  - formation: r-research@2026.03
   - quarto@1.4
-  - pandoc@3.1
-  - texlive@2024
-  - git@2.43
 
 instance:
   type: r7i.2xlarge
 ```
 
-The system guarantees R is installed, RStudio Server is running, every declared piece of software is present at the declared version, and the environment is identical every time this profile is resolved. See [STRATA.md](STRATA.md) for the full design.
+This profile resolves against the shipped catalog — a test extracts this exact block and resolves it on every run, so it cannot drift out of parseability. The goal: every declared piece of software is present at the declared version, and the resolved environment is identical every time the profile is resolved. See [STRATA.md](STRATA.md) for the full design.
 
 ## Status
 
-Early development. The `spec` package (core types) is complete. Resolver, agent, registry client, and CLI are in progress — see [GitHub Issues](https://github.com/scttfrdmn/strata/issues).
+Actively developed; latest release **v0.23.0** (see [CHANGELOG.md](CHANGELOG.md)). The breadth is real — resolver (8-stage pipeline), agent, S3/local/federated registry clients, and a 20-command CLI are all implemented, along with package resolution, `freeze`/`update`/`diff`, OCI export, layer capture and folding, environment scanning, and Zenodo publication.
+
+What is implemented is not all equally *enforced*. See **Current trust guarantees** below for what is and is not cryptographically checked today — the honest version distinguishes shipped breadth from the trust work still open (tracked in [GitHub Issues](https://github.com/scttfrdmn/strata/issues), milestone *v0.25.0 — the trust chain is real*). The falsifiable-property register in [PROPERTIES.md](PROPERTIES.md) is the authoritative account of which invariants hold.
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.24+ (the `go` directive in `go.mod`)
+
+## Current trust guarantees
+
+What Strata cryptographically enforces **today**:
+
+- **Content integrity.** Every layer mounted from the registry is hashed and checked against the digest recorded in the lockfile, on every use including cache hits (`strata run` and the agent).
+- **The agent is fail-closed.** `strata-agent` refuses to boot rather than mount a layer it cannot verify the authenticity of; degrading to unverified requires the explicit `STRATA_AGENT_ALLOW_UNVERIFIED` opt-out (#93).
+- **A layer whose contents contradict its manifest is refused at mount** (#146).
+
+What is **not** yet enforced — do not rely on it as a trust boundary:
+
+- **`strata run` and `strata verify` do not verify lockfile-level signatures** (#60). `strata verify` without `--rekor` is a presence check.
+- **An offline resolve is not a trust decision.** Resolving against the embedded catalog with no registry configured accepts unsigned layers with a loud warning, so the shipped formations resolve for local use; the lockfile it produces is unsigned. Configure a registry to require signatures.
+- **No freshness bound or set-level attestation yet** (#101): rollback and mix-and-match are not prevented.
+
+This section is deliberately specific because the gap between the design in `STRATA.md` and what is enforced is the thing most worth being honest about.
 
 ## Offline resolution (no AWS)
 
@@ -63,14 +79,16 @@ The directory layout is the same as the S3 one:
   locks/<environment-id>.yaml
 ```
 
-Note that the *embedded* Tier 0 catalog cannot resolve offline on its own. It is
-built from the recipes in `cmd/strata/recipes/`, which carry no `sha256`,
-`bundle`, or `rekor_entry` because nothing has been built from them yet — so
-resolution against it stops in stage 7 with `BUNDLE_MISSING`. Signed layers in a
-registry, local or S3, are what stage 7 requires.
+The *embedded* Tier 0 catalog — built from the recipes in `cmd/strata/recipes/` —
+carries no `sha256`, `bundle`, or `rekor_entry`, because nothing has been built
+from them yet. Resolving against it with **no registry configured** therefore
+accepts those unsigned layers with a loud warning that the resolve is not a trust
+decision and the lockfile is not signed (so the shipped formations and examples
+resolve for local use). The moment you configure a registry — `file://` or
+`s3://` — stage 7 is strict again and requires a Sigstore bundle per layer.
 
-To resolve something offline right now, in a fresh clone, with no registry of
-your own:
+To resolve a profile against a *signed* registry offline, in a fresh clone, with
+no registry of your own:
 
 ```sh
 make offline-resolve
