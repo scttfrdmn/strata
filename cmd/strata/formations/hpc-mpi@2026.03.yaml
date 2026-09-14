@@ -4,6 +4,16 @@ description: "GCC + Open MPI — HPC parallel computing baseline."
 layers:
   - name: gcc
     version: "14.2.0"
+  # openmpi's runtime_requires: ucx, hwloc, pmix, libfabric. Without these the
+  # formation fails stage 4 (UNSATISFIED_REQUIREMENT) against any registry (#108).
+  - name: ucx
+    version: "1.17.0"
+  - name: hwloc
+    version: "2.11.2"
+  - name: pmix
+    version: "5.0.3"
+  - name: libfabric
+    version: "1.22.0"
   - name: openmpi
     version: "5.0.10"
 provides:

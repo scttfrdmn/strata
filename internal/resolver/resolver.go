@@ -43,6 +43,16 @@ type Config struct {
 	// Warnings is an optional writer for non-fatal diagnostic messages.
 	// If nil, warnings are silently discarded.
 	Warnings io.Writer
+
+	// AllowUnsignedOffline permits stage 7 to accept a layer with no Sigstore
+	// bundle or Rekor entry, warning instead of refusing. It exists for one
+	// caller: a resolve against the embedded, unsigned offline catalog (no
+	// registry configured), where refusing every layer means the shipped
+	// formations cannot be resolved even for local, non-trust use (#108). It is
+	// set only on that path; a resolve against a real registry leaves it false and
+	// stage 7 refuses an unsigned layer as before. An offline resolve is not a
+	// trust decision and the lockfile it produces is not signed.
+	AllowUnsignedOffline bool
 }
 
 // Resolver transforms a *spec.Profile into a *spec.LockFile via an
