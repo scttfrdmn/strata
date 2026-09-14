@@ -11,8 +11,6 @@ provides:
     version: "12.6.0"
   - name: python
     version: "3.13.2"
-validated_on:
-  - al2023/x86_64
 rekor_entry: "pending-initial-build"
 bundle: "pending-initial-build"
 signed_by: "strata-maintainer@strata.dev"

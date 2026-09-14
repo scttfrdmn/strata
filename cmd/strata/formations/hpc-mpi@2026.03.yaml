@@ -25,9 +25,6 @@ provides:
     version: "5.0.10"
   - name: mpi
     version: "4.0"
-validated_on:
-  - al2023/x86_64
-  - al2023/arm64
 rekor_entry: "pending-initial-build"
 bundle: "pending-initial-build"
 signed_by: "strata-maintainer@strata.dev"
