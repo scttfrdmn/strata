@@ -47,7 +47,7 @@ type ResolveOptions struct {
 
 // Client provides Strata catalog and resolution operations backed by an S3 registry.
 type Client struct {
-	s3c     *registry.S3Client // nil when constructed via NewClientFromRegistry
+	s3c     *registry.S3Client // nil when constructed via newClientFromRegistry
 	reg     registry.Client    // always set; equals s3c when using S3
 	version string
 }
@@ -61,10 +61,16 @@ func NewClient(_ context.Context, opts Options) (*Client, error) {
 	return &Client{s3c: s3c, reg: s3c, version: opts.StrataVersion}, nil
 }
 
-// NewClientFromRegistry creates a Client using an existing registry.Client
-// implementation. UploadLockfile is unavailable when using this constructor
-// (it requires a real S3Client). Primarily useful for testing.
-func NewClientFromRegistry(reg registry.Client, strataVersion string) *Client {
+// newClientFromRegistry creates a Client using an existing registry.Client
+// implementation. UploadLockfile is unavailable when using this constructor (it
+// requires a real S3Client).
+//
+// It is unexported because registry.Client lives under internal/, so an external
+// module could never name an argument for it — an exported constructor here was
+// public API that no public caller could invoke (#76). It remains a test seam,
+// exposed to this package's external tests through export_test.go. External
+// consumers construct a Client with NewClient.
+func newClientFromRegistry(reg registry.Client, strataVersion string) *Client {
 	return &Client{reg: reg, version: strataVersion}
 }
 
@@ -125,7 +131,8 @@ func (c *Client) Resolve(ctx context.Context, profile *spec.Profile, opts Resolv
 // Set the returned URI as EC2 instance tag strata:lockfile-s3-uri; strata-agent
 // fetches and applies the lockfile at boot.
 //
-// UploadLockfile requires a Client created with NewClient (not NewClientFromRegistry).
+// UploadLockfile requires a Client created with NewClient (it needs a real
+// S3Client).
 func (c *Client) UploadLockfile(ctx context.Context, lockfile *spec.LockFile) (string, error) {
 	if c.s3c == nil {
 		return "", fmt.Errorf("strata: UploadLockfile requires an S3-backed Client (use NewClient)")
