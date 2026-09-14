@@ -116,7 +116,7 @@ as a proxy for the ABI. Distribution names go out of service. ABI identifiers
 do not: `linux-gnu-2.34` is verifiable from a binary's ELF header today,
 in 2035, or in 2050.
 
-### Execution model (v0.13.0+)
+### Execution model (proposed, unimplemented)
 
 Mounting glibc as a layer requires the agent to use `bwrap` (bubblewrap) or
 `pivot_root` to present the assembled layer stack as a complete root filesystem.
@@ -124,8 +124,8 @@ Without this, the host kernel loads `/lib64/ld-linux-x86-64.so.2` from the
 host system — ignoring the glibc layer entirely.
 
 The bwrap execution model is specified in [docs/architecture-execution-model.md](docs/architecture-execution-model.md).
-It is not implemented in v0.12.0; the glibc recipe ships as a skeleton.
-Current environments continue to use the OverlayFS-only model.
+It is not implemented as of v0.23.0; the glibc recipe ships as a skeleton.
+Current environments use the OverlayFS model (with a FUSE-overlay fallback).
 
 ---
 
@@ -430,8 +430,8 @@ content-addressing meaningful.
 11. Terminate build instance
 ```
 
-Stages 2, 3, and 11 are skipped in the v0.9.0 local build path. The full EC2-orchestrated
-pipeline ships in v0.10.0.
+Stages 2, 3, and 11 are skipped in the local bootstrap build path; the full
+EC2-orchestrated pipeline (`internal/build/ec2runner.go`) runs them.
 
 ---
 
