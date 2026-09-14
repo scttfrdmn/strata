@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A null entry in a `software:` list is refused, not silently dropped** (#79). A
+  bare `-`, a leftover dash from a commented-out ref, or an explicit `null`/`~`
+  produced a `!!null` sequence element that `gopkg.in/yaml.v3` drops entirely for a
+  struct-typed slice — so the profile resolved as though the entry had never been
+  written, with no error and no warning. `Profile.UnmarshalYAML` now inspects the
+  raw `software` sequence and refuses a null entry, naming the line.
+
 ### Removed
 - **`validated_on` is gone from the formation schema** (#113). The field claimed a
   formation had been "smoke-tested against" a set of OS/arch combinations, but no
