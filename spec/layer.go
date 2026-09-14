@@ -247,10 +247,6 @@ type Formation struct {
 	// Computed at formation build time.
 	Provides []Capability `yaml:"provides" json:"provides"`
 
-	// ValidatedOn lists the base OS/arch combinations this formation
-	// has been smoke-tested against, e.g. ["al2023/x86_64", "al2023/arm64"].
-	ValidatedOn []string `yaml:"validated_on" json:"validated_on"`
-
 	// Sigstore attestation — the formation is signed as a unit.
 	RekorEntry string `yaml:"rekor_entry" json:"rekor_entry"`
 	Bundle     string `yaml:"bundle" json:"bundle"`

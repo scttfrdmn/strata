@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`validated_on` is gone from the formation schema** (#113). The field claimed a
+  formation had been "smoke-tested against" a set of OS/arch combinations, but no
+  code ever read it and `hpc-mpi@2026.03`'s claim was demonstrably false (it could
+  not pass stage 4). A verification claim shipped in data that nothing verifies is
+  a false-provenance vector; since the field was accepted, recorded, and acted upon
+  by nothing, it is deleted rather than given a reader.
+
 ### Fixed
 - **The shipped example profiles resolve** (#70). All three `examples/*.yaml` named
   a formation version the catalog does not contain (`@2024.03` vs the shipped
