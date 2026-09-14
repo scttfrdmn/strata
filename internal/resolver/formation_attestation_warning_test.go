@@ -31,11 +31,15 @@ import (
 //
 // What they deliberately do NOT establish is that every caller receives it.
 // resolver.warn writes to cfg.Warnings and returns silently when it is nil
-// (internal/resolver/resolver.go:65-70), and pkg/strata builds a resolver.Config
-// without that field (pkg/strata/strata.go:103), so the public library route is
-// silent on the same input. That half is why the row is Partially rather than
-// Yes, and TestPlaceholderWarningIsSilentWhenNoWriterIsSet below asserts the
-// mechanism so that closing the gap fails a test rather than passing quietly.
+// (internal/resolver/resolver.go:65-70). That was the live half of #49's
+// register row: pkg/strata built its resolver.Config without a Warnings writer
+// and exposed no way to set one, so the public library route was silent on the
+// same input. #138 closed it at the library boundary — pkg/strata.Options gained
+// a Warnings io.Writer threaded into resolver.Config.Warnings, tested in
+// pkg/strata/warnings_test.go. It did NOT change resolver.warn's nil contract,
+// so TestPlaceholderWarningIsSilentWhenNoWriterIsSet below still holds and still
+// documents that contract: a nil writer discards, by design, and a caller opts
+// in by supplying one.
 
 // placeholderRekorEntry is the value stage 2 warns about
 // (internal/resolver/stages.go:71). It is repeated here rather than exported
