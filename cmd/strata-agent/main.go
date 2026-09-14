@@ -41,56 +41,105 @@ func registryBucket() string {
 	return defaultRegistryBucket
 }
 
+// layerFetcher is the fetcher surface run needs: the two agent interfaces plus
+// the download stats the agent does not track. s3LayerFetcher satisfies it.
+type layerFetcher interface {
+	agent.LayerFetcher
+	agent.BundleFetcher
+	Stats() FetchStats
+}
+
+// bootSignaler is the signaler surface run needs: the agent's ReadySignaler plus
+// getInstanceID for the metrics upload. ec2ReadySignaler satisfies it.
+type bootSignaler interface {
+	agent.ReadySignaler
+	getInstanceID(ctx context.Context) (string, error)
+}
+
+// agentDeps are run's injected dependencies. Everything AWS-backed is behind an
+// interface so run — and in particular the verifier-refusal path, the most
+// security-relevant branch in the agent (#56, #94) — is reachable in a test with
+// no cosign, no AWS, and no real boot.
+type agentDeps struct {
+	source          agent.LockfileSource
+	fetcher         layerFetcher
+	signaler        bootSignaler
+	installer       agent.PackageInstaller
+	resolveVerifier func(ctx context.Context) (trust.Verifier, error)
+	allowUnverified bool
+}
+
 func main() {
 	ctx := context.Background()
 
 	fetcher := newS3LayerFetcher()
 	signaler := newEC2ReadySignaler()
 
+	// main is the one line run does not cover: it wires the production
+	// dependencies and turns run's returned error into an exit. Everything with
+	// behaviour lives in run, which a test drives with fakes.
+	err := run(ctx, agentDeps{
+		source:    newMetadataLockfileSource(),
+		fetcher:   fetcher,
+		signaler:  signaler,
+		installer: agent.ExecPackageInstaller{},
+		resolveVerifier: func(ctx context.Context) (trust.Verifier, error) {
+			return resolveVerifier(ctx, productionPrereqs(os.Getenv))
+		},
+		allowUnverified: allowUnverified(os.Getenv),
+	})
+	if err != nil {
+		log.Fatalf("strata-agent: %v", err)
+	}
+}
+
+// run executes the boot sequence and returns an error instead of exiting, so its
+// two security properties are assertable rather than held by reading main: that
+// a verifier refusal is fatal (a returned non-nil error), and that the agent is
+// signalled before the boot dies.
+func run(ctx context.Context, d agentDeps) error {
 	// Resolve the verifier before anything else is built. A boot that cannot
 	// check authenticity is a boot that stops, and it stops here rather than
 	// six steps later with the layers already mounted.
-	verifier, err := resolveVerifier(ctx, productionPrereqs(os.Getenv))
+	verifier, err := d.resolveVerifier(ctx)
 	if err != nil {
 		// Signal before dying. An instance that refuses to boot and says
 		// nothing is indistinguishable from an instance that hung, and the
-		// operator is paying for it either way. Signalling is best-effort;
-		// its failure is logged and must not make the refusal non-fatal.
-		if sigErr := signaler.SignalFailed(ctx, err); sigErr != nil {
+		// operator is paying for it either way. Signalling is best-effort; its
+		// failure is logged and must not make the refusal non-fatal.
+		if sigErr := d.signaler.SignalFailed(ctx, err); sigErr != nil {
 			log.Printf("strata-agent: could not signal boot failure: %v", sigErr)
 		}
-		log.Fatalf("strata-agent: %v", err)
+		return err
 	}
 
 	a, err := agent.New(agent.Config{
-		Source:           newMetadataLockfileSource(),
-		Fetcher:          fetcher,
-		BundleFetcher:    fetcher,
-		Verifier:         verifier,
-		Signaler:         signaler,
-		PackageInstaller: agent.ExecPackageInstaller{},
+		Source:        d.source,
+		Fetcher:       d.fetcher,
+		BundleFetcher: d.fetcher,
+		Verifier:      verifier,
+		Signaler:      d.signaler,
 		// verifier is nil only when the operator opted out above (resolveVerifier
 		// errors otherwise), so the agent must be told the nil is deliberate —
 		// else it refuses to boot (#93). Passing the same predicate keeps the two
 		// decisions in step.
-		AllowUnverified: allowUnverified(os.Getenv),
+		PackageInstaller: d.installer,
+		AllowUnverified:  d.allowUnverified,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	metrics, err := a.Run(ctx)
 	if metrics != nil {
 		// Populate fetch stats from the fetcher (not tracked inside agent.Run).
-		stats := fetcher.Stats()
+		stats := d.fetcher.Stats()
 		metrics.FetchBytes = stats.BytesDownloaded
 		metrics.CachedLayers = stats.CachedLayers
 		metrics.DownloadedLayers = stats.DownloadedLayers
-		writeBootMetrics(ctx, metrics, signaler)
+		writeBootMetrics(ctx, metrics, d.signaler)
 	}
-	if err != nil {
-		log.Fatalf("strata-agent: %v", err)
-	}
+	return err
 }
 
 // allowUnverifiedEnv opts the agent out of authenticity verification. Unset —
@@ -255,7 +304,7 @@ func fetchPublicKey(ctx context.Context) string {
 
 // writeBootMetrics logs metrics to stderr, writes to /etc/strata/boot-metrics.json,
 // and uploads best-effort to S3 for later analysis.
-func writeBootMetrics(ctx context.Context, m *agent.BootMetrics, signaler *ec2ReadySignaler) {
+func writeBootMetrics(ctx context.Context, m *agent.BootMetrics, signaler bootSignaler) {
 	data, err := json.Marshal(m)
 	if err != nil {
 		log.Printf("strata-agent: marshaling boot metrics: %v", err)
