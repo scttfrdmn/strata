@@ -127,21 +127,27 @@ func TestSoftwareRefUnmarshalYAMLReportsLine(t *testing.T) {
 // value, so it takes the mapping branch and yields a zero ref, which a profile
 // does reject.
 func TestSoftwareRefNullOrEmptyEntries(t *testing.T) {
-	t.Run("null entry is dropped (#79)", func(t *testing.T) {
+	t.Run("null entry: dropped at the slice level, rejected at the profile level (#79)", func(t *testing.T) {
+		// A raw []SoftwareRef still drops a null element — that is yaml.v3's
+		// behaviour for a struct-typed sequence, and this edge is not a
+		// user-facing path.
 		var got []SoftwareRef
 		if err := yaml.Unmarshal([]byte("- {name: cuda}\n- ~\n"), &got); err != nil {
 			t.Fatalf("yaml.Unmarshal error: %v", err)
 		}
 		if len(got) != 1 || got[0] != (SoftwareRef{Name: "cuda"}) {
-			t.Fatalf("got %+v, want the null entry dropped leaving only {cuda} — see #79", got)
+			t.Fatalf("got %+v, want the null entry dropped leaving only {cuda}", got)
 		}
 
-		p, err := ParseProfileBytes([]byte("name: t\nbase:\n  os: al2023\nsoftware:\n  - python@3.13\n  - ~\n"))
-		if err != nil {
-			t.Fatalf("ParseProfileBytes() error: %v", err)
+		// A Profile — the artifact users actually write — now refuses it rather
+		// than silently dropping it (#79 fixed): Profile.UnmarshalYAML inspects the
+		// raw software sequence before the decoder can drop the element.
+		_, err := ParseProfileBytes([]byte("name: t\nbase:\n  os: al2023\nsoftware:\n  - python@3.13\n  - ~\n"))
+		if err == nil {
+			t.Fatal("ParseProfileBytes silently accepted a null software entry; want a refusal (#79)")
 		}
-		if len(p.Software) != 1 {
-			t.Fatalf("len(Software) = %d, want 1 — two entries in, one out, no error (#79)", len(p.Software))
+		if !strings.Contains(err.Error(), "empty entry") {
+			t.Errorf("error = %q, want it to name the empty entry", err)
 		}
 	})
 

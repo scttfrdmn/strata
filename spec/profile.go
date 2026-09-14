@@ -79,6 +79,35 @@ type Profile struct {
 	RequiresHost []HostRequirement `yaml:"requires_host,omitempty" json:"requires_host,omitempty"`
 }
 
+// UnmarshalYAML rejects a null entry in the software list before the standard
+// decoder silently drops it. gopkg.in/yaml.v3 removes a null sequence element
+// whose target is a struct — it is not zero-valued into the slice, it is dropped,
+// so the length changes and nothing downstream can tell an entry was written
+// (#79). The two easy ways to write one by accident are a bare "-" and a
+// commented-out entry whose dash was left behind. The check runs on the raw
+// document node, because by the time SoftwareRef.UnmarshalYAML would run the
+// element is already gone.
+func (p *Profile) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, val := node.Content[i], node.Content[i+1]
+			if key.Value != "software" || val.Kind != yaml.SequenceNode {
+				continue
+			}
+			for j, child := range val.Content {
+				if child.Tag == "!!null" {
+					return fmt.Errorf("software[%d] (line %d): empty entry — a bare '-' or a leftover dash from a commented-out ref; remove it or give it a value", j, child.Line)
+				}
+			}
+		}
+	}
+	// Decode through an alias so this method is not called recursively; every
+	// field, including SoftwareRef.UnmarshalYAML per non-null entry, decodes as
+	// before.
+	type rawProfile Profile
+	return node.Decode((*rawProfile)(p))
+}
+
 // HostRequirement declares a single ambient host capability requirement.
 // Key is the capability name (e.g. "cuda-driver", "efa").
 // Value is a version constraint or boolean string (e.g. ">=525", "true").
