@@ -17,20 +17,73 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
+	"strings"
 
 	"github.com/scttfrdmn/strata/internal/propdoc"
 )
 
 func main() {
 	write := flag.Bool("write", false, "rewrite the Status column in place")
+	citations := flag.Bool("citations", false, "check that every resolvable path:line citation resolves")
 	path := flag.String("file", "PROPERTIES.md", "path to the properties document")
 	flag.Parse()
 
-	if err := run(*path, *write); err != nil {
+	var err error
+	if *citations {
+		err = runCitations(*path)
+	} else {
+		err = run(*path, *write)
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "propgen: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runCitations resolves every machine-resolvable citation in the document. It is
+// the human-facing form of internal/propdoc's TestPropertiesCitationsResolve;
+// the test is the enforcement.
+func runCitations(path string) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	doc, err := propdoc.Parse(src)
+	if err != nil {
+		return err
+	}
+	stats := doc.CheckCitations(gitTreeFetcher)
+	for _, d := range stats.Defects {
+		fmt.Fprintf(os.Stderr, "%s:%d: unresolvable citation %s — %s\n", path, d.LineIdx+1, d.Raw, d.Reason)
+	}
+	if len(stats.Defects) > 0 {
+		return fmt.Errorf("%d unresolvable citation(s)", len(stats.Defects))
+	}
+	fmt.Printf("%s: %d citations resolve, %d not machine-resolvable (basename-only, tracked by #105)\n",
+		path, stats.Checked, stats.NotResolvable)
+	return nil
+}
+
+// gitTreeFetcher reads path from the working tree (empty sha) or from a commit
+// via `git show`, requiring a pinned commit to be an ancestor of HEAD so a
+// citation cannot point at code that was never merged (#105).
+func gitTreeFetcher(path, sha string) ([]string, bool) {
+	var data []byte
+	var err error
+	if sha == "" {
+		data, err = os.ReadFile(path)
+	} else {
+		if exec.Command("git", "merge-base", "--is-ancestor", sha, "HEAD").Run() != nil {
+			return nil, false
+		}
+		data, err = exec.Command("git", "show", sha+":"+path).Output()
+	}
+	if err != nil {
+		return nil, false
+	}
+	return strings.Split(string(data), "\n"), true
 }
 
 func run(path string, write bool) error {
