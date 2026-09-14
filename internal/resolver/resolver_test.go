@@ -549,24 +549,51 @@ func TestStage7_RekorEntryMissing(t *testing.T) {
 	assertResolutionError(t, err, "REKOR_ENTRY_MISSING")
 }
 
-// TestStage7_RekorVerification verifies that when a Rekor client is configured,
-// VerifyEntry is called and a failing client causes REKOR_VERIFICATION_FAILED.
+// TestStage7_RekorVerification exercises both halves of stage 7's Rekor branch.
+// The previous body asserted only that a client which always succeeds does not
+// break resolution, using trust.FakeRekorClient — so the half of the doc comment
+// that would catch a regression (a rejection propagating as
+// REKOR_VERIFICATION_FAILED) was asserted in prose only, and the client it used
+// discarded its arguments, so the test was also blind to what stage 7 passes
+// (#86). This uses a recording client to assert both.
 func TestStage7_RekorVerification(t *testing.T) {
-	store := registry.NewMemoryStore()
+	newStore := func() *registry.MemoryStore {
+		s := registry.NewMemoryStore()
+		s.AddLayer(signedLayer("tool", "1.0.0", "linux-gnu-2.34",
+			[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil))
+		return s
+	}
+	profile := testProfile(softwareRef("tool", "1.0.0"))
 
-	layer := signedLayer("tool", "1.0.0", "linux-gnu-2.34",
-		[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil)
-	store.AddLayer(layer)
-
-	// FakeRekorClient always succeeds — should not produce an error.
-	r := newResolver(t, store, &trust.FakeRekorClient{})
-	lf, err := r.Resolve(context.Background(), testProfile(softwareRef("tool", "1.0.0")))
+	// Success path, and a recording of what stage 7 passes VerifyEntry.
+	rec := &recordingRekorClient{}
+	lf, err := newResolver(t, newStore(), rec).Resolve(context.Background(), profile)
 	if err != nil {
-		t.Fatalf("Resolve with FakeRekorClient: %v", err)
+		t.Fatalf("Resolve with a passing client: %v", err)
 	}
 	if len(lf.Layers) != 1 {
-		t.Errorf("len(Layers) = %d, want 1", len(lf.Layers))
+		t.Fatalf("len(Layers) = %d, want 1", len(lf.Layers))
 	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("VerifyEntry called %d time(s), want 1 — stage 7 must verify the one layer", len(rec.calls))
+	}
+	// signedLayer sets RekorEntry "42"; stage 7 parses it to a log index.
+	if rec.calls[0].logIndex != 42 {
+		t.Errorf("stage 7 passed logIndex %d, want 42 (the layer's RekorEntry)", rec.calls[0].logIndex)
+	}
+	// The #85 fact, made test-visible: stage 7 holds a bundle URI, not bytes, so
+	// it passes none. When #55/#60 add a bundle fetch this assertion must change —
+	// which is the point of recording the argument rather than trusting a comment.
+	if rec.calls[0].bundle != nil {
+		t.Errorf("stage 7 passed a non-nil bundle — it holds a URI, not bytes (#85); if a fetch was added, update this test")
+	}
+
+	// Failure path: a rejecting client fails resolution with the documented code,
+	// naming the layer.
+	failing := &recordingRekorClient{verifyErr: errors.New("entry does not attest this artifact")}
+	_, err = newResolver(t, newStore(), failing).Resolve(context.Background(), profile)
+	assertResolutionError(t, err, "REKOR_VERIFICATION_FAILED")
+	assertErrMentions(t, err, "tool")
 }
 
 // TestEnvironmentID_Stability verifies that two resolutions with identical
