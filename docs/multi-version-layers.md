@@ -333,5 +333,5 @@ one gcc in the environment. To support multi-version, the recipes need to be reb
 will change. Rebuilt layers should be published as new registry entries; old layers remain
 valid for profiles that don't need multi-version.
 
-The v0.10.0 build pipeline (EC2-orchestrated, `STRATA_INSTALL_PREFIX` support) is the
+The EC2-orchestrated build pipeline (`STRATA_INSTALL_PREFIX` support) is the
 natural point to rebuild Tier 0 layers with the new layout.

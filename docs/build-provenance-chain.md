@@ -105,7 +105,7 @@ researcher.
 
 ## How the Pipeline Records `built_with`
 
-The v0.10.0 EC2 build pipeline (deferred from v0.9.0):
+The EC2 build pipeline (`internal/build/ec2runner.go`):
 
 1. Resolver resolves `build_requires` from the recipe's `meta.yaml`
 2. Strata downloads and verifies those layers from the registry
@@ -116,7 +116,7 @@ The v0.10.0 EC2 build pipeline (deferred from v0.9.0):
    build environment lockfile:
 
 ```go
-// v0.10.0 pipeline (not yet implemented)
+// the pipeline populates BuiltWith from the resolved build-environment lockfile:
 manifest.BootstrapBuild = false
 manifest.BuiltWith = []spec.LayerRef{
     {Name: "gcc", Version: "13.2.0", SHA256: "d4e5f6...", Rekor: "12345"},
@@ -124,8 +124,8 @@ manifest.BuiltWith = []spec.LayerRef{
 manifest.BuildEnvLockID = buildEnvLockfile.SHA256()
 ```
 
-The v0.9.0 local pipeline marks all builds `bootstrap_build: true` and leaves `BuiltWith`
-empty. This is intentional — v0.9.0 only builds Tier 0 layers (gcc itself), for which
+The local bootstrap pipeline marks all builds `bootstrap_build: true` and leaves `BuiltWith`
+empty. This is intentional — it builds Tier 0 layers (gcc itself), for which
 `bootstrap_build: true` is the correct declaration.
 
 ---
@@ -209,9 +209,9 @@ a parallel one (within a dependency chain). Across independent chains it can be 
 openmpi and openblas can build simultaneously once gcc is in the registry, since they only
 require gcc.
 
-The v0.10.0 build pipeline will need a build graph resolver that understands this ordering
-and can schedule builds across multiple EC2 instances efficiently — essentially the same
-DAG resolution logic as the runtime resolver, but applied to the build dependency graph.
+Scheduling builds across multiple EC2 instances efficiently needs a build graph resolver
+that understands this ordering — essentially the same DAG resolution logic as the runtime
+resolver, applied to the build dependency graph.
 
 ---
 

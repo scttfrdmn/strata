@@ -1,6 +1,6 @@
 # Architecture: Execution Model
 
-## Current model (v0.12.0): OverlayFS, host libc
+## Current model: OverlayFS, host libc
 
 The agent assembles layers into an OverlayFS merged view at `/strata/env`.
 PATH and LD_LIBRARY_PATH are set to point into the merged view.
@@ -11,7 +11,16 @@ whether a glibc layer is mounted. This is the practical model for most
 research software: compiled against a known glibc version, running on a
 compatible host.
 
-## Target model (v0.13.0+): bwrap + glibc layer
+## Proposed model (unimplemented): bwrap + glibc layer
+
+> **Status (v0.23.0): a proposal, not built.** `grep -rn bwrap` over the tree
+> returns nothing — there is no bubblewrap runtime. The current runtime is the
+> OverlayFS model above, with a FUSE-overlay fallback where the kernel refuses an
+> unprivileged overlay mount (`internal/overlay/mount_fuse_linux.go`). Making
+> glibc itself a reproducible layer (rather than relying on a compatible host
+> glibc) is still open; whether bwrap, a user-namespace pivot_root, or another
+> mechanism provides it has not been decided. The sketch below is kept as the
+> statement of the problem, not a description of shipped behaviour.
 
 To make glibc itself a reproducible layer, the agent must present the
 assembled layer stack as a complete root filesystem. The Linux kernel

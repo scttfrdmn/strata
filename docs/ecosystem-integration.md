@@ -161,7 +161,7 @@ foss-2024a = gcc@13.2.0 (sha256:a1b2...) + openmpi@5.0 (sha256:c3d4...) + ...
    system (`provides`/`requires`) can encode this: openblas layers provide `blas@3.12` and
    numpy requires `blas@>=3.10`. The resolver detects conflicts.
 
-2. **Reproducible builds** — when the v0.10.0 EC2 build pipeline mounts a toolchain
+2. **Reproducible builds** — when the EC2 build pipeline mounts a toolchain
    formation as the OverlayFS environment before running `build.sh`, the build environment
    itself is cryptographically attested. You can prove not just "what we built" but "what we
    built it with."
