@@ -10,10 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Bumped `aws-sdk-go-v2/service/s3` past GO-2026-5764** (v1.96.4 → v1.113.1,
   pulling `eventstream` to a fixed version), found by the new vulnerability scan.
-- **Raised the Go toolchain to 1.27** (`go.mod`), past GO-2026-6218 (a `net/url`
-  quadratic-complexity DoS in the standard library, fixed in go1.25.13; targeting the current 1.27) — the
+- **Raised the Go toolchain to 1.25** (`go.mod`), past GO-2026-6218 (a `net/url`
+  quadratic-complexity DoS in the standard library, fixed in go1.25.13) — the
   vulnerability scan flagged that CI was building on a vulnerable go1.24.x.
-  Requirement is now Go 1.27+.
+  Requirement is now Go 1.25+ (1.27 is blocked until golangci-lint ships a build targeting it).
 
 ### Changed
 - **CI hardening** (#116, #75). CI now runs on pull requests to **any** base

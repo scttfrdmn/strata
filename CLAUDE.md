@@ -38,7 +38,7 @@ with labels and milestones.
 
 ## Go Conventions
 
-- Module: `github.com/scttfrdmn/strata` — Go 1.27 (the `go` directive in `go.mod`; the module does not build on anything older)
+- Module: `github.com/scttfrdmn/strata` — Go 1.25 (the `go` directive in `go.mod`; the module does not build on anything older)
 - Standard layout: `spec/`, `cmd/strata/`, `internal/<component>/`
 - Idiomatic Go: exported types with godoc, no unnecessary abstractions
 - A+ Go Report Card: `gofmt`, `go vet`, and `golangci-lint` must pass clean
