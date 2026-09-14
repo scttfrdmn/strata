@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Bumped `aws-sdk-go-v2/service/s3` past GO-2026-5764** (v1.96.4 → v1.113.1,
+  pulling `eventstream` to a fixed version), found by the new vulnerability scan.
+
+### Changed
+- **CI hardening** (#116, #75). CI now runs on pull requests to **any** base
+  branch, not only `main` — a stacked PR previously received zero checks, which
+  every GitHub surface renders as clean. Added a `govulncheck` job (and a
+  `make vuln` target) that fails on a call path into a known-vulnerable symbol.
+  `make lint` now warns when the local golangci-lint differs from the version CI
+  pins, since a local pass under a different version is not the same statement as
+  CI passing.
+
 ### Fixed
 - **A null entry in a `software:` list is refused, not silently dropped** (#79). A
   bare `-`, a leftover dash from a commented-out ref, or an explicit `null`/`~`
