@@ -41,6 +41,9 @@ SHA256s they must be built and pushed to the registry first.`,
 			if err != nil {
 				return fmt.Errorf("freeze: %w", err)
 			}
+			if err := lf.Validate(); err != nil {
+				return fmt.Errorf("freeze: resolver produced an invalid lockfile: %w", err)
+			}
 
 			if !lf.IsFrozen() {
 				var missing []string
