@@ -30,6 +30,7 @@ func TestSchemaRejectsInvalidConfig(t *testing.T) {
 		"enable is not a list":       "version: \"2\"\nlinters:\n  enable: \"govet\"\n",
 		"unknown top-level property": "version: \"2\"\nnot_a_real_section: true\n",
 		"version is the wrong type":  "version: [2]\n",
+		"not valid yaml at all":      "version: \"2\"\n\tenable: [oops]\n", // tab indent → parse error
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {
