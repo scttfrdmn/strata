@@ -36,9 +36,19 @@ type Profile struct {
 	Registries []RegistryRef `yaml:"registries,omitempty" json:"registries,omitempty"`
 
 	// Instance describes the target EC2 instance configuration.
+	//
+	// Advisory as of v0.23.0: it records the intended instance for downstream
+	// launch tooling but is not consumed by resolution — the resolver produces a
+	// lockfile independent of it, and no launch integration reads it yet. It is
+	// declared here rather than dropped so a profile can carry the intent; that it
+	// is not yet acted upon is stated, not silent (#102).
 	Instance InstanceConfig `yaml:"instance,omitempty" json:"instance,omitempty"`
 
 	// Storage describes additional storage mounts.
+	//
+	// Advisory as of v0.23.0, on the same footing as Instance above: recorded for
+	// downstream tooling, not consumed by resolution and not yet mounted by any
+	// runtime path (#102).
 	Storage []StorageMount `yaml:"storage,omitempty" json:"storage,omitempty"`
 
 	// Env declares environment variables set in the assembled environment.
