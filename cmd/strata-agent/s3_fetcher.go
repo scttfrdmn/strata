@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync/atomic"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -70,7 +69,16 @@ func (f *s3LayerFetcher) Stats() FetchStats {
 // Fetch downloads layer to the local cache if not already present and
 // returns the local cache path. The agent verifies the SHA256 after Fetch returns.
 func (f *s3LayerFetcher) Fetch(ctx context.Context, layer spec.ResolvedLayer) (string, error) {
-	cachePath := filepath.Join(f.cacheDir, layer.SHA256+".sqfs")
+	// The cache filename is the digest and nothing else. spec.LayerCachePath
+	// validates it is 64 lowercase hex, so a layer carrying a malformed or
+	// path-traversing SHA256 is refused here rather than naming a file outside
+	// cacheDir (filepath.Join cleans "..") or a second cache entry that could
+	// never verify (#81). The agent still hashes the bytes against this digest
+	// after Fetch returns; this guards the path it is about to write and read.
+	cachePath, err := spec.LayerCachePath(f.cacheDir, layer.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("s3LayerFetcher: %w", err)
+	}
 
 	// 1. Cache hit: return immediately.
 	if _, err := os.Stat(cachePath); err == nil {

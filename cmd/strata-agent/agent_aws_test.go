@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -149,15 +150,23 @@ func TestAcquire_NoSource(t *testing.T) {
 
 // ---- s3LayerFetcher tests ----------------------------------------------------
 
+// The digests here are 64 lowercase hex because Fetch now builds the cache path
+// through spec.LayerCachePath, which validates them (#81). The pre-#81 versions
+// of these tests used "abc123"/"deadbeef"/"missing" and asserted Fetch succeeds
+// with them — pinning the absence of that validation. Inverting them is covered
+// by the user-authorized inherited-test exemption for #81, and
+// TestFetch_RejectsInvalidDigest below is the new assertion that the old inputs
+// are refused.
 func TestFetch_CacheHit(t *testing.T) {
 	dir := t.TempDir()
-	sha := "abc123"
+	sha := strings.Repeat("a", 64)
 	cached := filepath.Join(dir, sha+".sqfs")
 	if err := os.WriteFile(cached, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	// S3 mock with no objects — a real S3 call would fail.
+	// S3 mock with no objects — a real S3 call would fail, so a pass proves the
+	// cache short-circuit fired.
 	f := newS3LayerFetcherWithAPI(&mockS3Get{objects: map[string][]byte{}}, dir)
 	got, err := f.Fetch(context.Background(), spec.ResolvedLayer{
 		LayerManifest: spec.LayerManifest{SHA256: sha, Source: "s3://bucket/layer.sqfs"},
@@ -174,7 +183,7 @@ func TestFetch_CacheMiss(t *testing.T) {
 	dir := t.TempDir()
 	content := []byte("squashfs-layer-bytes")
 	mock3 := &mockS3Get{objects: map[string][]byte{"layers/python.sqfs": content}}
-	sha := "deadbeef"
+	sha := strings.Repeat("b", 64)
 
 	f := newS3LayerFetcherWithAPI(mock3, dir)
 	got, err := f.Fetch(context.Background(), spec.ResolvedLayer{
@@ -203,15 +212,42 @@ func TestFetch_S3Error(t *testing.T) {
 	dir := t.TempDir()
 	mock3 := &mockS3Get{objects: map[string][]byte{}} // empty — will 404
 
+	// A valid digest, so Fetch reaches S3 and this exercises the fetch-error path
+	// rather than digest validation.
 	f := newS3LayerFetcherWithAPI(mock3, dir)
 	_, err := f.Fetch(context.Background(), spec.ResolvedLayer{
 		LayerManifest: spec.LayerManifest{
-			SHA256: "missing",
+			SHA256: strings.Repeat("c", 64),
 			Source: "s3://bucket/missing.sqfs",
 		},
 	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestFetch_RejectsInvalidDigest is #81: the cache path is the layer's SHA256,
+// so a malformed or path-traversing digest must be refused before it names a
+// file. Two offenders differing in kind — a too-short digest and one that
+// escapes the cache directory. The S3 mock HOLDS the object at the source key,
+// so without the digest check a cache-miss Fetch would download it and succeed;
+// asserting failure proves the rejection is the digest validation, not a missing
+// object, and the message must name the digest.
+func TestFetch_RejectsInvalidDigest(t *testing.T) {
+	for _, sha := range []string{"abc123", "../../../../etc/cron.d/evil"} {
+		dir := t.TempDir()
+		mock3 := &mockS3Get{objects: map[string][]byte{"layer.sqfs": []byte("bytes")}}
+		f := newS3LayerFetcherWithAPI(mock3, dir)
+		_, err := f.Fetch(context.Background(), spec.ResolvedLayer{
+			LayerManifest: spec.LayerManifest{SHA256: sha, Source: "s3://bucket/layer.sqfs"},
+		})
+		if err == nil {
+			t.Errorf("Fetch accepted a layer with invalid digest %q", sha)
+			continue
+		}
+		if !strings.Contains(err.Error(), "digest") {
+			t.Errorf("digest %q: error does not name the digest problem: %v", sha, err)
+		}
 	}
 }
 
