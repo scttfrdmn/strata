@@ -15,6 +15,7 @@ package strata
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"gopkg.in/yaml.v3"
 
@@ -35,6 +36,16 @@ type Options struct {
 	// StrataVersion is embedded in generated lockfiles.
 	// Optional; defaults to empty string.
 	StrataVersion string
+
+	// Warnings, if non-nil, receives the resolver's advisory warnings — most
+	// importantly that a resolved formation carries a placeholder attestation
+	// ("pending-initial-build") and so has no Rekor entry, which is the only
+	// signal that the environment is not cryptographically verifiable (the
+	// placeholder is never written into the lockfile, #46/#138). It is left nil
+	// by default deliberately: a library that writes to the process's stderr
+	// unbidden is a surprise, so the caller opts in by supplying a writer
+	// (e.g. os.Stderr).
+	Warnings io.Writer
 }
 
 // ResolveOptions controls how a Profile is resolved to a LockFile.
@@ -47,9 +58,10 @@ type ResolveOptions struct {
 
 // Client provides Strata catalog and resolution operations backed by an S3 registry.
 type Client struct {
-	s3c     *registry.S3Client // nil when constructed via newClientFromRegistry
-	reg     registry.Client    // always set; equals s3c when using S3
-	version string
+	s3c      *registry.S3Client // nil when constructed via newClientFromRegistry
+	reg      registry.Client    // always set; equals s3c when using S3
+	version  string
+	warnings io.Writer // nil = advisory warnings are discarded (Options.Warnings)
 }
 
 // NewClient creates a Client backed by the given S3 registry.
@@ -58,7 +70,18 @@ func NewClient(_ context.Context, opts Options) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("strata: %w", err)
 	}
-	return &Client{s3c: s3c, reg: s3c, version: opts.StrataVersion}, nil
+	return &Client{s3c: s3c, reg: s3c, version: opts.StrataVersion, warnings: opts.Warnings}, nil
+}
+
+// clientOption configures a Client built through the internal registry-injection
+// seam (newClientFromRegistry). It exists so that seam can accept a warnings
+// writer without changing its two-argument signature, which inherited tests
+// call directly.
+type clientOption func(*Client)
+
+// withWarnings sets the writer that receives the resolver's advisory warnings.
+func withWarnings(w io.Writer) clientOption {
+	return func(c *Client) { c.warnings = w }
 }
 
 // newClientFromRegistry creates a Client using an existing registry.Client
@@ -70,8 +93,12 @@ func NewClient(_ context.Context, opts Options) (*Client, error) {
 // public API that no public caller could invoke (#76). It remains a test seam,
 // exposed to this package's external tests through export_test.go. External
 // consumers construct a Client with NewClient.
-func newClientFromRegistry(reg registry.Client, strataVersion string) *Client {
-	return &Client{reg: reg, version: strataVersion}
+func newClientFromRegistry(reg registry.Client, strataVersion string, opts ...clientOption) *Client {
+	c := &Client{reg: reg, version: strataVersion}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
 }
 
 // Resolve transforms a Profile into a fully resolved LockFile.
@@ -118,6 +145,7 @@ func (c *Client) Resolve(ctx context.Context, profile *spec.Profile, opts Resolv
 		Registry:      c.reg,
 		Probe:         probeClient,
 		StrataVersion: c.version,
+		Warnings:      c.warnings,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("strata: creating resolver: %w", err)
