@@ -74,10 +74,15 @@ func runDiff(path1, path2 string) error {
 			fmt.Printf("  - %s/%s\n", l.Name, l.Version)
 		}
 		for _, pair := range changed {
-			if pair[0].Version != pair[1].Version {
+			switch {
+			case pair[0].Version != pair[1].Version:
 				fmt.Printf("  ~ %s/%s → %s/%s\n", pair[0].Name, pair[0].Version, pair[1].Name, pair[1].Version)
-			} else {
+			case pair[0].SHA256 != pair[1].SHA256:
 				fmt.Printf("  ~ %s/%s (content changed)\n", pair[0].Name, pair[0].Version)
+			case pair[0].MountOrder != pair[1].MountOrder:
+				fmt.Printf("  ~ %s/%s (mount order %d → %d)\n", pair[0].Name, pair[0].Version, pair[0].MountOrder, pair[1].MountOrder)
+			default:
+				fmt.Printf("  ~ %s/%s (changed)\n", pair[0].Name, pair[0].Version)
 			}
 		}
 		for _, l := range added {
@@ -174,7 +179,11 @@ func diffLayers(layers1, layers2 []spec.ResolvedLayer) (
 			added = append(added, l2)
 			continue
 		}
-		if l1.Version == l2.Version && l1.SHA256 == l2.SHA256 {
+		// MountOrder is part of the comparison, not cosmetic: it is the OverlayFS
+		// lower-stack position (which layer's copy of a shared path wins), the
+		// order `strata export` emits OCI diff layers in, and a positional input to
+		// environment_id. A pure reordering must not report as unchanged (#154).
+		if l1.Version == l2.Version && l1.SHA256 == l2.SHA256 && l1.MountOrder == l2.MountOrder {
 			unchanged = append(unchanged, l2)
 		} else {
 			changed = append(changed, [2]spec.ResolvedLayer{l1, l2})
