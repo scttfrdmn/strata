@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Full history: TestPropertiesCitationsResolve resolves citations
+          # pinned to past commits via `git show <sha>`, which a shallow clone
+          # does not contain (#105).
+          fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
