@@ -533,15 +533,26 @@ func TestPropertiesScopedCellsReduceToTheirWeakestRoute(t *testing.T) {
 			t.Errorf("%s: meet and max are both %q, so this row does not witness the correction",
 				id, max.Spelling())
 		}
-		// And the bound, recorded where the green is read: the rendering path that
-		// prints the reduction is not reached by this document.
-		if live, _ := doc.counts(id); live == 0 {
-			t.Errorf("%s is no longer refuted, so its Status now renders the reduction; "+
-				"this test's premise that the corpus cannot exercise that path has expired", id)
+		// T1 and T5 were discharged (#172), so live == 0 and the Status cell now
+		// renders the reduction rather than "REFUTED" — the document itself
+		// witnesses the multi-scope rendering. (Before #172 this asserted the
+		// opposite: a live refutation outranked the basis, so the reduction was
+		// invisible here and covered only by TestDeriveStatusRendersTheReduction.)
+		live, total := doc.counts(id)
+		if live != 0 {
+			t.Errorf("%s is refuted again (%d live); its Status no longer renders the "+
+				"reduction, so this test's expectation has expired — restore the "+
+				"pre-#172 premise if a refutation was reintroduced", id, live)
+			continue
+		}
+		status := DeriveStatus(p.Basis, live, total)
+		if !strings.Contains(status, "weakest") {
+			t.Errorf("%s is discharged but its Status %q does not render the multi-scope "+
+				"reduction (meet %q); the rendering path is not being exercised", id, status, red.Meet.Spelling())
 		}
 	}
-	t.Log("neither scoped proposition's Status shows its basis (both REFUTED), so the multi-scope " +
-		"renderings are covered by TestDeriveStatusRendersTheReduction and not by this document")
+	t.Log("T1 and T5 are discharged, so both Status cells render 'ENFORCED <tier> (weakest of N scopes)' " +
+		"— the multi-scope reduction is now witnessed by this document directly")
 }
 
 func keysOf(m map[string]*Proposition) []string {

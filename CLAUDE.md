@@ -79,3 +79,15 @@ Key resources:
 Semantic Versioning 2.0.0. [CHANGELOG.md](CHANGELOG.md) follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Milestones on GitHub track progress toward each version.
+
+**Release-refresh gate — `PROPERTIES.md` must reflect the code being tagged, not
+lag it.** `propgen` regenerates the Status column from the refutation register,
+but the register *prose* is hand-authored and can outrun the code: v0.23.0
+shipped with T1/T5 still describing the nil-verifier path as open, though #93
+closed it in that same release (#172). So before `git tag` on any release:
+1. Discharge the register rows for every issue the release closes, on
+   **re-derived evidence** per §2.1 rule 11 — the citation is the re-run test at
+   the RC head, not the closed issue.
+2. Run `go run ./cmd/propgen` and confirm it reports `no drift`.
+3. Confirm the §3 prose and the distribution header in the preamble match the
+   RC (both are hand-authored; `propgen` does not touch them).
