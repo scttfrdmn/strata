@@ -90,6 +90,13 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - uses: golangci/golangci-lint-action@v9
+      # Pinned to the v9 commit, not the tag, so the action itself cannot change
+      # under us (#107, option 3). verify: false removes the run-time fetch of the
+      # config JSONSchema from golangci-lint.run — a host this repo does not
+      # control, inside the gate that certifies every other trust claim. The
+      # config is validated offline instead, against a vendored schema, by
+      # internal/lintschema's TestGolangciConfigValidatesAgainstVendoredSchema.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.11.3
+          verify: false
