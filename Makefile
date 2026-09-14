@@ -1,8 +1,15 @@
-.PHONY: build test cover lint vet check clean offline-resolve
+.PHONY: build test cover lint vet vuln check clean offline-resolve
 
 BINARY  := strata
 GOFLAGS := -v
 FIXTURE := $(CURDIR)/bin/fixture
+
+# The linter version CI pins (.github/workflows/ci.yml). `make lint` warns when
+# the golangci-lint on PATH differs, since a local pass under a different version
+# is not the same statement as CI passing (#75).
+GOLANGCI_VERSION := v2.11.3
+# govulncheck version, pinned so the tool cannot change under us (#75).
+GOVULNCHECK_VERSION := v1.1.4
 
 build:
 	go build $(GOFLAGS) -o bin/$(BINARY) ./cmd/$(BINARY)
@@ -14,10 +21,17 @@ cover: test
 	go tool cover -html=coverage.out
 
 lint:
+	@golangci-lint version 2>/dev/null | grep -q '$(GOLANGCI_VERSION:v%=%)' || \
+	  echo "warning: golangci-lint on PATH differs from CI's pinned $(GOLANGCI_VERSION); findings may differ (#75)"
 	golangci-lint run ./...
 
 vet:
 	go vet ./...
+
+# vuln scans for known vulnerabilities the code actually reaches. Needs network
+# (the vuln database is fetched at run time); CI runs the same as its own job.
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 check: vet lint test
 

@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # No base-branch filter: a pull request whose base is not `main` (a stacked PR)
+  # otherwise receives zero CI runs, which every GitHub surface renders as clean
+  # — an absent check is visually identical to a passing one (#116).
   pull_request:
-    branches: [main]
 
 jobs:
   test:
@@ -78,6 +80,24 @@ jobs:
           ! grep -q 'bundle: ""' "$lock"
           echo "--- $lock ---"
           cat "$lock"
+
+  vulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      # govulncheck reports only vulnerabilities the code actually reaches, so a
+      # red here is a call path into a known-vulnerable symbol, not merely a
+      # flagged module (#75). Pinned so the tool cannot change under us; the vuln
+      # database is fetched at run time by design.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
   lint:
     name: Lint
