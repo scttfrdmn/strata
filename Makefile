@@ -1,4 +1,4 @@
-.PHONY: build test cover lint vet vuln check clean offline-resolve
+.PHONY: build test cover lint vet vuln check clean offline-resolve known-open
 
 BINARY  := strata
 GOFLAGS := -v
@@ -32,6 +32,13 @@ vet:
 # (the vuln database is fetched at run time); CI runs the same as its own job.
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+# known-open enumerates the test controls that assert "a defect still
+# reproduces" — the ones that must go red when their defect is fixed. It is a
+# finder, not a check: each still needs its can-it-fail demonstration by hand
+# (#148).
+known-open:
+	@bash hack/known-open.sh
 
 check: vet lint test
 
