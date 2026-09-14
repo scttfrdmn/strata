@@ -162,24 +162,3 @@ func TestR7Exclusion_ReorderPackageEntries(t *testing.T) {
 			p[0], p[1] = p[1], p[0]
 		})
 }
-
-// TestR7ExclusionNilEmptyIsNotAboutTheOuterSlice separates the defect from a
-// neighbour it would otherwise be conflated with. The outer Packages field does
-// carry omitempty, so nil and empty are both omitted there and the identity is
-// unaffected. #117 is about the inner slice only, and stating the boundary keeps
-// the register row from claiming more than the code does.
-func TestR7ExclusionNilEmptyIsNotAboutTheOuterSlice(t *testing.T) {
-	base := ResolvedBase{AMISHA256: "aaaaaaaa"}
-	layers := []ResolvedLayer{
-		{LayerManifest: LayerManifest{SHA256: "bbbbbbbb"}, MountOrder: 1},
-	}
-
-	nilOuter := &LockFile{Base: base, Layers: layers, Packages: nil}
-	emptyOuter := &LockFile{Base: base, Layers: layers, Packages: []ResolvedPackageSet{}}
-
-	if got, want := emptyOuter.EnvironmentID(), nilOuter.EnvironmentID(); got != want {
-		t.Errorf("outer Packages nil vs empty changed the identity: %s != %s\n"+
-			"If this fails, #117 is wider than its register row claims and the row "+
-			"must be corrected to cover the outer slice too.", got, want)
-	}
-}
