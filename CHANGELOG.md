@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-14
+
+_Milestone: "the identity determines the environment." Also a board-wide cleanup:
+three core propositions (T1, T5, X3) moved to ENFORCED, and the falsifiable-property
+register in PROPERTIES.md gained a citation checker, a release-refresh gate, and
+discharges for the identity cluster._
+
 ### Security
+- **The lint gate no longer fetches its config schema over the network** (#107).
+  `golangci-lint-action`'s `verify: true` default pulled the config JSONSchema
+  from `golangci-lint.run` at run time — an unauthenticated third-party fetch
+  inside the gate that certifies every other trust claim. The action is now pinned
+  by commit SHA with `verify: false`, and `.golangci.yml` is validated offline
+  against a vendored schema (`internal/lintschema`).
 - **Bumped `aws-sdk-go-v2/service/s3` past GO-2026-5764** (v1.96.4 → v1.113.1,
   pulling `eventstream` to a fixed version), found by the new vulnerability scan.
 - **Raised the Go toolchain to 1.25** (`go.mod`), past GO-2026-6218 (a `net/url`
@@ -23,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `make lint` now warns when the local golangci-lint differs from the version CI
   pins, since a local pass under a different version is not the same statement as
   CI passing.
+- **`pkg/strata.NewClientFromRegistry` is unexported** (#76). It took a
+  `registry.Client` — an `internal/` type — so no external module could ever name
+  an argument for it; it was public API no public caller could invoke. External
+  consumers use `NewClient`. (Library API change.)
+- **`Profile.Instance` and `Profile.Storage` are documented as advisory** (#102):
+  recorded for downstream launch tooling, not consumed by resolution and not yet
+  acted upon by any runtime path — stated in the schema rather than silently
+  ignored.
 
 ### Fixed
 - **A null entry in a `software:` list is refused, not silently dropped** (#79). A
@@ -88,6 +109,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment at the same id* is bounded by digest-format validation (#65); the
   empty-id refusal and the no-overwrite guarantee hold today. Replaces the
   defect-pinning test from #149.
+
+### Documentation
+- **README truth-pass** (#71): status reflects the implemented breadth, the Go
+  requirement matches `go.mod`, the flagship example resolves (verified by a test
+  that extracts and runs it), and a new "Current trust guarantees" section states
+  plainly what is and is not cryptographically enforced today.
+- **Removed stale v0.9–v0.13 roadmap prose** (#72) and relabelled the unbuilt
+  `bwrap` execution model as an unimplemented proposal (`grep -rn bwrap` → nothing);
+  the current runtime is OverlayFS with a FUSE fallback.
 
 ## [0.23.0] - 2026-09-12
 
