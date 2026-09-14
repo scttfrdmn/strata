@@ -7,13 +7,11 @@ base:
   arch: arm64
 
 software:
-  - formation: r-research@2024.03
+  - formation: r-research@2026.03
   - name: quarto
     version: "1.4"
-  - name: texlive
-    version: "2024"
-  - name: git
-    version: "2.43"
+  # TeX Live and git are provided by the base AMI / added as packages; only
+  # recipe-backed software is named here so the profile resolves.
 
 instance:
   type: r7g.2xlarge

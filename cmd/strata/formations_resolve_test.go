@@ -97,3 +97,41 @@ func TestSingleLayerResolvesOffline(t *testing.T) {
 		t.Fatalf("no lockfile written: %v", err)
 	}
 }
+
+// TestShippedExamplesResolveOffline is #70's closing condition: every profile in
+// examples/ must resolve against the shipped catalog. Before, all three named a
+// formation version the catalog did not contain (@2024.03) and standalone layers
+// with no recipe (alphafold, pytorch, texlive, git), so examples/ had a 0% resolve
+// rate and no test crossed a reference against the catalog — examples/*_test.go
+// only parsed the YAML.
+func TestShippedExamplesResolveOffline(t *testing.T) {
+	clearAWSEnv(t)
+	t.Setenv("STRATA_REGISTRY_URL", "")
+
+	entries, err := os.ReadDir(filepath.Join("..", "..", "examples"))
+	if err != nil {
+		t.Fatalf("read examples dir: %v", err)
+	}
+	var count int
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		count++
+		name := e.Name()
+		t.Run(name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "out.lock.yaml")
+			cmd := newResolveCmd()
+			cmd.SetArgs([]string{filepath.Join("..", "..", "examples", name), "-o", out})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("resolving example %s against the embedded catalog failed: %v", name, err)
+			}
+			if _, err := os.Stat(out); err != nil {
+				t.Fatalf("%s: no lockfile written: %v", name, err)
+			}
+		})
+	}
+	if count == 0 {
+		t.Fatal("no example profiles found; the path is wrong")
+	}
+}

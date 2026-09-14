@@ -7,9 +7,9 @@ base:
   arch: x86_64
 
 software:
-  - formation: jupyter-gpu@2024.03
-  - name: pytorch
-    version: "2.2"
+  - formation: jupyter-gpu@2026.03
+  # PyTorch is added as a pip package on top of this GPU + JupyterLab base once
+  # its recipe ships; the formation is the reproducible, resolvable environment.
 
 instance:
   type: g5.4xlarge
