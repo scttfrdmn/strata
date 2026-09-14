@@ -841,7 +841,7 @@ moves the status of every proposition it names; nothing else does.
 | I1′, I2, I3, I4, I5 | `strata run` layer cache: unvalidated path component, unhashed cache hits, empty SHA256 accepted | A2 + A5 | #57 | Yes — E1, `cmd/strata/layer_cache_integrity_test.go:74,123,185,249` |
 | T3 | `RekorHTTPClient.VerifyEntry` checked log-index existence and discarded the bundle | A4 | #59 | Yes — E1, `cmd/strata/verify_rekor_test.go:80,147,217` |
 | P4 | Stage 7 refuses every profile resolved offline against the shipped catalog, with `BUNDLE_MISSING` (originally worded *"no profile could resolve offline with the shipped catalog"*; reworded 2026-08-21 for the reason in §7 item 43, meaning unchanged) | H1 | #54 | Yes — discharged 2026-09-13 by the #108 offline-catalog fix: the **shipped catalog** now resolves offline instead of refusing at stage 7. **Re-derived** at E1 (chosen/implementation): `cmd/strata/formations_resolve_test.go`'s `TestSingleLayerResolvesOffline` resolves a plain `python@3.13.2` profile with no registry set, and `TestShippedFormationsResolveOffline` the formation profiles — `env -u STRATA_REGISTRY_URL strata resolve` now exits 0 with an offline-unsigned warning where it printed `[stage=stage7 code=BUNDLE_MISSING]` before. This time the claim and the evidence are both about the shipped catalog, not the fixture registry, so the referent slippage that reopened this row (a `file://` fixture success matched to a shipped-catalog row, §7 item 38) is closed the honest way. P4 stays refuted by #64 — the offline lockfile is produced but unsigned and unfreezable |
-| I6 | pip SHA256 pins were validated against nothing | A3 | #51 | Partially — `strata verify --packages` validates against PyPI out of band; the *install* still ignores the pin (see the I6 row below) |
+| I6 | pip SHA256 pins were validated against nothing | A3 | #51 | Partially — `strata verify --packages` validates the recorded pin against PyPI out of band (`internal/packages/resolve.go:272-287`), **held by reading**: it needs live PyPI, so there is no unit test and this half is not evidenced at `chosen`/implementation. The *install* still ignores the pin (see the I6 row below), which is the live half. `Partially` counts as live |
 | T7 | `strata run` did not warn that `packages:` entries are unattested | H1 | #48 | No — **re-derived 2026-08-22** under §2.1 rule 11; was `Yes — closed completed`, which is the closure-for-evidence conflation that rule names (#137). The row and the code answer two different questions. #48 asked for a warning that the packages *will not be installed* by `strata run`; that shipped at `cmd/strata/run.go:92-105`, counts entries rather than sets, and names both the installer and the consequence — E1 at `cmd/strata/run_packages_warning_test.go:78,132`. The row says "unattested", which is a claim about the attestation chain that **no** warning on either route makes: the agent installs these entries from PyPI/conda/CRAN with no bundle and no Rekor entry (`internal/agent/package_installer.go:37-45`), and `spec.ResolvedPackageEntry`'s `SHA256` is optional and unchecked at install time (#51). Filed as #139, with `cmd/strata/run_packages_warning_test.go:156` asserting today's silence so closing it fails a test. The row's wording is repaired under #140 and travels alone: rewording a counterexample in the change that discharges it is narrowing-until-satisfied |
 | T7 | The resolver expanded unattested formations without warning | H1 | #49 | Partially — **re-derived 2026-08-22** under §2.1 rule 11; was `Yes — closed completed` (#137). The warning exists and fires, naming the formation, the reason and the placeholder value (`internal/resolver/stages.go:71-75`) — E1 at `internal/resolver/formation_attestation_warning_test.go:132`, with `:159` the control that an attested formation is *not* warned about. Three of the four resolver constructions in the tree deliver it: `cmd/strata/resolve.go:63`, `update.go:49`, `freeze.go:34` all set `Warnings: os.Stderr`. The fourth is the live half — `resolver.warn` returns silently when `cfg.Warnings` is nil (`internal/resolver/resolver.go:65-70`), `pkg/strata` builds its `resolver.Config` without that field (`pkg/strata/strata.go:103-107`) and `pkg/strata.Options` exposes none to set, so the public library route is silent on the same input, on formations the shipped catalog actually contains (#46). Filed as #138; `formation_attestation_warning_test.go:193` asserts that silence, so wiring it up fails a test. `Partially` counts as live, so T7 stays refuted |
 | X3 | The inline software-ref form `- python@3.13` was documented and did not parse | H1 | #53 | Yes — E1, `spec/softwareref_yaml_test.go:22-24`, `spec/docsnippets_test.go` |
@@ -1152,6 +1152,20 @@ Two obligations on whoever writes a citation:
 What this does **not** yet check is whether a cited test *exercises* the property
 (rule 6's real question) — coverage of the cited implementation lines is the
 Level 2 proxy still owed under #105.
+
+### 6.3 An "there are no X" claim carries the grep that establishes it
+
+A claim of absence — *there are no fuzz targets*, *no reader outside spec*, *no
+call site* — is a measurement, and a measurement in prose is a guess wearing a
+citation. State it with the command that produces it, inline, so a reader (or a
+later author checking whether it still holds) re-runs one line instead of trusting
+the sentence. The failure this prevents is silent: §2 once carried *"E2 is
+currently unreachable … there are no fuzz targets"* with its grep, and the grep
+went false the day `FuzzR7NoSpuriousDistinctions` merged while the prose stayed
+(#132). An absence claim with no command is not re-derivable, and an absence claim
+whose command has rotted reads as true because the thing it forbids returns
+nothing — zero is the value that reads as clean. Prefer a form with no
+shell-dialect dependence (an unanchored `grep -c` over an escaped, anchored one).
 
 ---
 
