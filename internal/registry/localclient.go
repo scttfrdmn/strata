@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -371,9 +372,31 @@ func (c *LocalClient) DeleteLayer(_ context.Context, manifest *spec.LayerManifes
 // PutLockfile writes the lockfile to locks/<environmentID>.yaml and returns
 // the file:// URI.
 func (c *LocalClient) PutLockfile(_ context.Context, lockfile *spec.LockFile) (string, error) {
-	key := "locks/" + lockfile.EnvironmentID() + ".yaml"
-	if err := c.writeYAML(key, lockfile); err != nil {
-		return "", fmt.Errorf("registry: writing lockfile: %w", err)
+	id := lockfile.EnvironmentID()
+	if id == "" {
+		return "", fmt.Errorf("registry: refusing to store a lockfile with no EnvironmentID — an unfrozen lockfile has no identity to key on and would land at locks/.yaml (#124)")
+	}
+	key := "locks/" + id + ".yaml"
+	data, err := yaml.Marshal(lockfile)
+	if err != nil {
+		return "", fmt.Errorf("registry: marshalling lockfile: %w", err)
+	}
+	p := c.path(key)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return "", fmt.Errorf("registry: creating dir for %q: %w", p, err)
+	}
+	// O_EXCL so a colliding EnvironmentID is a loud error, not a silent
+	// overwrite (#124) — the local mirror of the S3 IfNoneMatch guard.
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return "", fmt.Errorf("registry: a lockfile already exists at %s — refusing to overwrite it; a different environment at the same EnvironmentID is an identity defect (#124)", key)
+		}
+		return "", fmt.Errorf("registry: writing lockfile %q: %w", p, err)
+	}
+	defer f.Close() //nolint:errcheck
+	if _, err := f.Write(data); err != nil {
+		return "", fmt.Errorf("registry: writing lockfile %q: %w", p, err)
 	}
 	return "file://" + c.root + "/" + key, nil
 }

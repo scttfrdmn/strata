@@ -16,6 +16,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
 	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/strata/spec"
@@ -610,18 +611,29 @@ func (c *S3Client) ListLockfiles(ctx context.Context) ([]LockfileRecord, error) 
 // The returned URI can be set as EC2 instance tag strata:lockfile-s3-uri;
 // strata-agent reads the lockfile from S3 at boot using that tag.
 func (c *S3Client) PutLockfile(ctx context.Context, lockfile *spec.LockFile) (string, error) {
+	id := lockfile.EnvironmentID()
+	if id == "" {
+		return "", fmt.Errorf("registry: refusing to store a lockfile with no EnvironmentID — an unfrozen lockfile has no identity to key on and would land at locks/.yaml (#124)")
+	}
 	data, err := yaml.Marshal(lockfile)
 	if err != nil {
 		return "", fmt.Errorf("registry: marshalling lockfile: %w", err)
 	}
-	key := "locks/" + lockfile.EnvironmentID() + ".yaml"
+	key := "locks/" + id + ".yaml"
 	_, err = c.s3.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(c.bucket),
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(data),
 		ContentType: aws.String("application/yaml"),
+		// Refuse to overwrite an existing EnvironmentID: a colliding publish is a
+		// loud error, not a silent last-writer-wins (#124).
+		IfNoneMatch: aws.String("*"),
 	})
 	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "PreconditionFailed" {
+			return "", fmt.Errorf("registry: a lockfile already exists at %s — refusing to overwrite it; a different environment at the same EnvironmentID is an identity defect (#124)", key)
+		}
 		return "", fmt.Errorf("registry: uploading lockfile: %w", err)
 	}
 	return "s3://" + c.bucket + "/" + key, nil
