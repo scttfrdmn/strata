@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -133,6 +134,49 @@ func (l *LockFile) LayerCount() int {
 // squashfs layer and removes this field.
 func (l *LockFile) HasMutableLayer() bool {
 	return l.MutableLayer != nil
+}
+
+// Validate reports whether the lockfile is well-formed enough to be trusted —
+// mounted, published, or used as an identity.
+//
+// It is a policy check, deliberately separate from ParseLockFileBytes: the parser
+// stays able to read a malformed lockfile so a diagnostic such as `strata diff`
+// can still inspect one, and the trust boundaries (strata run, publish, freeze)
+// call Validate before acting on it. It does not require the lockfile to be
+// frozen — an unfrozen lockfile (empty digests) is a valid intermediate state.
+// What it forbids is a field that is present but malformed:
+//
+//   - a non-empty layer SHA256 or Base.AMISHA256 that is not a well-formed digest
+//     (#96 — "bbbbbb" and "sha256-ami-test123456789" used to satisfy IsFrozen);
+//   - a layer id that is not a safe single path component (#58/#97), since ids
+//     become mount points, cache paths, and OCI unpack directories;
+//   - two layers sharing a MountOrder, which would leave EnvironmentID dependent
+//     on the slice order the mounter falls back to for the tie (#95).
+func (l *LockFile) Validate() error {
+	seen := make(map[int]bool, len(l.Layers))
+	for i, layer := range l.Layers {
+		if layer.ID != "" {
+			if err := ValidateLayerID(layer.ID); err != nil {
+				return fmt.Errorf("lockfile: layer %d: %w", i, err)
+			}
+		}
+		if layer.SHA256 != "" {
+			if err := ValidateLayerDigest(layer.SHA256); err != nil {
+				return fmt.Errorf("lockfile: layer %d (%s): %w", i, layer.ID, err)
+			}
+		}
+		if seen[layer.MountOrder] {
+			return fmt.Errorf("lockfile: two layers share mount_order %d — a mount order must be unique, "+
+				"or EnvironmentID depends on the order the layers happen to be written (#95)", layer.MountOrder)
+		}
+		seen[layer.MountOrder] = true
+	}
+	if l.Base.AMISHA256 != "" {
+		if err := ValidateLayerDigest(l.Base.AMISHA256); err != nil {
+			return fmt.Errorf("lockfile: base ami_sha256: %w", err)
+		}
+	}
+	return nil
 }
 
 // EnvironmentID returns a stable identifier for this environment. It is the

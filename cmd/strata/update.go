@@ -56,6 +56,9 @@ func runUpdate(profilePath, outputFlag string) error {
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
+	if err := newLF.Validate(); err != nil {
+		return fmt.Errorf("update: resolver produced an invalid lockfile: %w", err)
+	}
 
 	if !newLF.IsFrozen() {
 		var missing []string

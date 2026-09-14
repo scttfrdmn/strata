@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`LockFile.Validate()`, and it runs at every trust boundary** (#65, #96). There
+  was no lockfile validation anywhere, and `strata run` — which mounts filesystems
+  from lockfile fields — bypassed the spec parser with a raw `yaml.Unmarshal`.
+  `LockFile.Validate()` now rejects a malformed (present but not 64-lowercase-hex)
+  layer or base digest, an unsafe layer id, and duplicate mount orders; `strata
+  run`, `publish`, `freeze`, and `update` call it before acting, and `run` now goes
+  through `ParseLockFile`. `IsFrozen()`/`EnvironmentID()` stay presence predicates
+  by design — validation is at the policy layer, not the parser, so `strata diff`
+  can still read a malformed lockfile to show what is wrong with it.
+
 ## [0.24.0] - 2026-09-14
 
 _Milestone: "the identity determines the environment." Also a board-wide cleanup:

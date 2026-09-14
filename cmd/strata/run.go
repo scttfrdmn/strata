@@ -16,7 +16,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/strata/internal/overlay"
 	"github.com/scttfrdmn/strata/internal/trust"
@@ -70,14 +69,16 @@ flag that disabled nothing, because nothing was enabled.`,
 }
 
 func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bool, cacheDir, keyRef string, envOverrides []string) error {
-	// 1. Read lockfile.
-	data, err := os.ReadFile(lockfilePath)
+	// 1. Read lockfile through the spec package and validate it. run mounts
+	//    filesystems from lockfile fields, so it must not accept a lockfile the
+	//    trust boundary would reject — it used to yaml.Unmarshal the bytes
+	//    directly, bypassing the parser entirely (#65).
+	lf, err := spec.ParseLockFile(lockfilePath)
 	if err != nil {
-		return fmt.Errorf("run: reading lockfile: %w", err)
+		return fmt.Errorf("run: %w", err)
 	}
-	var lf spec.LockFile
-	if err := yaml.Unmarshal(data, &lf); err != nil {
-		return fmt.Errorf("run: parsing lockfile: %w", err)
+	if err := lf.Validate(); err != nil {
+		return fmt.Errorf("run: refusing to mount an invalid lockfile: %w", err)
 	}
 
 	// 2. Signature verification happens in step 6, after the layers are on disk:
@@ -111,13 +112,13 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	}
 
 	// 5. Fetch layers to cache.
-	layerPaths, err := fetchLayersToCache(ctx, lf, cacheDir)
+	layerPaths, err := fetchLayersToCache(ctx, *lf, cacheDir)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 
 	// 6. Verify what is about to be mounted, and refuse to mount it otherwise.
-	if err := verifyRunLayers(ctx, &lf, layerPaths, noVerify, keyRef); err != nil {
+	if err := verifyRunLayers(ctx, lf, layerPaths, noVerify, keyRef); err != nil {
 		return err
 	}
 
@@ -146,7 +147,7 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	defer ov.Cleanup() //nolint:errcheck
 
 	// 9. Build environment for the child process.
-	env := buildRunEnv(&lf, ov.MergedPath, envOverrides)
+	env := buildRunEnv(lf, ov.MergedPath, envOverrides)
 
 	// 10. Execute the command.
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)

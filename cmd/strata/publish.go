@@ -77,6 +77,9 @@ func parsePublishableLockFile(path string) (*spec.LockFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("publish: %w", err)
 	}
+	if err := lf.Validate(); err != nil {
+		return nil, fmt.Errorf("publish: %w", err)
+	}
 	if !lf.IsFrozen() {
 		return nil, fmt.Errorf("publish: lockfile is not frozen — run \"strata freeze\" first to pin all layer SHA256s")
 	}
