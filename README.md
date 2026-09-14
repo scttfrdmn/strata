@@ -32,7 +32,7 @@ What is implemented is not all equally *enforced*. See **Current trust guarantee
 
 ## Requirements
 
-- Go 1.25+ (the `go` directive in `go.mod`)
+- Go 1.27+ (the `go` directive in `go.mod`)
 
 ## Current trust guarantees
 

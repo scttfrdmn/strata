@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/strata
 
-go 1.25
+go 1.27
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.0
