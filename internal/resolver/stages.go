@@ -487,9 +487,17 @@ func (r *Resolver) verifyBundle(ctx context.Context, rl resolvedLayer) error {
 		// #59 a RekorClient that is given none returns trust.ErrNoBundle —
 		// configuring a real client makes resolution fail closed rather than
 		// pass on the strength of "something was logged at that index".
-		// Reaching real verification from stage 7 means fetching the bundle
-		// first; that is #55/#60's work, not this call's. The decision about
-		// which way to take it is #85.
+		//
+		// The #85 decision, made: resolve-time stage 7 stays a presence-and-
+		// structure check and does NOT fetch. Cryptographic Rekor verification
+		// happens at the boundaries where the bundle bytes exist — `strata verify
+		// --rekor` and `strata run`'s pre-mount check, both of which load the
+		// bundle (loadLocalBundle) before calling VerifyEntry. This branch is kept
+		// as a fail-closed guard: a resolver given a real Rekor client (no shipped
+		// path sets one) rejects every layer rather than passing, because all it
+		// can offer VerifyEntry is a nil bundle. TestStage7_RekorVerification
+		// records that nil argument, so if a fetch is ever added here it breaks a
+		// test rather than silently changing what "verified" means (#86).
 		if err := r.cfg.Rekor.VerifyEntry(ctx, logIndex, nil); err != nil {
 			return &ResolutionError{
 				Stage:   "stage7",
