@@ -55,7 +55,7 @@ func TestNewCosignVerifier_NamesTheMissingPrerequisite(t *testing.T) {
 			// reached rather than masked by the first.
 			name:       "cosign present, key unavailable",
 			prereqs:    verifierPrereqs{lookPath: cosignPresent, fetchKey: keyUnavailable},
-			wantReason: "could not fetch the cosign public key",
+			wantReason: "embedded cosign public key is unavailable",
 		},
 		{
 			name:    "both prerequisites present",
