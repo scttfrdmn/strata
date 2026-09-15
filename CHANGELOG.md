@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Follow-ups to the v0.25.0 adversarial trust-chain review._
+_v0.26 "the signed trust chain" in progress, plus follow-ups to the v0.25.0
+adversarial trust-chain review._
+
+### Added
+- **Lockfile signing and verification — the whole layer set** (#60, #101). A
+  lockfile can now be signed as a unit and verified, which is what makes a
+  mix-and-match of individually-valid, individually-signed layers detectable: a
+  set no maintainer signed has no valid lockfile signature.
+  - `strata sign <lock.yaml>` signs a frozen lockfile with cosign against the KMS
+    key (`awskms:///alias/strata-signing-key`) and logs it to Rekor.
+  - `strata verify` verifies the lockfile's set signature against the public key
+    **embedded in the binary** — no AWS needed — and reports it; a tampered layer
+    fails the check.
+  - The public signing key is now shared across binaries in `internal/trust`
+    (`trust.SignLockFile`/`VerifyLockFile`, `EmbeddedKeyVerifier`), and was
+    verified to be the exact public half of the KMS signing key (#62).
+  - Proven end-to-end against the live KMS key + Rekor. Still landing: `publish`
+    and the agent calling `VerifyLockFile`, a freshness bound on the signed
+    `resolved_at`, and making verification mandatory (#101).
 
 ### Security
 - **The EC2 agent and `pkg/strata` now validate the lockfile** before acting on

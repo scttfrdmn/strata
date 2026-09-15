@@ -14,7 +14,6 @@ package main
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -248,53 +247,23 @@ func newCosignVerifier(ctx context.Context, p verifierPrereqs) (trust.Verifier, 
 	return &trust.CosignVerifier{KeyRef: keyPath}, nil
 }
 
-// embeddedCosignKey is the Strata cosign public key, pinned into the agent
-// binary at build time. It is the trust anchor the agent verifies layer
-// signatures against.
-//
-// It is embedded rather than fetched from the registry deliberately (#62). The
-// public key is not secret, so embedding costs nothing; the point is
-// independence. An actor with write access to the layer bucket must not also
-// control the key that authenticates those layers — fetching the key from the
-// same bucket that serves the layers and bundles made registry write access
-// equivalent to signing authority, and deleting the key equivalent to disabling
-// verification. Pinning it here makes rotation a release of the agent, which is
-// the correct cost for a trust-anchor change.
-//
-//go:embed keys/cosign.pub
-var embeddedCosignKey []byte
-
-// writeEmbeddedCosignKey materialises the embedded cosign public key to a temp
-// file and returns its path, or "" on failure. cosign (via CosignVerifier.KeyRef)
-// wants a file path, not bytes, so the pinned key is written out per boot.
+// writeEmbeddedCosignKey materialises the Strata public signing key — pinned into
+// the binary and shared across binaries in internal/trust (#62) — to a temp file
+// and returns its path, or "" on failure. cosign (via CosignVerifier.KeyRef)
+// wants a file path, not bytes.
 //
 // An empty embed returns "": a binary built without a trust anchor cannot
 // verify, and its caller turns "" into a refusal to boot unless the operator has
-// opted out — the same fail-closed path the S3 fetch fed. TestEmbeddedCosignKey
-// asserts the committed key is non-empty and PEM-parseable, so a release cannot
-// ship the empty case unnoticed.
+// opted out — the same fail-closed path the S3 fetch fed. The agent is
+// short-lived, so the temp file is left for the OS to reclaim rather than tracked
+// for cleanup.
 func writeEmbeddedCosignKey(context.Context) string {
-	if len(bytes.TrimSpace(embeddedCosignKey)) == 0 {
-		log.Printf("strata-agent: the agent was built without an embedded cosign public key (keys/cosign.pub)")
-		return ""
-	}
-	f, err := os.CreateTemp("", "strata-cosign-*.pub")
+	path, _, err := trust.WriteEmbeddedKeyFile()
 	if err != nil {
-		log.Printf("strata-agent: writing embedded cosign key: %v", err)
+		log.Printf("strata-agent: %v", err)
 		return ""
 	}
-	if _, err := f.Write(embeddedCosignKey); err != nil {
-		f.Close()           //nolint:errcheck
-		os.Remove(f.Name()) //nolint:errcheck
-		log.Printf("strata-agent: writing embedded cosign key: %v", err)
-		return ""
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(f.Name()) //nolint:errcheck
-		log.Printf("strata-agent: writing embedded cosign key: %v", err)
-		return ""
-	}
-	return f.Name()
+	return path
 }
 
 // writeBootMetrics logs metrics to stderr, writes to /etc/strata/boot-metrics.json,
