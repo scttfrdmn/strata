@@ -288,6 +288,14 @@ The agent verifies the cosign bundle against the Rekor transparency log before m
 any layer. SHA256 of the pulled squashfs is verified against the manifest. Unsigned layers
 will not mount.
 
+The public key the agent verifies against is **pinned into the agent binary at build
+time** (`cmd/strata-agent/keys/cosign.pub`), not fetched from the registry. This keeps the
+trust anchor independent of the bucket that serves the layers: an actor with write access
+to the registry cannot substitute the key that would authenticate a tampered layer, nor
+disable verification by deleting it. Rotating the key is a release of the agent, which is
+the correct cost for a trust-anchor change (#62). The private key remains in AWS KMS
+(#32); only the public verification key is embedded.
+
 Verification is required, not unconditional, and the difference is worth stating because
 this paragraph previously claimed the stronger thing. Two escape hatches exist, and both
 are explicit:

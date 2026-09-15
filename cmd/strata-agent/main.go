@@ -11,9 +11,9 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -174,7 +174,7 @@ type verifierPrereqs struct {
 func productionPrereqs(getenv func(string) string) verifierPrereqs {
 	return verifierPrereqs{
 		lookPath:        exec.LookPath,
-		fetchKey:        fetchPublicKey,
+		fetchKey:        writeEmbeddedCosignKey,
 		allowUnverified: allowUnverified(getenv),
 	}
 }
@@ -240,63 +240,55 @@ func newCosignVerifier(ctx context.Context, p verifierPrereqs) (trust.Verifier, 
 	}
 	keyPath := p.fetchKey(ctx)
 	if keyPath == "" {
-		return nil, fmt.Errorf("could not fetch the cosign public key from s3://%s/%s: layer signatures cannot be verified",
-			registryBucket(), publicKeyObject)
+		return nil, fmt.Errorf("the embedded cosign public key is unavailable: layer signatures cannot be verified")
 	}
 	return &trust.CosignVerifier{KeyRef: keyPath}, nil
 }
 
-// publicKeyObject is the registry key holding the Strata cosign public key.
-// Named here rather than inside fetchPublicKey so a refusal can tell the
-// operator which object could not be read.
-const publicKeyObject = "build/keys/cosign.pub"
-
-// fetchPublicKey downloads the Strata cosign public key from S3 to a temp
-// file and returns its path. Returns "" on any error.
+// embeddedCosignKey is the Strata cosign public key, pinned into the agent
+// binary at build time. It is the trust anchor the agent verifies layer
+// signatures against.
 //
-// The "" return is no longer a graceful degradation: its caller turns it into a
-// refusal to boot unless the operator has opted out. This function stays at 0.0%
-// coverage — it is an S3 GetObject against the registry and CI has no AWS
-// credentials by design — which is why the decision it feeds was moved out of it.
-func fetchPublicKey(ctx context.Context) string {
-	cfg, err := awsconfig.LoadDefaultConfig(ctx)
-	if err != nil {
-		log.Printf("strata-agent: fetchPublicKey: loading AWS config: %v", err)
+// It is embedded rather than fetched from the registry deliberately (#62). The
+// public key is not secret, so embedding costs nothing; the point is
+// independence. An actor with write access to the layer bucket must not also
+// control the key that authenticates those layers — fetching the key from the
+// same bucket that serves the layers and bundles made registry write access
+// equivalent to signing authority, and deleting the key equivalent to disabling
+// verification. Pinning it here makes rotation a release of the agent, which is
+// the correct cost for a trust-anchor change.
+//
+//go:embed keys/cosign.pub
+var embeddedCosignKey []byte
+
+// writeEmbeddedCosignKey materialises the embedded cosign public key to a temp
+// file and returns its path, or "" on failure. cosign (via CosignVerifier.KeyRef)
+// wants a file path, not bytes, so the pinned key is written out per boot.
+//
+// An empty embed returns "": a binary built without a trust anchor cannot
+// verify, and its caller turns "" into a refusal to boot unless the operator has
+// opted out — the same fail-closed path the S3 fetch fed. TestEmbeddedCosignKey
+// asserts the committed key is non-empty and PEM-parseable, so a release cannot
+// ship the empty case unnoticed.
+func writeEmbeddedCosignKey(context.Context) string {
+	if len(bytes.TrimSpace(embeddedCosignKey)) == 0 {
+		log.Printf("strata-agent: the agent was built without an embedded cosign public key (keys/cosign.pub)")
 		return ""
 	}
-	if cfg.Region == "" {
-		cfg.Region = "us-east-1"
-	}
-	s3Client := s3.NewFromConfig(cfg)
-
-	out, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(registryBucket()),
-		Key:    aws.String(publicKeyObject),
-	})
-	if err != nil {
-		log.Printf("strata-agent: fetchPublicKey: %v", err)
-		return ""
-	}
-	defer out.Body.Close() //nolint:errcheck
-
-	const maxPubKeyBytes = 4096 // cosign public keys are ~500 bytes; 4 KiB is generous
-	data, err := io.ReadAll(io.LimitReader(out.Body, maxPubKeyBytes))
-	if err != nil {
-		log.Printf("strata-agent: fetchPublicKey: reading key: %v", err)
-		return ""
-	}
-
 	f, err := os.CreateTemp("", "strata-cosign-*.pub")
 	if err != nil {
+		log.Printf("strata-agent: writing embedded cosign key: %v", err)
 		return ""
 	}
-	if _, err := f.Write(data); err != nil {
+	if _, err := f.Write(embeddedCosignKey); err != nil {
 		f.Close()           //nolint:errcheck
 		os.Remove(f.Name()) //nolint:errcheck
+		log.Printf("strata-agent: writing embedded cosign key: %v", err)
 		return ""
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(f.Name()) //nolint:errcheck
+		log.Printf("strata-agent: writing embedded cosign key: %v", err)
 		return ""
 	}
 	return f.Name()
