@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-14
+
+_Milestone: "the trust chain is real." The verifier's trust anchor, the honesty of
+what "verified" means, and the observability of what was checked moved from claimed
+to enforced. Nine issues closed; `PROPERTIES.md` `ENFORCED E1` rose 6 → 11 (R1, R2,
+I3, I5, T6) and `REFUTED` fell 21 → 17, with no proposition claiming more than its
+evidence. Lockfile signing, a verifiable deposit, and the catalog refresh (#60, #99,
+#101, #46) are gated on KMS signing and live AWS and move to v0.26 — "the signed
+trust chain."_
+
+### Security
+- **The agent's cosign public key is pinned in its binary, not fetched from the
+  layer bucket** (#62). `strata-agent` fetched its trust anchor from
+  `s3://strata-registry/build/keys/cosign.pub` — the same bucket that serves the
+  layers it authenticates — so registry write access was equivalent to signing
+  authority, and deleting the key disabled verification. The public key is now
+  embedded at build time (`//go:embed keys/cosign.pub`); the private key stays in
+  KMS (#32). Rotating the key is a release of the agent.
+- **The agent layer fetcher validates the digest before using it as a cache path**
+  (#81). `s3LayerFetcher.Fetch` built `<cacheDir>/<sha256>.sqfs` from an unvalidated
+  digest — a malformed digest was used as a path, a `../` digest could escape the
+  cache, and an empty digest collided with every other. It now goes through
+  `spec.LayerCachePath`, which validates 64-lowercase-hex first.
+
 ### Added
 - **`LockFile.Validate()`, and it runs at every trust boundary** (#65, #96). There
   was no lockfile validation anywhere, and `strata run` — which mounts filesystems
@@ -17,6 +41,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `ParseLockFile`. `IsFrozen()`/`EnvironmentID()` stay presence predicates
   by design — validation is at the policy layer, not the parser, so `strata diff`
   can still read a malformed lockfile to show what is wrong with it.
+- **`LockFile.VerificationPolicy` records what the resolver checked** (#100). The
+  lockfile now carries `attestation-present` or `unsigned-offline`, so a consumer
+  reading only the artifact can tell what was verified — the property that would
+  have made the codebase's fail-open paths observable after the fact rather than by
+  code reading. It is provenance and does not participate in `EnvironmentID`.
+- **`pkg/strata.Options.Warnings`** (#138). The library route built its resolver
+  with no warnings writer, so a caller resolving a formation with a placeholder
+  attestation was never told the environment has no Rekor entry. `Options.Warnings
+  io.Writer` now threads the resolver's warnings to a caller-supplied sink; nil
+  keeps it silent, since a library writing to stderr unbidden is a surprise.
+
+### Changed
+- **`strata verify` no longer prints "verified" over a presence check** (#60,
+  partial). Each bundle is parsed and rejected if it is not a well-formed Sigstore
+  bundle; only `--rekor` verifies against the transparency log, and only it reports
+  "verified". The deep half — a `VerifyLockFile` over a *signed* lockfile that
+  `verify` and `publish` share — moves to v0.26 with lockfile signing.
+- **Stage 7's Rekor-verification decision is now explicit** (#85, #86). Resolution
+  holds bundle URIs, not bytes, so resolve-time stage 7 is a presence-and-structure
+  check, not a verification point; cryptographic verification happens at the
+  boundaries that hold the bytes (`strata verify --rekor`, `strata run`). Its test
+  now drives the failure path (`REKOR_VERIFICATION_FAILED`) and records, via a
+  recording client, that stage 7 passes a nil bundle.
+
+### Verified
+- **`EnvironmentID` determinism (R1) and order-independence (R2) are enforced**
+  (#95). A differential-resolve test compares full lockfile serialisations across
+  identical and permuted inputs, eliding only the fields that record the input or
+  the clock. Writing it found R1's elided set incomplete — `base.capabilities.probed_at`
+  is a second wall-clock field it had missed. The hand-built `MountOrder`-tie case
+  is closed at the trust boundary by `LockFile.Validate()`.
 
 ## [0.24.0] - 2026-09-14
 
