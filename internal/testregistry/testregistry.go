@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package testregistry materializes a valid file:// Strata registry from
 // repo-resident fixture data, so that resolution can reach stage 8 with no AWS
 // credentials, no network, and no prior build.

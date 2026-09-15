@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package zenodo implements the Zenodo Deposit API client for publishing
 // frozen Strata lockfiles as citable datasets with minted DOIs.
 //

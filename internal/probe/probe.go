@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package probe resolves OS aliases to AMI IDs and produces BaseCapabilities
 // for the resolver's Stage 1 (base resolution).
 //

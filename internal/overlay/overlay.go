@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package overlay assembles OverlayFS environments from squashfs layers.
 //
 // The assembly sequence is:

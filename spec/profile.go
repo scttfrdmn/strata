@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package spec defines the core types for Strata profiles, layers, formations,
 // and lockfiles. These types are the contract between users, the registry,
 // the resolver, and the agent. All other Strata components are built on these.

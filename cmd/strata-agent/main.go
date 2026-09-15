@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Command strata-agent is the Strata instance bootstrap daemon.
 //
 // It runs as a systemd service (strata-agent.service) at instance boot and

@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package export converts Strata lockfiles to portable container formats.
 //
 // The primary export format is OCI Image Layout (OCI Image Layout Specification
