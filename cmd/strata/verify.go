@@ -58,15 +58,7 @@ Requires network access to pypi.org.`,
 			// mix-and-match of individually-valid layers detectable (#101). The
 			// bundle carries its own Rekor inclusion proof, so this needs no AWS.
 			lockfileSigned := lf.Bundle != ""
-			if lockfileSigned {
-				v, cleanup, err := trust.EmbeddedKeyVerifier()
-				defer cleanup()
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("lockfile signature: %v", err))
-				} else if verr := trust.VerifyLockFile(context.Background(), lf, v); verr != nil {
-					failures = append(failures, fmt.Sprintf("lockfile signature: %v", verr))
-				}
-			}
+			failures = append(failures, lockfileSignatureFailures(lf)...)
 
 			if rekorFlag && len(failures) == 0 {
 				failures = append(failures,
@@ -116,6 +108,32 @@ Requires network access to pypi.org.`,
 	cmd.Flags().BoolVar(&rekorFlag, "rekor", false, "compare each layer's bundle against its entry in the live transparency log")
 	cmd.Flags().BoolVar(&packagesFlag, "packages", false, "verify pip SHA256 pins against PyPI (requires network)")
 	return cmd
+}
+
+// lockfileSignatureFailures verifies the lockfile's own signature — the whole
+// layer set — and returns any failure, or nil when it verifies or the lockfile
+// carries no signature. Verifying the set is what catches a mix-and-match of
+// individually-valid layers (#101); the real VerifyLockFile #60 found missing.
+func lockfileSignatureFailures(lf *spec.LockFile) []string {
+	if lf.Bundle == "" {
+		return nil
+	}
+	if err := verifyLockfileSignature(context.Background(), lf); err != nil {
+		return []string{fmt.Sprintf("lockfile signature: %v", err)}
+	}
+	return nil
+}
+
+// verifyLockfileSignature is the seam: production verifies against the public key
+// embedded in the binary (no AWS — the bundle carries its Rekor proof); a test
+// injects a fake verifier.
+var verifyLockfileSignature = func(ctx context.Context, lf *spec.LockFile) error {
+	v, cleanup, err := trust.EmbeddedKeyVerifier()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return trust.VerifyLockFile(ctx, lf, v)
 }
 
 // collectPresenceFailures returns a list of field-presence violation messages.

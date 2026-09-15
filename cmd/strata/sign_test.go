@@ -73,3 +73,31 @@ func TestRunSign_SignsFrozen(t *testing.T) {
 		t.Errorf("signed lockfile does not verify: %v", err)
 	}
 }
+
+// TestLockfileSignatureFailures covers the verify-side wiring through the
+// verifyLockfileSignature seam: an unsigned lockfile produces no failure, a
+// freshly signed one verifies, and a tampered one is caught.
+func TestLockfileSignatureFailures(t *testing.T) {
+	orig := verifyLockfileSignature
+	t.Cleanup(func() { verifyLockfileSignature = orig })
+	verifyLockfileSignature = func(ctx context.Context, lf *spec.LockFile) error {
+		return trust.VerifyLockFile(ctx, lf, &trust.FakeVerifier{})
+	}
+
+	if f := lockfileSignatureFailures(&spec.LockFile{}); len(f) != 0 {
+		t.Errorf("unsigned lockfile produced signature failures: %v", f)
+	}
+
+	lf := frozenLockfileFixture()
+	if err := trust.SignLockFile(context.Background(), lf, &trust.FakeSigner{}); err != nil {
+		t.Fatalf("SignLockFile: %v", err)
+	}
+	if f := lockfileSignatureFailures(lf); len(f) != 0 {
+		t.Errorf("freshly signed lockfile failed verification: %v", f)
+	}
+
+	lf.Layers[0].SHA256 = strings.Repeat("f", 64) // tamper after signing
+	if f := lockfileSignatureFailures(lf); len(f) == 0 {
+		t.Error("tampered lockfile passed signature verification")
+	}
+}
