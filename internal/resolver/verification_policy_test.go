@@ -15,7 +15,7 @@ import (
 // knowing how the resolve was invoked.
 func TestResolve_RecordsVerificationPolicy(t *testing.T) {
 	// Signed layers, ordinary resolve: attestation present.
-	t.Run("attestation-present", func(t *testing.T) {
+	t.Run("attestation-references-present", func(t *testing.T) {
 		store := registry.NewMemoryStore()
 		store.AddLayer(signedLayer("tool", "1.0.0", "linux-gnu-2.34",
 			[]spec.Capability{{Name: "tool", Version: "1.0.0"}}, nil))
@@ -25,8 +25,8 @@ func TestResolve_RecordsVerificationPolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}
-		if lf.VerificationPolicy != spec.VerifyAttestationPresent {
-			t.Errorf("VerificationPolicy = %q, want %q", lf.VerificationPolicy, spec.VerifyAttestationPresent)
+		if lf.VerificationPolicy != spec.VerifyAttestationReferencesPresent {
+			t.Errorf("VerificationPolicy = %q, want %q", lf.VerificationPolicy, spec.VerifyAttestationReferencesPresent)
 		}
 	})
 

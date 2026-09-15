@@ -7,6 +7,8 @@ import (
 	"encoding/pem"
 	"os"
 	"testing"
+
+	"github.com/scttfrdmn/strata/internal/trust"
 )
 
 // TestEmbeddedCosignKey asserts the agent ships a real trust anchor: the key
@@ -46,5 +48,36 @@ func TestWriteEmbeddedCosignKey(t *testing.T) {
 	}
 	if !bytes.Equal(got, embeddedCosignKey) {
 		t.Error("written key file does not match the embedded bytes")
+	}
+}
+
+// TestProductionVerifierUsesTheEmbeddedKey closes the wiring gap the existence
+// tests leave: they prove an embedded key exists and is usable, not that
+// production actually verifies against it. This goes through productionPrereqs
+// (whose fetchKey is the real writeEmbeddedCosignKey), overriding only lookPath
+// so the key path is reached without cosign installed, then reads the verifier's
+// KeyRef and asserts its bytes are the embedded key. If a registry or KMS fetch
+// were reintroduced and wired into productionPrereqs.fetchKey, this reddens
+// while the existence tests stay green (#62).
+func TestProductionVerifierUsesTheEmbeddedKey(t *testing.T) {
+	p := productionPrereqs(func(string) string { return "" })
+	p.lookPath = func(string) (string, error) { return "/usr/local/bin/cosign", nil }
+
+	v, err := newCosignVerifier(context.Background(), p)
+	if err != nil {
+		t.Fatalf("newCosignVerifier through production wiring: %v", err)
+	}
+	cv, ok := v.(*trust.CosignVerifier)
+	if !ok {
+		t.Fatalf("want *trust.CosignVerifier, got %T", v)
+	}
+	t.Cleanup(func() { _ = os.Remove(cv.KeyRef) })
+
+	got, err := os.ReadFile(cv.KeyRef)
+	if err != nil {
+		t.Fatalf("reading the verifier's key file: %v", err)
+	}
+	if !bytes.Equal(got, embeddedCosignKey) {
+		t.Error("the production verifier's key is not the embedded key — a registry or KMS fetch may have been wired into productionPrereqs.fetchKey")
 	}
 }
