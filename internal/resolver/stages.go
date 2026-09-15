@@ -441,6 +441,18 @@ func (r *Resolver) stage7VerifyBundles(ctx context.Context, layers []resolvedLay
 	return nil
 }
 
+// verificationPolicy names what stage 7 checked about layer attestations, for
+// the record LockFile.VerificationPolicy carries (#100). Resolution never
+// verifies against the transparency log — it holds bundle URIs, not bytes (#85)
+// — so the strongest honest claim is that every layer's attestation was present
+// and well-formed, unless the offline-catalog path accepted an unsigned layer.
+func (r *Resolver) verificationPolicy(layers []resolvedLayer) string {
+	if r.cfg.AllowUnsignedOffline && anyUnsigned(layers) {
+		return spec.VerifyUnsignedOffline
+	}
+	return spec.VerifyAttestationPresent
+}
+
 // anyUnsigned reports whether any layer lacks a bundle or Rekor entry, so the
 // offline-catalog warning fires only when there is actually something unsigned.
 func anyUnsigned(layers []resolvedLayer) bool {
@@ -534,10 +546,11 @@ func (r *Resolver) stage8Assemble(
 	}
 
 	return &spec.LockFile{
-		ProfileName:   profile.Name,
-		ProfileSHA256: profileSHA256,
-		ResolvedAt:    time.Now(),
-		StrataVersion: r.cfg.StrataVersion,
+		ProfileName:        profile.Name,
+		ProfileSHA256:      profileSHA256,
+		ResolvedAt:         time.Now(),
+		StrataVersion:      r.cfg.StrataVersion,
+		VerificationPolicy: r.verificationPolicy(layers),
 		Base: spec.ResolvedBase{
 			DeclaredOS: profile.Base.OS,
 			AMIID:      base.AMIID,
