@@ -162,6 +162,14 @@ func (c *Client) Resolve(ctx context.Context, profile *spec.Profile, opts Resolv
 // UploadLockfile requires a Client created with NewClient (it needs a real
 // S3Client).
 func (c *Client) UploadLockfile(ctx context.Context, lockfile *spec.LockFile) (string, error) {
+	// Validate before anything else: a lockfile uploaded here is fetched and
+	// mounted by the agent, so the library route must not be able to publish a
+	// structurally invalid one (malformed digest, unsafe layer id, duplicate
+	// mount_order). The CLI boundaries validate; this closes the library path.
+	// It runs before the S3-client check so the input is judged on its own terms.
+	if err := lockfile.Validate(); err != nil {
+		return "", fmt.Errorf("strata: %w", err)
+	}
 	if c.s3c == nil {
 		return "", fmt.Errorf("strata: UploadLockfile requires an S3-backed Client (use NewClient)")
 	}
@@ -180,6 +188,12 @@ func (c *Client) UploadLockfile(ctx context.Context, lockfile *spec.LockFile) (s
 // YAML exceeds the 16 KB EC2 user-data hard limit. Use UploadLockfile for
 // large lockfiles or when keeping user-data free for other content.
 func LockfileUserData(lockfile *spec.LockFile) (string, error) {
+	// The agent treats user-data as its highest-priority lockfile source, so a
+	// malformed lockfile placed here reaches the boot path. Validate before
+	// serialising — the same structural check the CLI and UploadLockfile apply.
+	if err := lockfile.Validate(); err != nil {
+		return "", fmt.Errorf("strata: %w", err)
+	}
 	data, err := yaml.Marshal(lockfile)
 	if err != nil {
 		return "", fmt.Errorf("strata: marshalling lockfile: %w", err)

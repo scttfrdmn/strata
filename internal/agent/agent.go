@@ -157,6 +157,17 @@ func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
 	if err != nil {
 		return fail(fmt.Errorf("agent: acquiring lockfile: %w", err))
 	}
+	// A lockfile reaching the agent is a trust decision: it names the layers this
+	// instance mounts and the identity it reports. Validate its structure before
+	// acting on any field, so a malformed digest, an unsafe layer id, or a
+	// duplicate mount_order — which would make mount precedence and the reported
+	// EnvironmentID depend on YAML order (#95) — stops the boot here rather than
+	// after layers are fetched and mounted. Every LockfileSource is covered,
+	// present and future: the CLI boundaries (run/publish/freeze/update) validate,
+	// and this is the agent boundary #65/#96 left out.
+	if err := lf.Validate(); err != nil {
+		return fail(fmt.Errorf("agent: invalid lockfile: %w", err))
+	}
 	metrics.LockfileMs = time.Since(t0).Milliseconds()
 	metrics.LayerCount = len(lf.Layers)
 
