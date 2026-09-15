@@ -24,14 +24,20 @@ _Follow-ups to the v0.25.0 adversarial trust-chain review._
   that they are valid signatures (they are verified at `strata verify --rekor`
   and `strata run`).
 
+### Fixed
+- **The resolver no longer mounts a shared layer twice** (#208). A layer requested
+  through more than one formation was resolved once per formation, so the same
+  squashfs appeared twice in the stack and its `satisfied_by`/`from_formation`
+  followed `software:` order. `dedupLayers` now collapses layers with the same
+  content into one, merging provenance as a sorted union, so the layer is mounted
+  once and the lockfile is permutation-invariant — restoring R2 to `ENFORCED` over
+  overlapping formations (found by the v0.25.0 review; refuted, then fixed).
+
 ### Fixed (register / evidence)
-- R2 returned to `REFUTED`: the v0.25.0 differential fixture used only standalone
-  layers, and overlapping formations mount a shared layer twice, making
-  `satisfied_by`/`from_formation` input-order-dependent (#208; dedup fix targeted
-  at v0.26). Added the executed counterexample and a route-drift guard for
-  `VerificationPolicy`, and strengthened T6's evidence to cite the stage-7
-  enforcement that makes the label meaningful, plus a test that the agent's
-  production verifier uses the *embedded* key.
+- Added a route-drift guard for `VerificationPolicy`, strengthened T6's evidence
+  to cite the stage-7 enforcement that makes the label meaningful, and added a
+  test that the agent's production verifier uses the *embedded* key. Renamed the
+  verification label (see Changed above).
 
 ## [0.25.0] - 2026-09-14
 

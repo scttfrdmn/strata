@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,13 +107,76 @@ func (r *Resolver) stage2ExpandFormations(
 
 			layers = append(layers, resolvedLayer{
 				manifest:      manifest,
-				satisfiedBy:   ref.String(),
-				fromFormation: ref.Formation,
+				satisfiedBy:   []string{ref.String()},
+				fromFormation: []string{ref.Formation},
 			})
 		}
 	}
 
 	return layers, remaining, nil
+}
+
+// dedupLayers collapses layers that resolve to the same content — the same
+// manifest ID — into a single instance, merging their provenance. Two formations
+// that both include a layer would otherwise each contribute an instance, so the
+// same squashfs is mounted twice and its satisfied_by/from_formation follow the
+// order the formations appear in `software:` (#208). A layer from one registry
+// resolves to one manifest for a given (name, version, arch, abi), so equal IDs
+// are equal content; the surviving instance's satisfiedBy/fromFormation become
+// the sorted union of every requester, independent of input order.
+func dedupLayers(layers []resolvedLayer) []resolvedLayer {
+	byID := make(map[string]int, len(layers))
+	out := make([]resolvedLayer, 0, len(layers))
+	for _, rl := range layers {
+		if idx, seen := byID[rl.manifest.ID]; seen {
+			out[idx].satisfiedBy = mergeSorted(out[idx].satisfiedBy, rl.satisfiedBy)
+			out[idx].fromFormation = mergeSorted(out[idx].fromFormation, rl.fromFormation)
+			continue
+		}
+		byID[rl.manifest.ID] = len(out)
+		out = append(out, rl)
+	}
+	return out
+}
+
+// mergeSorted returns the sorted, de-duplicated union of two string slices with
+// empty strings dropped — the deterministic merge of two layers' provenance.
+func mergeSorted(a, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	for _, s := range a {
+		if s != "" {
+			seen[s] = struct{}{}
+		}
+	}
+	for _, s := range b {
+		if s != "" {
+			seen[s] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for s := range seen {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sharesFormation reports whether two layers came from at least one common
+// formation — the "pre-validated as a unit" exemption from conflict checks. A
+// deduped layer can belong to several formations, so this is set intersection
+// rather than the string equality it replaced.
+func sharesFormation(a, b resolvedLayer) bool {
+	for _, fa := range a.fromFormation {
+		for _, fb := range b.fromFormation {
+			if fa != "" && fa == fb {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // stage3ResolveSoftware resolves each regular SoftwareRef to a LayerManifest.
@@ -146,7 +210,7 @@ func (r *Resolver) stage3ResolveSoftware(
 
 		layers = append(layers, resolvedLayer{
 			manifest:    manifest,
-			satisfiedBy: ref.String(),
+			satisfiedBy: []string{ref.String()},
 		})
 	}
 
@@ -209,8 +273,8 @@ func (r *Resolver) stage5DetectConflicts(layers []resolvedLayer) error {
 			if prevs, exists := capProviders[cap.Name]; exists {
 				for _, prev := range prevs {
 					prevLayer := layers[prev]
-					// Layers within the same formation are pre-validated — exempt.
-					if rl.fromFormation != "" && rl.fromFormation == prevLayer.fromFormation {
+					// Layers sharing a formation are pre-validated as a unit — exempt.
+					if sharesFormation(rl, prevLayer) {
 						continue
 					}
 					// Versioned layout: paths don't overlap; Lmod prevents
@@ -239,8 +303,8 @@ func (r *Resolver) stage5DetectConflicts(layers []resolvedLayer) error {
 			if len(layers[j].manifest.ContentManifest) == 0 {
 				continue
 			}
-			// Exempt same-formation pairs.
-			if layers[i].fromFormation != "" && layers[i].fromFormation == layers[j].fromFormation {
+			// Exempt pairs sharing a formation.
+			if sharesFormation(layers[i], layers[j]) {
 				continue
 			}
 			mJ := &build.ContentManifest{
@@ -535,8 +599,8 @@ func (r *Resolver) stage8Assemble(
 		resolvedLayers[i] = spec.ResolvedLayer{
 			LayerManifest: *rl.manifest,
 			MountOrder:    i + 1,
-			SatisfiedBy:   rl.satisfiedBy,
-			FromFormation: rl.fromFormation,
+			SatisfiedBy:   strings.Join(rl.satisfiedBy, ", "),
+			FromFormation: strings.Join(rl.fromFormation, ", "),
 		}
 	}
 

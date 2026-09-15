@@ -83,9 +83,13 @@ func (r *Resolver) warn(format string, args ...any) {
 // resolvedLayer is the internal accumulator for a single resolved layer.
 // It is unexported and used only within the resolver pipeline.
 type resolvedLayer struct {
-	manifest      *spec.LayerManifest
-	satisfiedBy   string // SoftwareRef.String() from the profile
-	fromFormation string // "name@version" if expanded from a formation; empty for standalone refs
+	manifest *spec.LayerManifest
+	// satisfiedBy and fromFormation are sets: a layer requested through more than
+	// one formation is deduped to a single instance (dedupLayers, #208), and its
+	// provenance is the sorted union of every requester and formation, so the
+	// surviving layer records all of them independently of software: order.
+	satisfiedBy   []string // SoftwareRef.String()s that requested this layer
+	fromFormation []string // formation "name@version"s it was expanded from; empty for standalone
 }
 
 // Resolve transforms profile into a fully resolved LockFile.
@@ -124,6 +128,13 @@ func (r *Resolver) Resolve(ctx context.Context, profile *spec.Profile) (*spec.Lo
 	}
 
 	allLayers := append(formationLayers, regularLayers...)
+
+	// Collapse layers that resolve to the same content (e.g. a layer requested
+	// through two formations) into one, merging their provenance. Without this the
+	// same squashfs is mounted twice and its satisfied_by/from_formation follow
+	// software: order (#208). Done before stages 4–8 so conflict detection, the
+	// mount order, and the identity all see the deduped set.
+	allLayers = dedupLayers(allLayers)
 
 	// Stage 4: validate dependency graph — all requirements must be satisfied.
 	if err := r.stage4ValidateGraph(base.Capabilities, allLayers); err != nil {
