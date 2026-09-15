@@ -19,6 +19,7 @@ import (
 
 func newExportCmd() *cobra.Command {
 	var lockfilePath, format, outputPath, tag, cacheDir string
+	var noVerify bool
 
 	cmd := &cobra.Command{
 		Use:   "export --lockfile <lock.yaml> --format oci --output <file.tar>",
@@ -47,7 +48,7 @@ The resulting archive can be loaded with:
 			if cacheDir == "" {
 				cacheDir = defaultCacheDir()
 			}
-			return runExport(context.Background(), lockfilePath, outputPath, tag, cacheDir)
+			return runExport(context.Background(), lockfilePath, outputPath, tag, cacheDir, noVerify)
 		},
 	}
 
@@ -56,10 +57,11 @@ The resulting archive can be loaded with:
 	cmd.Flags().StringVar(&outputPath, "output", "", "output file path (required)")
 	cmd.Flags().StringVar(&tag, "tag", "strata:latest", "image tag to embed in the OCI index")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "layer cache directory (default: ~/.cache/strata/layers)")
+	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "export without verifying the lockfile signature (use on air-gapped systems)")
 	return cmd
 }
 
-func runExport(ctx context.Context, lockfilePath, outputPath, tag, cacheDir string) error {
+func runExport(ctx context.Context, lockfilePath, outputPath, tag, cacheDir string, noVerify bool) error {
 	// Read lockfile.
 	data, err := os.ReadFile(lockfilePath)
 	if err != nil {
@@ -90,6 +92,14 @@ func runExport(ctx context.Context, lockfilePath, outputPath, tag, cacheDir stri
 			Path:       lp.Path,
 			MountOrder: lp.MountOrder,
 		})
+	}
+
+	// Verify the lockfile as a signed set and every layer before packaging it
+	// into a portable image: export consumes the set exactly as run mounts it, so
+	// a tampered or mix-and-match lockfile must not become a signed-looking image
+	// here (#101). --no-verify is the air-gapped escape hatch.
+	if err := verifyConsumedLockfile(ctx, &lf, paths, noVerify); err != nil {
+		return fmt.Errorf("export: %w", err)
 	}
 
 	fmt.Printf("exporting %d layer(s) to %s...\n", len(paths), outputPath)

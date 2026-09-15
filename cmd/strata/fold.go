@@ -177,6 +177,19 @@ func runFold(ctx context.Context, lockfilePath, name, ver, ejectDir, abi, arch, 
 		return fmt.Errorf("fold: %w", err)
 	}
 
+	// Verify the source lockfile as a signed set before merging it into a layer
+	// that will itself be signed and pushed. Without this, fold is a confused
+	// deputy: an attacker's tampered or mix-and-match lockfile (#101) would be
+	// merged and then signed with the production key, laundering unverified input
+	// into a trusted, pushed artifact. Gated on signing — a --no-sign fold
+	// produces no trusted artifact and is the dev/local escape hatch, as is
+	// --eject (a plain directory, explicitly outside the runtime trust chain).
+	if !noSign {
+		if err := verifyConsumedLockfile(ctx, &lf, layerPaths, false); err != nil {
+			return fmt.Errorf("fold: refusing to sign a merged layer built from an unverified lockfile: %w", err)
+		}
+	}
+
 	// Build registry client.
 	client, err := newClientForURL(reg)
 	if err != nil {

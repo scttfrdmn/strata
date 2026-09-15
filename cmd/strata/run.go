@@ -40,12 +40,15 @@ unprivileged (FUSE) contexts.
 Layer files are cached in the user cache directory and reused on
 subsequent runs.
 
-Every layer is verified before anything is mounted: its bundle must be
-readable, parse, carry a Rekor entry, and attest the digest the lockfile
-pins, and its signature must verify with cosign against --key. A layer
-that fails any of those is not mounted.
+The lockfile is verified as a signed set before anything is mounted: its
+signature must verify with cosign against --key, so a set no maintainer
+attested — a mix-and-match of individually-valid layers — is refused, and
+so is an unsigned lockfile. Every layer is then verified individually: its
+bundle must be readable, parse, carry a Rekor entry, and attest the digest
+the lockfile pins, and its signature must verify against --key. Anything
+that fails is not mounted.
 
-Pass --no-verify to mount unverified layers on air-gapped systems. It
+Pass --no-verify to mount an unverified lockfile on air-gapped systems. It
 reports, on stderr, that verification was skipped — before this was a
 flag that disabled nothing, because nothing was enabled.`,
 		Args: cobra.ArbitraryArgs,
@@ -176,9 +179,16 @@ type runLayerCheck struct {
 	bundle  *trust.Bundle
 }
 
-// verifyRunLayers refuses to let runRun proceed unless every layer about to be
-// mounted verifies. It reports all failures rather than the first, because a
-// user fixing a lockfile wants the whole list.
+// verifyRunLayers refuses to let runRun proceed unless the lockfile verifies as
+// a signed set *and* every layer about to be mounted verifies. It reports all
+// failures rather than the first, because a user fixing a lockfile wants the
+// whole list.
+//
+// The set-signature check (verifyRunSet, #101) runs alongside the per-layer
+// checks once the verifier is built, so a mix-and-match of individually-valid
+// layers — which no per-layer check can catch — is refused, and so is an
+// unsigned lockfile. It runs only after the keyless structural checks pass, so
+// those stay reachable on a machine with no cosign, as before.
 //
 // noVerify skips the whole step and says so on stderr. That announcement is
 // load-bearing: the defect this replaces (#55) was a --no-verify flag that
@@ -204,6 +214,16 @@ func verifyRunLayers(ctx context.Context, lf *spec.LockFile, paths []overlay.Lay
 		if err != nil {
 			failures = append(failures, err.Error())
 		} else {
+			// Verify the lockfile as a signed set, not only layer by layer. The
+			// per-layer checks above prove each squashfs matches a signed bundle,
+			// but not that this *combination* was ever attested: an attacker who
+			// composes individually-valid, individually-signed layers into a set no
+			// maintainer produced passes every per-layer check (#101, T9). The set
+			// signature — over the whole lockfile payload — is what catches that,
+			// and an unsigned lockfile fails it too, so "unverified set" is now a
+			// refusal here as it already is on the agent (agent.go) and in strata
+			// verify. The same cosign key verifies both the layers and the set.
+			failures = append(failures, verifyRunSet(ctx, lf, v)...)
 			failures = append(failures, verifyRunSignatures(ctx, checks, v)...)
 		}
 	}
@@ -295,6 +315,45 @@ func isBundleSHA256(alg string) bool {
 		return true
 	}
 	return false
+}
+
+// verifyConsumedLockfile verifies a lockfile as a signed set and every layer it
+// pins before a command that is not strata run consumes them — export and fold,
+// which both hand fetched layers straight to artifact assembly. It verifies
+// against the binary's embedded trust anchor (#62), the public half of the
+// production signing key, so verification is on by default with no flag, as on
+// the agent; strata run keeps its explicit --key because its tests pin that
+// contract. It delegates to verifyRunLayers, so the set-signature and per-layer
+// checks are identical across every consumption path (#101).
+//
+// noVerify skips it and says so on stderr, the one escape hatch, matching run.
+func verifyConsumedLockfile(ctx context.Context, lf *spec.LockFile, paths []overlay.LayerPath, noVerify bool) error {
+	if noVerify {
+		// verifyRunLayers announces the skip; keyRef is unread on this path.
+		return verifyRunLayers(ctx, lf, paths, true, "")
+	}
+	keyPath, cleanup, err := trust.WriteEmbeddedKeyFile()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return verifyRunLayers(ctx, lf, paths, false, keyPath)
+}
+
+// verifyRunSet verifies the lockfile's own set signature with v and returns the
+// failure as a one-element slice, or nil. It is a thin wrapper over
+// trust.VerifyLockFile so runRun's pre-mount step turns a set-verification error
+// into the same refusal a per-layer failure produces. v is a parameter, as in
+// verifyRunSignatures, so a test drives both directions without cosign on PATH.
+//
+// An unsigned lockfile (no bundle) fails here — VerifyLockFile treats it as a
+// refusal, not a trivially-valid set — which is what makes verification
+// mandatory rather than opt-in on the run path (#101).
+func verifyRunSet(ctx context.Context, lf *spec.LockFile, v trust.Verifier) []string {
+	if err := trust.VerifyLockFile(ctx, lf, v); err != nil {
+		return []string{fmt.Sprintf("lockfile set signature: %v", err)}
+	}
+	return nil
 }
 
 // verifyRunSignatures checks each layer's signature with v.
