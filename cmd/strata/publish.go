@@ -89,8 +89,16 @@ func parsePublishableLockFile(path string) (*spec.LockFile, error) {
 	if lf.HasMutableLayer() {
 		return nil, fmt.Errorf("publish: lockfile has a mutable upper layer (dirty environment) — run \"strata freeze-layer\" to convert it into a signed squashfs layer before publishing; publishing now would mint a DOI for an environment nothing has attested")
 	}
-	if !lf.IsSigned() {
-		return nil, fmt.Errorf("publish: lockfile is not signed — it carries no Rekor entry, so there is no attestation to publish; sign the lockfile before publishing")
+	// Verify the lockfile's own signature, not merely that a Rekor entry is
+	// present: publishing mints a permanent DOI, so the set must actually be
+	// signed by the trusted key. A tampered lockfile carries a non-empty
+	// rekor_entry but fails this check, which IsSigned() (a presence predicate,
+	// #60) would not catch.
+	if lf.Bundle == "" {
+		return nil, fmt.Errorf("publish: lockfile is not signed — run \"strata sign\" first; publishing mints a permanent DOI, so it must attest a signed environment")
+	}
+	if err := verifyLockfileSignature(context.Background(), lf); err != nil {
+		return nil, fmt.Errorf("publish: lockfile signature does not verify, refusing to mint a DOI: %w", err)
 	}
 	return lf, nil
 }
