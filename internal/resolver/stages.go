@@ -127,11 +127,28 @@ func (r *Resolver) stage2ExpandFormations(
 // resolves to one manifest for a given (name, version, arch, abi), so equal IDs
 // are equal content; the surviving instance's satisfiedBy/fromFormation become
 // the sorted union of every requester, independent of input order.
-func dedupLayers(layers []resolvedLayer) []resolvedLayer {
+func dedupLayers(layers []resolvedLayer) ([]resolvedLayer, error) {
 	byID := make(map[string]int, len(layers))
 	out := make([]resolvedLayer, 0, len(layers))
 	for _, rl := range layers {
 		if idx, seen := byID[rl.manifest.ID]; seen {
+			// Collapse only genuine duplicates — the same content. The manifest ID
+			// is not itself authenticated: layer verification checks the squashfs
+			// SHA256 and its cosign signature over the bytes (#146), not the ID a
+			// registry stamps on the manifest. So two resolved layers sharing an ID
+			// but carrying different digests is a registry-integrity error, not a
+			// duplicate — collapsing them would silently drop a requested, separately
+			// authenticated layer from the set the signer then signs, an A1/R3
+			// confused-deputy. Refuse it; a real duplicate has an equal digest.
+			if out[idx].manifest.SHA256 != rl.manifest.SHA256 {
+				return nil, &ResolutionError{
+					Stage: "dedup",
+					Code:  "LAYER_ID_COLLISION",
+					Message: fmt.Sprintf(
+						"two resolved layers share id %q but have different content (sha256 %q vs %q) — a registry integrity error; refusing to collapse them, which would drop a requested layer from the signed set",
+						rl.manifest.ID, out[idx].manifest.SHA256, rl.manifest.SHA256),
+				}
+			}
 			out[idx].satisfiedBy = mergeSorted(out[idx].satisfiedBy, rl.satisfiedBy)
 			out[idx].fromFormation = mergeSorted(out[idx].fromFormation, rl.fromFormation)
 			continue
@@ -139,7 +156,7 @@ func dedupLayers(layers []resolvedLayer) []resolvedLayer {
 		byID[rl.manifest.ID] = len(out)
 		out = append(out, rl)
 	}
-	return out
+	return out, nil
 }
 
 // mergeSorted returns the sorted, de-duplicated union of two string slices with

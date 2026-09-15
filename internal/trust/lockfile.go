@@ -79,10 +79,16 @@ func SignLockFile(ctx context.Context, lf *spec.LockFile, signer Signer) error {
 	if err != nil {
 		return fmt.Errorf("trust: marshaling lockfile bundle: %w", err)
 	}
-	lf.Bundle = string(data)
-	if idx, ok := bundle.RekorLogIndex(); ok {
-		lf.RekorEntry = strconv.FormatInt(idx, 10)
+	// Require a transparency-log entry rather than letting a stale RekorEntry
+	// survive a signer that returns none: the chosen anchor is key + Rekor, and
+	// RekorEntry is the artifact's public provenance pointer (exported as
+	// lockfile_rekor_entry). Derive it from the bundle so it cannot drift.
+	idx, ok := bundle.RekorLogIndex()
+	if !ok {
+		return fmt.Errorf("trust: signer returned a bundle with no transparency-log entry — a lockfile signature must be logged to Rekor")
 	}
+	lf.Bundle = string(data)
+	lf.RekorEntry = strconv.FormatInt(idx, 10)
 	return nil
 }
 
@@ -113,6 +119,20 @@ func VerifyLockFile(ctx context.Context, lf *spec.LockFile, verifier Verifier) e
 
 	if err := verifier.Verify(ctx, path, bundle); err != nil {
 		return fmt.Errorf("trust: lockfile signature verification failed: %w", err)
+	}
+	// Bind the claimed transparency-log pointer to the bundle. RekorEntry is
+	// excluded from the signed payload — it cannot be signed before it exists — so
+	// a valid set signature does not by itself vouch for lf.RekorEntry, yet
+	// ProvenanceRecord publishes it as lockfile_rekor_entry (a citation a paper or
+	// DOI record may treat as authoritative). Reject a value that does not match
+	// the signed bundle's own log index, so "signature verified" cannot accompany
+	// a falsified provenance pointer.
+	idx, ok := bundle.RekorLogIndex()
+	if !ok {
+		return fmt.Errorf("trust: lockfile bundle carries no transparency-log entry")
+	}
+	if lf.RekorEntry != strconv.FormatInt(idx, 10) {
+		return fmt.Errorf("trust: lockfile rekor_entry %q does not match the signed bundle's log index %d", lf.RekorEntry, idx)
 	}
 	return nil
 }

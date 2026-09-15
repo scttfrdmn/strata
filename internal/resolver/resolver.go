@@ -136,8 +136,12 @@ func (r *Resolver) Resolve(ctx context.Context, profile *spec.Profile) (*spec.Lo
 	// through two formations) into one, merging their provenance. Without this the
 	// same squashfs is mounted twice and its satisfied_by/from_formation follow
 	// software: order (#208). Done before stages 4–8 so conflict detection, the
-	// mount order, and the identity all see the deduped set.
-	allLayers = dedupLayers(allLayers)
+	// mount order, and the identity all see the deduped set. An ID collision with
+	// differing content is refused rather than collapsed (A1/R3).
+	allLayers, err = dedupLayers(allLayers)
+	if err != nil {
+		return nil, err
+	}
 
 	// Stage 4: validate dependency graph — all requirements must be satisfied.
 	if err := r.stage4ValidateGraph(base.Capabilities, allLayers); err != nil {

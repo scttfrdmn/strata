@@ -74,6 +74,29 @@ func TestVerifyLockFile_RejectsTamper(t *testing.T) {
 	}
 }
 
+// TestVerifyLockFile_RejectsRekorEntryMismatch: RekorEntry is excluded from the
+// signed payload, so the set signature keeps verifying if only RekorEntry is
+// altered — but it is the lockfile's public transparency pointer, so verification
+// must still reject a value that disagrees with the signed bundle's own log index.
+func TestVerifyLockFile_RejectsRekorEntryMismatch(t *testing.T) {
+	ctx := context.Background()
+	lf := signedTestLockfile(t)
+	if err := trust.SignLockFile(ctx, lf, &trust.FakeSigner{NextLogIndex: 42}); err != nil {
+		t.Fatalf("SignLockFile: %v", err)
+	}
+	if lf.RekorEntry != "42" {
+		t.Fatalf("SignLockFile recorded rekor_entry %q, want 42", lf.RekorEntry)
+	}
+
+	lf.RekorEntry = "999999" // falsify only the transparency pointer
+
+	if err := trust.VerifyLockFile(ctx, lf, &trust.FakeVerifier{}); err == nil {
+		t.Fatal("VerifyLockFile accepted a lockfile whose rekor_entry does not match its bundle")
+	} else if !strings.Contains(err.Error(), "rekor_entry") {
+		t.Errorf("error does not name the rekor_entry mismatch: %v", err)
+	}
+}
+
 // TestVerifyLockFile_Unsigned: a lockfile with no bundle is refused, not treated
 // as trivially valid.
 func TestVerifyLockFile_Unsigned(t *testing.T) {
