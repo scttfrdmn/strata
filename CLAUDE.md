@@ -91,3 +91,10 @@ closed it in that same release (#172). So before `git tag` on any release:
 2. Run `go run ./cmd/propgen` and confirm it reports `no drift`.
 3. Confirm the §3 prose and the distribution header in the preamble match the
    RC (both are hand-authored; `propgen` does not touch them).
+4. For a release that ships signing/verification, run `make verify-signing-key`
+   (needs the `strata` profile) to assert the public key embedded in the binary
+   (`internal/trust/keys/cosign.pub`) is still the public half of the KMS signing
+   key `alias/strata-signing-key`. Verification uses the embedded key with no AWS
+   call, so nothing in build or test catches the two drifting apart (#62/#220);
+   the target compares the canonical DER and fails loudly — a mismatch, or an
+   unreachable KMS, is a "do not tag", not a warning.

@@ -1,4 +1,4 @@
-.PHONY: build test cover lint vet vuln check clean offline-resolve known-open
+.PHONY: build test cover lint vet vuln check clean offline-resolve known-open verify-signing-key
 
 BINARY  := strata
 GOFLAGS := -v
@@ -39,6 +39,16 @@ vuln:
 # (#148).
 known-open:
 	@bash hack/known-open.sh
+
+# verify-signing-key asserts the public key embedded in the binary
+# (internal/trust/keys/cosign.pub) is the public half of the KMS signing key
+# alias/strata-signing-key. Verification uses the embedded key with no AWS call,
+# so nothing in build or test proves the embedded bytes still match the key that
+# signs (#62); this is that proof. Needs AWS credentials for the strata profile —
+# it is a release gate, not part of `check`, and fails loudly (not silently) when
+# it cannot reach KMS. Run before tagging any release that ships signing.
+verify-signing-key:
+	@bash scripts/verify-signing-key.sh
 
 check: vet lint test
 
