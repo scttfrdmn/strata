@@ -186,6 +186,10 @@ func lockFileRoutes() []fieldRoute {
 				"enforced by TestDeclaredProvenance_NoInTreeReader, not asserted here"},
 		{name: "Bundle", hashed: false, route: "inert",
 			why: "the lockfile's own cosign bundle path; no assembler reads it"},
+		{name: "VerificationPolicy", hashed: false, route: "inert",
+			why: "records what the resolver checked about attestations (#100); read by a " +
+				"consumer inspecting the artifact, not by any assembler — two lockfiles " +
+				"whose only difference is this label assemble the same environment"},
 		{name: "Base", hashed: false, route: "nested", nested: true,
 			why: "enumerated by resolvedBaseRoutes"},
 		{name: "Layers", hashed: true, route: "content",
