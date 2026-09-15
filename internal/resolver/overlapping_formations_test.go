@@ -2,29 +2,25 @@ package resolver_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/scttfrdmn/strata/internal/registry"
 	"github.com/scttfrdmn/strata/spec"
 )
 
-// TestResolve_OverlappingFormations_R2Counterexample pins the #208 defect and is
-// R2's executed counterexample over a domain the v0.25.0 differential test did
-// not reach (it used only standalone, distinct layers). Two formations that
-// share a layer:
+// TestResolve_OverlappingFormations is #208 fixed, and R2's instrument over the
+// domain the v0.25.0 differential test could not reach. Two formations that share
+// a layer now resolve to ONE instance of it, with provenance unioned, so:
 //
-//   - mount that layer twice (a correctness defect — the same squashfs appears
-//     in the stack twice), and
-//   - attach satisfied_by/from_formation to the duplicates in software: order,
-//     which refutes R2 (those fields are not among its permitted elisions),
-//     while EnvironmentID stays invariant (the hashed fields are identical).
+//   - the shared squashfs is mounted once, not twice (correctness), and
+//   - the full lockfile is permutation-invariant (R2) — the surviving layer's
+//     satisfied_by/from_formation are the sorted union of both formations, the
+//     same regardless of software: order.
 //
-// It is an exclusion control: it asserts today's behaviour, so #208's dedup fix
-// reddens it and forces R2's register row to be re-derived rather than the
-// refutation silently lapsing. If this test fails with "did #208 land", invert
-// it (equal serialisations, one instance of the shared layer) and move R2 back
-// to ENFORCED with the overlapping-formation domain covered.
-func TestResolve_OverlappingFormations_R2Counterexample(t *testing.T) {
+// Before #208 this reproduced the refutation: python mounted twice, and the
+// two instances' provenance swapped with input order.
+func TestResolve_OverlappingFormations(t *testing.T) {
 	newStore := func() *registry.MemoryStore {
 		s := registry.NewMemoryStore()
 		s.AddLayer(signedLayer("python", "3.11.9", "linux-gnu-2.34",
@@ -50,27 +46,37 @@ func TestResolve_OverlappingFormations_R2Counterexample(t *testing.T) {
 	forward := resolve(formationRef("aformation@1.0"), formationRef("bformation@1.0"))
 	reverse := resolve(formationRef("bformation@1.0"), formationRef("aformation@1.0"))
 
-	// The correctness half: the shared python layer is mounted twice today.
+	// The shared python layer is now mounted once.
+	var pythonFwd *spec.ResolvedLayer
 	pythonCount := 0
-	for _, l := range forward.Layers {
-		if l.Name == "python" {
+	for i := range forward.Layers {
+		if forward.Layers[i].Name == "python" {
 			pythonCount++
+			pythonFwd = &forward.Layers[i]
 		}
 	}
-	if pythonCount != 2 {
-		t.Fatalf("expected the pre-#208 double-mount (python x2), got python x%d — did #208 land? invert this test", pythonCount)
+	if pythonCount != 1 {
+		t.Fatalf("shared python layer mounted %d times, want 1 (#208 dedup)", pythonCount)
 	}
 
-	// The identity is invariant — the hashed fields (name/version/ID/SHA256) are
-	// the same multiset — which is why R7's generator cannot see this.
-	if forward.EnvironmentID() != reverse.EnvironmentID() {
-		t.Errorf("EnvironmentID differs across permutation: %s vs %s", forward.EnvironmentID(), reverse.EnvironmentID())
+	// Its provenance is the sorted union of both formations — deterministic.
+	if !strings.Contains(pythonFwd.SatisfiedBy, "aformation@1.0") ||
+		!strings.Contains(pythonFwd.SatisfiedBy, "bformation@1.0") {
+		t.Errorf("deduped layer does not record both requesters: satisfied_by = %q", pythonFwd.SatisfiedBy)
+	}
+	if pythonFwd.FromFormation != "aformation@1.0, bformation@1.0" {
+		t.Errorf("from_formation is not the sorted union: %q", pythonFwd.FromFormation)
 	}
 
-	// The R2 half: eliding the input/clock fields, the full serialisations still
-	// differ — satisfied_by/from_formation follow software: order. When #208
-	// dedups, these become equal and this assertion must be inverted.
-	if serializeEliding(t, forward, true) == serializeEliding(t, reverse, true) {
-		t.Fatal("overlapping-formation serialisations are now permutation-invariant — did #208 land? invert this test and re-derive R2")
+	// R2: the whole lockfile is permutation-invariant once the input/clock fields
+	// are elided — the refutation this test replaced.
+	if serializeEliding(t, forward, true) != serializeEliding(t, reverse, true) {
+		t.Errorf("permuting overlapping formations changed the lockfile (R2):\n--- forward\n%s\n--- reverse\n%s",
+			serializeEliding(t, forward, true), serializeEliding(t, reverse, true))
+	}
+
+	// And the identity is invariant and non-empty.
+	if id := forward.EnvironmentID(); id == "" || id != reverse.EnvironmentID() {
+		t.Errorf("EnvironmentID not stable across permutation: %q vs %q", id, reverse.EnvironmentID())
 	}
 }
