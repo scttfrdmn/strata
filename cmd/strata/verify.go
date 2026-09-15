@@ -52,6 +52,22 @@ Requires network access to pypi.org.`,
 			failures := collectPresenceFailures(lf)
 			failures = append(failures, collectBundleFailures(lf)...)
 
+			// Verify the lockfile's own signature — the whole set — against the
+			// embedded public key, when the lockfile carries one. This is the real
+			// VerifyLockFile #60 found missing, and the set attestation that makes a
+			// mix-and-match of individually-valid layers detectable (#101). The
+			// bundle carries its own Rekor inclusion proof, so this needs no AWS.
+			lockfileSigned := lf.Bundle != ""
+			if lockfileSigned {
+				v, cleanup, err := trust.EmbeddedKeyVerifier()
+				defer cleanup()
+				if err != nil {
+					failures = append(failures, fmt.Sprintf("lockfile signature: %v", err))
+				} else if verr := trust.VerifyLockFile(context.Background(), lf, v); verr != nil {
+					failures = append(failures, fmt.Sprintf("lockfile signature: %v", verr))
+				}
+			}
+
 			if rekorFlag && len(failures) == 0 {
 				failures = append(failures,
 					verifyRekorEntries(context.Background(), lf, &trust.RekorHTTPClient{})...)
@@ -81,10 +97,17 @@ Requires network access to pypi.org.`,
 			if packagesFlag && pkgCount > 0 {
 				pkgSuffix = fmt.Sprintf(", %d package(s) verified against PyPI", pkgCount)
 			}
+			// The lockfile-signature clause is the set attestation: a verified
+			// signature means this exact layer set was signed, so a mix-and-match is
+			// caught here even when every individual layer verifies.
+			sigSuffix := "; lockfile unsigned (no set signature — run 'strata sign')"
+			if lockfileSigned {
+				sigSuffix = "; lockfile signature verified"
+			}
 			if rekorFlag {
-				fmt.Printf("ok: %s (%d layer(s) verified against the transparency log%s)\n", args[0], len(lf.Layers), pkgSuffix)
+				fmt.Printf("ok: %s (%d layer(s) verified against the transparency log%s%s)\n", args[0], len(lf.Layers), pkgSuffix, sigSuffix)
 			} else {
-				fmt.Printf("ok: %s (%d layer(s): bundle well-formed, attestation present%s — layers not verified against the transparency log; run 'strata verify --rekor')\n", args[0], len(lf.Layers), pkgSuffix)
+				fmt.Printf("ok: %s (%d layer(s): bundle well-formed, attestation present%s — layers not verified against the transparency log; run 'strata verify --rekor'%s)\n", args[0], len(lf.Layers), pkgSuffix, sigSuffix)
 			}
 			return nil
 		},
