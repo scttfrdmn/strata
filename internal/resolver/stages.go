@@ -450,7 +450,7 @@ func (r *Resolver) verificationPolicy(layers []resolvedLayer) string {
 	if r.cfg.AllowUnsignedOffline && anyUnsigned(layers) {
 		return spec.VerifyUnsignedOffline
 	}
-	return spec.VerifyAttestationPresent
+	return spec.VerifyAttestationReferencesPresent
 }
 
 // anyUnsigned reports whether any layer lacks a bundle or Rekor entry, so the

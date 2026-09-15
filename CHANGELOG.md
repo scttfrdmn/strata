@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Follow-ups to the v0.25.0 adversarial trust-chain review._
+
+### Security
+- **The EC2 agent and `pkg/strata` now validate the lockfile** before acting on
+  it. The review found `LockFile.Validate()` ran only at the four CLI boundaries;
+  `Agent.Run` (immediately after `Acquire`), `UploadLockfile`, and
+  `LockfileUserData` now validate too, so a structurally invalid lockfile
+  (duplicate `mount_order`, malformed digest, unsafe layer id) cannot reach the
+  boot path — the agent signals failure instead of mounting it.
+
+### Changed
+- **Renamed the resolver verification label `attestation-present` →
+  `attestation-references-present`** so it cannot be read as "cryptographically
+  verified": a resolve establishes the bundle/Rekor *references* are present, not
+  that they are valid signatures (they are verified at `strata verify --rekor`
+  and `strata run`).
+
+### Fixed (register / evidence)
+- R2 returned to `REFUTED`: the v0.25.0 differential fixture used only standalone
+  layers, and overlapping formations mount a shared layer twice, making
+  `satisfied_by`/`from_formation` input-order-dependent (#208; dedup fix targeted
+  at v0.26). Added the executed counterexample and a route-drift guard for
+  `VerificationPolicy`, and strengthened T6's evidence to cite the stage-7
+  enforcement that makes the label meaningful, plus a test that the agent's
+  production verifier uses the *embedded* key.
+
 ## [0.25.0] - 2026-09-14
 
 _Milestone: "the trust chain is real." The verifier's trust anchor, the honesty of

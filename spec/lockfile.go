@@ -12,9 +12,15 @@ import (
 // --rekor and strata run, where the bytes exist — #85); these two values are
 // what a resolve can honestly claim.
 const (
-	// VerifyAttestationPresent: every layer named a well-formed Sigstore bundle
-	// and Rekor entry, checked for presence at resolve time.
-	VerifyAttestationPresent = "attestation-present"
+	// VerifyAttestationReferencesPresent: every layer named a bundle and a Rekor
+	// entry, and resolution refused any layer that did not (stage 7 in strict
+	// mode). The name says references, not attestation, deliberately: resolution
+	// holds bundle URIs, not bytes, so it establishes that the pointers are
+	// present — not that the bundle they point at is a valid signature. Bundle
+	// syntax and signature are verified later, at the boundaries that hold the
+	// bytes (strata verify --rekor, strata run). A consumer must not read this
+	// label as "cryptographically verified".
+	VerifyAttestationReferencesPresent = "attestation-references-present"
 	// VerifyUnsignedOffline: at least one layer was accepted with no bundle or
 	// Rekor entry, on the offline-catalog path (AllowUnsignedOffline). A lockfile
 	// carrying this was not a trust decision.
