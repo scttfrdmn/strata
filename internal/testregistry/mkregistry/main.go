@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Command mkregistry writes the testregistry fixture into a directory, so that
 // an offline resolve can be reproduced from a shell rather than only from a Go
 // test:

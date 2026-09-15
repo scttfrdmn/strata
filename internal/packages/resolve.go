@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package packages resolves package manager declarations to exact pinned versions.
 //
 // It queries public registries (PyPI for pip, crandb for CRAN) to find the

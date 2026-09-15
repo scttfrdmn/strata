@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package registry implements the Strata layer catalog client.
 //
 // The registry is the S3-backed catalog of signed layer manifests, formation

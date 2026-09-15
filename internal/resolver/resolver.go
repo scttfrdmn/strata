@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package resolver implements the 8-stage Strata resolution pipeline.
 //
 // The resolver transforms a *spec.Profile into a *spec.LockFile. It wires

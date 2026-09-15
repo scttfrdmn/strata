@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package agent implements the Strata instance bootstrap sequence.
 //
 // The agent runs as a systemd service (strata-agent.service) at instance boot.

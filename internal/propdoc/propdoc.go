@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package propdoc derives the Status column of PROPERTIES.md from that
 // document's own refutation register, so that one fact has one source.
 //

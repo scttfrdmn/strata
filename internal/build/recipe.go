@@ -1,3 +1,6 @@
+// Copyright 2026 Scott Friedman
+// SPDX-License-Identifier: Apache-2.0
+
 // Package build defines the layer build pipeline and recipe contract.
 //
 // Layers are pre-built, pre-validated binary artifacts. They are never built
