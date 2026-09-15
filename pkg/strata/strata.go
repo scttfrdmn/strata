@@ -162,15 +162,16 @@ func (c *Client) Resolve(ctx context.Context, profile *spec.Profile, opts Resolv
 // UploadLockfile requires a Client created with NewClient (it needs a real
 // S3Client).
 func (c *Client) UploadLockfile(ctx context.Context, lockfile *spec.LockFile) (string, error) {
-	if c.s3c == nil {
-		return "", fmt.Errorf("strata: UploadLockfile requires an S3-backed Client (use NewClient)")
-	}
-	// Validate before persisting: a lockfile uploaded here is fetched and mounted
-	// by the agent, so the library route must not be able to publish a
+	// Validate before anything else: a lockfile uploaded here is fetched and
+	// mounted by the agent, so the library route must not be able to publish a
 	// structurally invalid one (malformed digest, unsafe layer id, duplicate
 	// mount_order). The CLI boundaries validate; this closes the library path.
+	// It runs before the S3-client check so the input is judged on its own terms.
 	if err := lockfile.Validate(); err != nil {
 		return "", fmt.Errorf("strata: %w", err)
+	}
+	if c.s3c == nil {
+		return "", fmt.Errorf("strata: UploadLockfile requires an S3-backed Client (use NewClient)")
 	}
 	uri, err := c.s3c.PutLockfile(ctx, lockfile)
 	if err != nil {
