@@ -23,8 +23,10 @@ adversarial trust-chain review._
   - The public signing key is now shared across binaries in `internal/trust`
     (`trust.SignLockFile`/`VerifyLockFile`, `EmbeddedKeyVerifier`), and was
     verified to be the exact public half of the KMS signing key (#62).
-  - Proven end-to-end against the live KMS key + Rekor. Still landing: `publish`
-    and the agent calling `VerifyLockFile`, a freshness bound on the signed
+  - `strata publish` verifies the lockfile's signature before minting a DOI —
+    refusing a tampered set that the old presence check would have passed.
+  - Proven end-to-end against the live KMS key + Rekor. Still landing: the agent
+    calling `VerifyLockFile` before mounting, a freshness bound on the signed
     `resolved_at`, and making verification mandatory (#101).
 
 ### Security
