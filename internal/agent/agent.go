@@ -171,6 +171,19 @@ func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
 	if err := lf.Validate(); err != nil {
 		return fail(fmt.Errorf("agent: invalid lockfile: %w", err))
 	}
+	// Verify the lockfile's own signature — the whole layer set — when it carries
+	// one and a verifier is configured. This is the set attestation that catches a
+	// mix-and-match of individually-valid layers at the boot boundary (#101):
+	// the per-layer checks below all pass for a set no maintainer ever signed, and
+	// only the lockfile signature distinguishes it. Opt-in for now — an unsigned
+	// lockfile is not yet refused (making it mandatory waits on signing being
+	// ubiquitous), but a present-and-invalid signature stops the boot. A nil
+	// verifier means the operator explicitly opted out (#93), which skips this too.
+	if lf.Bundle != "" && a.cfg.Verifier != nil {
+		if err := trust.VerifyLockFile(ctx, lf, a.cfg.Verifier); err != nil {
+			return fail(fmt.Errorf("agent: lockfile signature verification failed: %w", err))
+		}
+	}
 	metrics.LockfileMs = time.Since(t0).Milliseconds()
 	metrics.LayerCount = len(lf.Layers)
 

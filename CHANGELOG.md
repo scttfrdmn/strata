@@ -25,9 +25,11 @@ adversarial trust-chain review._
     verified to be the exact public half of the KMS signing key (#62).
   - `strata publish` verifies the lockfile's signature before minting a DOI —
     refusing a tampered set that the old presence check would have passed.
-  - Proven end-to-end against the live KMS key + Rekor. Still landing: the agent
-    calling `VerifyLockFile` before mounting, a freshness bound on the signed
-    `resolved_at`, and making verification mandatory (#101).
+  - The **EC2 agent** verifies the lockfile signature before fetching or mounting
+    (opt-in: a signed lockfile that fails verification stops the boot; an
+    unsigned one is not yet refused).
+  - Proven end-to-end against the live KMS key + Rekor. Still landing: a freshness
+    bound on the signed `resolved_at` and making verification mandatory (#101).
 
 ### Security
 - **The EC2 agent and `pkg/strata` now validate the lockfile** before acting on
