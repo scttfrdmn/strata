@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Formation signing (#237).** `trust.SignFormation`/`VerifyFormation` sign a
+  formation as a unit — its name, version, ordered layer refs and provided
+  capabilities — and log it to Rekor, the formation analog of the v0.26 lockfile
+  set-signing. `strata sign-formation <formation.yaml>` produces a real
+  `rekor_entry`/`bundle`, replacing the `pending-initial-build` placeholder a
+  formation carries. Signing the *shipped* formations (which reference production
+  layers) follows the layer promotion; this is the mechanism.
+
 ## [0.28.0] - 2026-09-16
 
 _"Freshness & rollback attestation": a signed lockfile now carries a
