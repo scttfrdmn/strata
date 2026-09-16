@@ -68,6 +68,38 @@ func TestRunSignFormation_SignsAndRecords(t *testing.T) {
 	}
 }
 
+// TestNewSignFormationCmd wires the command: it exists under the expected name
+// and exposes a --key flag defaulting to the Strata signing key.
+func TestNewSignFormationCmd(t *testing.T) {
+	cmd := newSignFormationCmd()
+	if cmd.Use != "sign-formation <formation.yaml>" {
+		t.Errorf("Use = %q", cmd.Use)
+	}
+	f := cmd.Flags().Lookup("key")
+	if f == nil {
+		t.Fatal("--key flag is missing")
+	}
+	if f.DefValue != defaultSigningKey {
+		t.Errorf("--key default = %q, want %q", f.DefValue, defaultSigningKey)
+	}
+}
+
+// TestRunSignFormation_ReadAndParseErrors: a missing file and a non-YAML file
+// both fail before any key is touched, rather than signing garbage.
+func TestRunSignFormation_ReadAndParseErrors(t *testing.T) {
+	if err := runSignFormation(filepath.Join(t.TempDir(), "nope.yaml"), "unused"); err == nil {
+		t.Error("runSignFormation accepted a nonexistent file")
+	}
+
+	bad := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(bad, []byte("\tnot: [valid: yaml"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runSignFormation(bad, "unused"); err == nil {
+		t.Error("runSignFormation accepted a file that is not valid YAML")
+	}
+}
+
 // TestRunSignFormation_RejectsNonFormation: a file with no name/version or no
 // layers is not a formation and is refused before any key is touched.
 func TestRunSignFormation_RejectsNonFormation(t *testing.T) {
