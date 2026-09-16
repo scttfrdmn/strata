@@ -127,6 +127,7 @@ func run(ctx context.Context, d agentDeps) error {
 		// decisions in step.
 		PackageInstaller: d.installer,
 		AllowUnverified:  d.allowUnverified,
+		Warnings:         os.Stderr, // boot log records the unattested-packages disclosure (#139)
 	})
 	if err != nil {
 		return err

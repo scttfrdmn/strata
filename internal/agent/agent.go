@@ -91,6 +91,12 @@ type Config struct {
 	PackageInstaller PackageInstaller // optional; nil skips package installation
 	EnvRootDir       string           // defaults to "/" if empty
 
+	// Warnings receives non-fatal agent diagnostics — notably the disclosure that
+	// packages: entries are installed unattested (#139). Optional; nil discards.
+	// cmd/strata-agent sets it to os.Stderr so the machine's boot log records that
+	// the assembled environment left the attested set.
+	Warnings io.Writer
+
 	// AllowUnverified permits booting when Verifier or BundleFetcher is nil.
 	// Default false: the agent refuses to boot rather than mount layers whose
 	// authenticity it cannot check (#93). Only a caller that has made the skip a
@@ -103,6 +109,36 @@ type Config struct {
 // Agent orchestrates the boot sequence for a Strata instance.
 type Agent struct {
 	cfg Config
+}
+
+// warn writes a non-fatal diagnostic to cfg.Warnings if it is set.
+func (a *Agent) warn(format string, args ...any) {
+	if a.cfg.Warnings == nil {
+		return
+	}
+	fmt.Fprintf(a.cfg.Warnings, "warning: "+format+"\n", args...) //nolint:errcheck
+}
+
+// unattestedPackagesWarning returns the boot-time disclosure that a lockfile's
+// package entries are installed outside the layer attestation chain, or "" when
+// there are none (#139). The agent installs these from PyPI/conda-forge/CRAN with
+// no bundle and no Rekor entry, so the assembled environment can contain code no
+// layer signature covers.
+func unattestedPackagesWarning(pkgs []spec.ResolvedPackageSet) string {
+	n := 0
+	for _, ps := range pkgs {
+		n += len(ps.Packages)
+	}
+	if n == 0 {
+		return ""
+	}
+	noun := "entries"
+	if n == 1 {
+		noun = "entry"
+	}
+	return fmt.Sprintf("installing %d package %s (pip/conda/cran) from PyPI/conda-forge/CRAN — "+
+		"these are NOT part of the layer attestation chain (no bundle, no Rekor entry); "+
+		"the assembled environment will contain unattested content", n, noun)
 }
 
 // New creates a new Agent, validating that required config fields are present.
@@ -210,6 +246,12 @@ func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
 
 	// Step 4.5: install packages from lockfile.Packages (if any).
 	if len(lf.Packages) > 0 && a.cfg.PackageInstaller != nil {
+		// Disclose, before installing, that these entries are fetched from
+		// PyPI/conda-forge/CRAN and are outside the layer attestation chain (#139),
+		// so the boot log records that the environment left the attested set.
+		if msg := unattestedPackagesWarning(lf.Packages); msg != "" {
+			a.warn("%s", msg)
+		}
 		if err := a.cfg.PackageInstaller.Install(ctx, lf.Packages, ov.MergedPath); err != nil {
 			_ = ov.Cleanup()
 			return fail(fmt.Errorf("agent: installing packages: %w", err))

@@ -49,6 +49,13 @@ Requires network access to pypi.org.`,
 				return fmt.Errorf("verify: %w", err)
 			}
 
+			// Disclose that packages: entries sit outside the layer attestation
+			// chain (#139), distinct from a layer's missing signature — a fully
+			// layer-verified environment can still contain unattested code.
+			if note := packagesUnattestedNote(lf); note != "" {
+				fmt.Fprintln(os.Stderr, note) //nolint:errcheck
+			}
+
 			failures := collectPresenceFailures(lf)
 			failures = append(failures, collectBundleFailures(lf)...)
 
@@ -134,6 +141,31 @@ var verifyLockfileSignature = func(ctx context.Context, lf *spec.LockFile) error
 	}
 	defer cleanup()
 	return trust.VerifyLockFile(ctx, lf, v)
+}
+
+// packagesUnattestedNote reports that a lockfile's package entries are outside
+// the layer attestation chain, or "" when there are none. This is the disclosure
+// #139 asks strata verify to make: packages: entries are fetched at boot from
+// PyPI/conda-forge/CRAN by strata-agent, with no bundle and no Rekor entry, so an
+// environment whose layers all verify can still contain unattested code. It is a
+// note, not a failure — the layers are genuinely verified; the packages are a
+// separate, disclosed category.
+func packagesUnattestedNote(lf *spec.LockFile) string {
+	n := 0
+	for _, ps := range lf.Packages {
+		n += len(ps.Packages)
+	}
+	if n == 0 {
+		return ""
+	}
+	noun := "entries"
+	if n == 1 {
+		noun = "entry"
+	}
+	return fmt.Sprintf("note: %d package %s (pip/conda/cran) are installed by strata-agent at boot from "+
+		"PyPI/conda-forge/CRAN — they are NOT part of the layer attestation chain (no bundle, no Rekor entry), "+
+		"so this environment includes unattested content; run 'strata verify --packages' to compare recorded "+
+		"pip digests against PyPI", n, noun)
 }
 
 // collectPresenceFailures returns a list of field-presence violation messages.
