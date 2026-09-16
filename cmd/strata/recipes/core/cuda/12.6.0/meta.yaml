@@ -3,6 +3,15 @@ version: "12.6.0"
 tier: core
 description: "NVIDIA CUDA Toolkit 12.6.0 for GPU-accelerated computing."
 abi: linux-gnu-2.34
+sources:
+  - url: https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda_12.6.0_560.28.03_linux.run
+    sha256: 31ab04394e69b14dd8656e2b44c2877db1a0e898dff8a7546a4c628438101b94
+    file: cuda_installer.run
+    arch: x86_64
+  - url: https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda_12.6.0_560.28.03_linux_sbsa.run
+    sha256: 398db7baca17d51ad5035c606714c96380c965fd1742478c743bc6bbb1d8f63c
+    file: cuda_installer.run
+    arch: arm64
 provides:
   - name: cuda
     version: "12.6.0"
