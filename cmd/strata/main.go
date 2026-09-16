@@ -57,6 +57,7 @@ func newRootCmd() *cobra.Command {
 		newExportCmd(),
 		newSearchCmd(),
 		newSignCmd(),
+		newSignFormationCmd(),
 		newVerifyCmd(),
 		newPublishCmd(),
 		newProbeCmd(),
