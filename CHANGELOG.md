@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-16
+
+_"Reproducible inputs": the build and package inputs become as pinned as the
+layers. Recipe sources are pinned by digest and verified before build; the agent
+installs packages against recorded hashes; and what is unattested is disclosed.
+Rebuilding the production registry layers from the newly pinned sources — and
+signing the formations — is in progress; see Notes._
+
+### Added
+- **Recipe source-digest pinning** (#68, #229). `RecipeMeta.Sources` pins each
+  fetched source by SHA-256 (with an optional per-arch field); the build stages
+  and verifies every source into `$STRATA_SOURCES` before `build.sh`, failing on a
+  digest mismatch, so a layer is reproducible from its recipe. All 32 recipes are
+  pinned — arch-independent source tarballs, per-arch binaries (nodejs, julia,
+  miniforge, quarto, CUDA), rust (rewritten from the `rustup | sh` bootstrap to the
+  pinned standalone toolchain), and gcc (source pinned; its
+  `contrib/download_prerequisites` verifies GMP/MPFR/MPC against the pinned
+  source's own SHA-512). A guard fails if a new recipe fetches without pinning. All
+  31 buildable recipes were rebuilt, signed, and pushed for **both x86_64 and
+  arm64** (62 layers) from their pinned sources.
+- **Formation catalog refreshed to 2026.03** (#46). The six formations and the
+  `examples/` reference the current layer versions and resolve.
+
+### Security
+- **The EC2 agent enforces recorded package digests** (#98). pip installs use
+  `--require-hashes`/`--hash` against the recorded wheel SHA-256, and conda refuses
+  a `latest`/empty version — so one `EnvironmentID` no longer installs different
+  bytes on different days.
+- **Unattested `packages:` entries are disclosed** (#139). `strata verify` and the
+  agent boot log state that `packages:` entries are installed from
+  PyPI/conda-forge/CRAN outside the layer attestation chain — distinct from a
+  missing layer signature.
+
+### Fixed
+- **The registry index is concurrency-safe** (#233). Reads were capped at 10 MiB
+  (silently truncating a larger index, so `build_requires` resolved as "not
+  found"), and `PushLayer` upserted the shared index with a racy read-modify-write.
+  Fixed with a 1 GiB read cap and conditional-write (`If-Match`) optimistic
+  concurrency, so parallel builds index safely.
+- Build reliability: failed EC2 builds upload their log to S3, and `TMPDIR` points
+  at the disk-backed root volume (AL2023's tmpfs `/tmp` overflowed large builds
+  such as CUDA).
+
+### Notes
+- Recipe sources are pinned and enforced in this release; **rebuilding the
+  production registry layers from those pinned sources, and signing the formations,
+  are in progress** (validated in a test registry so far). Build reproducibility is
+  not yet complete — the build environment (`dnf` toolchain + AMI packages) is still
+  unpinned (#234), so `PROPERTIES.md` keeps `B2`/`B3` refuted on that ground.
+  Formation signing is #237; migrating layers to the canonical registry layout is
+  tracked separately.
+
 ## [0.26.0] - 2026-09-16
 
 _"The signed trust chain": the lockfile is signed as a whole set, verified by
@@ -2046,7 +2098,8 @@ discharges for the identity cluster._
   `examples/pytorch-jupyter.yaml` with parse and round-trip smoke tests
 - Initial project structure, CI workflow, and tooling
 
-[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/scttfrdmn/strata/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/scttfrdmn/strata/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/scttfrdmn/strata/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/scttfrdmn/strata/compare/v0.23.0...v0.24.0
