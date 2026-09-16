@@ -97,6 +97,15 @@ type Config struct {
 	// the assembled environment left the attested set.
 	Warnings io.Writer
 
+	// MaxAge is the freshness bound (#224, threat T8): the agent refuses to boot a
+	// lockfile resolved longer ago than this. Zero means no bound — the default,
+	// so a frozen/cited environment of any age still boots and only its age is
+	// surfaced. cmd/strata-agent sets it from STRATA_AGENT_MAX_AGE. The bound is
+	// meaningful because resolved_at is inside the signed payload, so a replayed
+	// stale-but-signed lockfile cannot be backdated past it (checked after the
+	// signature verifies).
+	MaxAge time.Duration
+
 	// AllowUnverified permits booting when Verifier or BundleFetcher is nil.
 	// Default false: the agent refuses to boot rather than mount layers whose
 	// authenticity it cannot check (#93). Only a caller that has made the skip a
@@ -117,6 +126,16 @@ func (a *Agent) warn(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(a.cfg.Warnings, "warning: "+format+"\n", args...) //nolint:errcheck
+}
+
+// info writes an informational line to cfg.Warnings if it is set. Unlike warn it
+// carries no "warning:" prefix — used for the freshness note (#224), which is a
+// fact about the environment's age, not a problem in itself.
+func (a *Agent) info(format string, args ...any) {
+	if a.cfg.Warnings == nil {
+		return
+	}
+	fmt.Fprintf(a.cfg.Warnings, format+"\n", args...) //nolint:errcheck
 }
 
 // unattestedPackagesWarning returns the boot-time disclosure that a lockfile's
@@ -219,6 +238,19 @@ func (a *Agent) Run(ctx context.Context) (*BootMetrics, error) {
 		if err := trust.VerifyLockFile(ctx, lf, a.cfg.Verifier); err != nil {
 			return fail(fmt.Errorf("agent: lockfile signature verification failed: %w", err))
 		}
+	}
+	// Freshness (#224, threat T8). Surface how far behind this environment is on
+	// the boot log — always, so a stale but validly-signed lockfile is never
+	// silently booted — and refuse it when a bound is configured. This runs after
+	// the signature check above so the resolved_at it reads is one the signature
+	// binds; an attacker replaying a stale signed lockfile cannot backdate it.
+	// With no MaxAge the refusal is a no-op and only the note is emitted.
+	now := time.Now()
+	if note := lf.FreshnessNote(now); note != "" {
+		a.info("%s", note)
+	}
+	if err := lf.CheckFreshness(a.cfg.MaxAge, now); err != nil {
+		return fail(fmt.Errorf("agent: refusing to boot a stale lockfile: %w", err))
 	}
 	metrics.LockfileMs = time.Since(t0).Milliseconds()
 	metrics.LayerCount = len(lf.Layers)

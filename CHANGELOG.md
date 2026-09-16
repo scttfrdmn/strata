@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Lockfile freshness (rollback/freeze detection, #224, threat T8).**
+  `resolved_at` is inside the signed payload, so a lockfile's age is
+  tamper-resistant once its set signature verifies. The policy is _surface
+  always, refuse opt-in_: `strata run`, `strata verify`, and the EC2 agent all
+  state how far behind an environment is, and refuse a stale lockfile only when a
+  bound is set — `--max-age` on `run`/`verify` (e.g. `30d`, `2w`, `720h`) and
+  `STRATA_AGENT_MAX_AGE` on the agent. There is deliberately **no default bound**:
+  a frozen, cited, archived lockfile is meant to be old, and re-running it is what
+  strata exists for. This is the first step, not the full TUF timestamp/snapshot
+  role; T8 moves to _partial_ (rollback/freeze become detectable and refusable
+  rather than silent). The agent enforces the bound after the signature verifies
+  and before any layer is fetched or mounted.
+
 ## [0.27.0] - 2026-09-16
 
 _"Reproducible inputs": the build and package inputs become as pinned as the

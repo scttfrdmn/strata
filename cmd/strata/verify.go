@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +22,7 @@ import (
 
 func newVerifyCmd() *cobra.Command {
 	var rekorFlag, packagesFlag bool
+	var maxAgeFlag string
 
 	cmd := &cobra.Command{
 		Use:   "verify <lock.yaml>",
@@ -56,7 +58,20 @@ Requires network access to pypi.org.`,
 				fmt.Fprintln(os.Stderr, note) //nolint:errcheck
 			}
 
+			// Surface how far behind this lockfile is (#224, T8). Always shown —
+			// verify's failure mode is a green, and a stale but validly-signed
+			// lockfile passing silently is exactly that green. --max-age turns the
+			// staleness into a failure so the "ok" line is honest about age.
+			maxAge, err := spec.ParseMaxAge(maxAgeFlag)
+			if err != nil {
+				return err
+			}
+			if note := lf.FreshnessNote(time.Now()); note != "" {
+				fmt.Fprintln(os.Stderr, note) //nolint:errcheck
+			}
+
 			failures := collectPresenceFailures(lf)
+			failures = append(failures, freshnessFailures(lf, maxAge, time.Now())...)
 			failures = append(failures, collectBundleFailures(lf)...)
 
 			// Verify the lockfile's own signature — the whole set — against the
@@ -114,7 +129,20 @@ Requires network access to pypi.org.`,
 
 	cmd.Flags().BoolVar(&rekorFlag, "rekor", false, "compare each layer's bundle against its entry in the live transparency log")
 	cmd.Flags().BoolVar(&packagesFlag, "packages", false, "verify pip SHA256 pins against PyPI (requires network)")
+	cmd.Flags().StringVar(&maxAgeFlag, "max-age", "", "fail if the lockfile was resolved longer ago than this (e.g. 30d, 2w, 720h); default: report age only")
 	return cmd
+}
+
+// freshnessFailures returns a one-element failure when a max-age bound is set
+// and the lockfile is older than it, else nil (#224, T8). It is a separate
+// helper so verify's honest-green contract — a stale lockfile must not pass
+// silently under --max-age — is testable without executing the command. With no
+// bound (maxAge == 0) it returns nil: age is only surfaced, never a failure.
+func freshnessFailures(lf *spec.LockFile, maxAge time.Duration, now time.Time) []string {
+	if err := lf.CheckFreshness(maxAge, now); err != nil {
+		return []string{fmt.Sprintf("freshness: %v", err)}
+	}
+	return nil
 }
 
 // lockfileSignatureFailures verifies the lockfile's own signature — the whole
