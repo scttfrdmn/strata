@@ -533,8 +533,10 @@ aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || f
 export COSIGN_PASSWORD=""
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
     --registry '{{.RegistryURL}}'{{.KeyFlag}}; then
-  # Rebuild registry index so the new layer is immediately discoverable.
-  strata index --registry '{{.RegistryURL}}' || true
+  # NOTE: the registry index is rebuilt out-of-band, not here. Concurrent builds
+  # each rewriting the single shared index/layers.yaml race and corrupt it (#233),
+  # so indexing is decoupled from per-build success; run "strata index" after a
+  # batch completes.
   tag "success"
   # Self-terminate on success — no need to keep the instance.
   aws ec2 terminate-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
