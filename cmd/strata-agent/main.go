@@ -29,6 +29,7 @@ import (
 
 	"github.com/scttfrdmn/strata/internal/agent"
 	"github.com/scttfrdmn/strata/internal/trust"
+	"github.com/scttfrdmn/strata/spec"
 )
 
 // strataRegistryBucket is the S3 bucket used for the Strata registry, public
@@ -69,6 +70,7 @@ type agentDeps struct {
 	installer       agent.PackageInstaller
 	resolveVerifier func(ctx context.Context) (trust.Verifier, error)
 	allowUnverified bool
+	maxAge          time.Duration
 }
 
 func main() {
@@ -77,10 +79,18 @@ func main() {
 	fetcher := newS3LayerFetcher()
 	signaler := newEC2ReadySignaler()
 
+	// A malformed freshness bound is an operator configuration error, not a
+	// reason to silently boot with no bound: fail loudly here, the same
+	// refuse-direction the verification opt-out defaults take (#224).
+	maxAge, err := agentMaxAge(os.Getenv)
+	if err != nil {
+		log.Fatalf("strata-agent: %v", err)
+	}
+
 	// main is the one line run does not cover: it wires the production
 	// dependencies and turns run's returned error into an exit. Everything with
 	// behaviour lives in run, which a test drives with fakes.
-	err := run(ctx, agentDeps{
+	err = run(ctx, agentDeps{
 		source:    newMetadataLockfileSource(),
 		fetcher:   fetcher,
 		signaler:  signaler,
@@ -89,6 +99,7 @@ func main() {
 			return resolveVerifier(ctx, productionPrereqs(os.Getenv))
 		},
 		allowUnverified: allowUnverified(os.Getenv),
+		maxAge:          maxAge,
 	})
 	if err != nil {
 		log.Fatalf("strata-agent: %v", err)
@@ -127,7 +138,8 @@ func run(ctx context.Context, d agentDeps) error {
 		// decisions in step.
 		PackageInstaller: d.installer,
 		AllowUnverified:  d.allowUnverified,
-		Warnings:         os.Stderr, // boot log records the unattested-packages disclosure (#139)
+		MaxAge:           d.maxAge,
+		Warnings:         os.Stderr, // boot log records the unattested-packages disclosure (#139) and freshness note (#224)
 	})
 	if err != nil {
 		return err
@@ -155,6 +167,25 @@ func run(ctx context.Context, d agentDeps) error {
 // user-data or unit file, which is the property that matters: the previous
 // behaviour was a downgrade nobody had to ask for.
 const allowUnverifiedEnv = "STRATA_AGENT_ALLOW_UNVERIFIED"
+
+// maxAgeEnv sets the agent's freshness bound (#224): refuse to boot a lockfile
+// resolved longer ago than this. Unset or empty means no bound — a
+// frozen/cited environment of any age still boots and only its age is logged.
+// An environment variable rather than a flag for the same reason as
+// STRATA_AGENT_ALLOW_UNVERIFIED: the agent is a systemd unit with no argv, and
+// setting it is a recorded act in the instance's user-data.
+const maxAgeEnv = "STRATA_AGENT_MAX_AGE"
+
+// agentMaxAge parses the freshness bound from the environment. A malformed value
+// is an error, not a silent zero: a typo must not disable the bound an operator
+// meant to set. An unset variable is 0 (no bound), the deliberate default.
+func agentMaxAge(getenv func(string) string) (time.Duration, error) {
+	d, err := spec.ParseMaxAge(getenv(maxAgeEnv))
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", maxAgeEnv, err)
+	}
+	return d, nil
+}
 
 // verifierPrereqs are the inputs the verifier decision consults.
 //

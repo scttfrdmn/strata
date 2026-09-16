@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
@@ -26,7 +27,7 @@ import (
 )
 
 func newRunCmd() *cobra.Command {
-	var lockfilePath, cacheDir, keyRef string
+	var lockfilePath, cacheDir, keyRef, maxAge string
 	var noVerify bool
 	var envOverrides []string
 
@@ -62,7 +63,11 @@ flag that disabled nothing, because nothing was enabled.`,
 			if cacheDir == "" {
 				cacheDir = defaultCacheDir()
 			}
-			return runRun(cmd.Context(), lockfilePath, args, noVerify, cacheDir, keyRef, envOverrides)
+			maxAgeDur, err := spec.ParseMaxAge(maxAge)
+			if err != nil {
+				return err
+			}
+			return runRun(cmd.Context(), lockfilePath, args, noVerify, cacheDir, keyRef, envOverrides, maxAgeDur)
 		},
 	}
 
@@ -71,10 +76,21 @@ flag that disabled nothing, because nothing was enabled.`,
 	cmd.Flags().StringVar(&keyRef, "key", "", "cosign public key for layer signature verification (required unless --no-verify)")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "layer cache directory (default: ~/.cache/strata/layers)")
 	cmd.Flags().StringArrayVar(&envOverrides, "env", nil, "additional environment variables (KEY=VAL)")
+	cmd.Flags().StringVar(&maxAge, "max-age", "", "refuse a lockfile resolved longer ago than this (e.g. 30d, 2w, 720h); default: no bound, any age runs")
 	return cmd
 }
 
-func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bool, cacheDir, keyRef string, envOverrides []string) error {
+// runRun mounts a lockfile's layers and runs a command inside the result.
+//
+// maxAge is variadic so the freshness bound (#224) is optional at the call site
+// without disturbing runRun's established arity: existing callers pass none
+// (equivalent to "no bound", any age runs), and newRunCmd passes the parsed
+// --max-age. Only the first value is read.
+func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bool, cacheDir, keyRef string, envOverrides []string, maxAge ...time.Duration) error {
+	var freshnessBound time.Duration
+	if len(maxAge) > 0 {
+		freshnessBound = maxAge[0]
+	}
 	// 1. Read lockfile through the spec package and validate it. run mounts
 	//    filesystems from lockfile fields, so it must not accept a lockfile the
 	//    trust boundary would reject — it used to yaml.Unmarshal the bytes
@@ -94,6 +110,15 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	//    --no-verify a flag that disabled nothing (#55).
 	if lf.RekorEntry == "" {
 		fmt.Fprintln(os.Stderr, "run: warning: lockfile has no Rekor entry — not signed") //nolint:errcheck
+	}
+
+	// Surface how far behind this environment is (#224, T8). Always shown, so a
+	// stale but validly-signed lockfile is never silently accepted. The refusal
+	// is separate and opt-in (--max-age), applied below only after the signature
+	// verifies — resolved_at is trustworthy only once the set signature is
+	// checked, since that is the payload it is bound to.
+	if note := lf.FreshnessNote(time.Now()); note != "" {
+		fmt.Fprintln(os.Stderr, "run: "+note) //nolint:errcheck
 	}
 
 	// 3. Warn if the lockfile has package entries — packages are installed by
@@ -126,6 +151,16 @@ func runRun(ctx context.Context, lockfilePath string, args []string, noVerify bo
 	// 6. Verify what is about to be mounted, and refuse to mount it otherwise.
 	if err := verifyRunLayers(ctx, lf, layerPaths, noVerify, keyRef); err != nil {
 		return err
+	}
+
+	// 6b. Enforce the freshness bound, if one was set (#224, T8). This runs after
+	//     signature verification so the refusal rests on a resolved_at the
+	//     signature binds — an attacker replaying a stale signed lockfile cannot
+	//     backdate it past the bound without breaking the signature. With no
+	//     --max-age this is a no-op: a frozen, cited lockfile of any age still
+	//     runs, and only the surfaced note above applies.
+	if err := lf.CheckFreshness(freshnessBound, time.Now()); err != nil {
+		return fmt.Errorf("run: refusing to mount a stale lockfile: %w", err)
 	}
 
 	// 7. Create temp working directory.
