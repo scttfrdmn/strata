@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="1.22.0"
-URL="https://github.com/ofiwg/libfabric/releases/download/v${VERSION}/libfabric-${VERSION}.tar.bz2"
 
-curl -fsSL "${URL}" | tar -xj
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/libfabric-1.22.0.tar.bz2"
 cd "libfabric-${VERSION}"
 
 ./configure \

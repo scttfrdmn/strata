@@ -3,6 +3,9 @@ version: "8.7.37"
 tier: core
 description: "Lmod 8.7.37 — Lua-based environment modules system for multi-version software management."
 abi: linux-gnu-2.34
+sources:
+  - url: https://github.com/TACC/Lmod/archive/refs/tags/8.7.37.tar.gz
+    sha256: 171529152fedfbb3c45d27937b0eaa1ee62b5e5cdac3086f44a6d56e5d1d7da4
 provides:
   - name: lmod
     version: "8.7.37"

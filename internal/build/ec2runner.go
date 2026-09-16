@@ -478,8 +478,10 @@ tag() {
 }
 tag "running"
 
-# On failure: tag + stop (keep instance so logs are accessible via SSM).
+# On failure: upload the build log to S3 (SSM run-command is not available in
+# every account, so the log must be retrievable without it), tag, and stop.
 fail() {
+  aws s3 cp "$LOG" "s3://{{.Bucket}}/build/logs/{{.JobID}}.log" --region "$REGION" || true
   tag "failed"
   aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
   exit 1
@@ -527,12 +529,18 @@ RECIPE_DIR="/opt/strata-recipe/{{.RecipeName}}/{{.RecipeVersion}}"
 mkdir -p "$RECIPE_DIR"
 aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || fail
 
-# Run build
+# Run build. TMPDIR points at the disk-backed root volume, not /tmp: AL2023
+# mounts /tmp as tmpfs (RAM-backed, ~half of RAM), which a large toolkit build
+# (e.g. CUDA, ~8 GiB installed) overflows with "no space left on device"
+# regardless of the EBS volume size. /var/tmp lives on the root volume.
 export COSIGN_PASSWORD=""
+export TMPDIR=/var/tmp
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
     --registry '{{.RegistryURL}}'{{.KeyFlag}}; then
-  # Rebuild registry index so the new layer is immediately discoverable.
-  strata index --registry '{{.RegistryURL}}' || true
+  # NOTE: the registry index is rebuilt out-of-band, not here. Concurrent builds
+  # each rewriting the single shared index/layers.yaml race and corrupt it (#233),
+  # so indexing is decoupled from per-build success; run "strata index" after a
+  # batch completes.
   tag "success"
   # Self-terminate on success — no need to keep the instance.
   aws ec2 terminate-instances --region "$REGION" --instance-ids "$INSTANCE_ID"

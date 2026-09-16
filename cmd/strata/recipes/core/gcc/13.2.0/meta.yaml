@@ -3,6 +3,9 @@ version: "13.2.0"
 tier: core
 description: "GNU Compiler Collection 13.2.0 — C, C++, and Fortran compilers."
 abi: linux-gnu-2.34
+sources:
+  - url: https://ftp.gnu.org/gnu/gcc/gcc-13.2.0/gcc-13.2.0.tar.xz
+    sha256: e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da
 provides:
   - name: gcc
     version: "13.2.0"

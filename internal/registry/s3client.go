@@ -14,8 +14,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -216,8 +218,12 @@ func (c *S3Client) getYAML(ctx context.Context, key string, dst any) error {
 		}
 		return fmt.Errorf("registry: fetching s3://%s/%s: %w", c.bucket, key, err)
 	}
-	defer out.Body.Close()        //nolint:errcheck
-	const maxYAMLBytes = 10 << 20 // 10 MiB
+	defer out.Body.Close() //nolint:errcheck
+	// The layer index embeds every layer's content manifest, so it legitimately
+	// grows past tens of MiB across a full catalog; a 10 MiB cap silently
+	// truncated it mid-read, dropping every entry past the cap and making layers
+	// (e.g. build_requires) resolve as "not found" (#233).
+	const maxYAMLBytes = 1 << 30 // 1 GiB
 	data, err := io.ReadAll(io.LimitReader(out.Body, maxYAMLBytes))
 	if err != nil {
 		return fmt.Errorf("registry: reading s3://%s/%s: %w", c.bucket, key, err)
@@ -321,43 +327,101 @@ func (c *S3Client) PushLayer(ctx context.Context, manifest *spec.LayerManifest, 
 	return c.upsertLayerIndex(ctx, manifest)
 }
 
-// upsertLayerIndex fetches the current index, replaces the entry with the
-// same manifest.ID (or appends if new), and writes it back atomically.
+// upsertLayerIndex replaces (or appends) manifest's entry in index/layers.yaml.
+// Concurrent builds all upsert the single shared index, so it uses optimistic
+// concurrency: read the index with its ETag, modify, and conditionally PUT
+// (If-Match the ETag, or If-None-Match:* when creating). A conditional failure
+// (412) means another writer won the race, so it re-reads and retries rather
+// than clobbering their entry (#233). Without this, concurrent read-modify-write
+// lost entries and a later build resolved a build_requires as "not found".
 func (c *S3Client) upsertLayerIndex(ctx context.Context, manifest *spec.LayerManifest) error {
-	var idx LayerIndex
-	err := c.getYAML(ctx, "index/layers.yaml", &idx)
-	if err != nil && !IsNotFound(err) {
-		return fmt.Errorf("registry: fetching layer index: %w", err)
-	}
+	const key = "index/layers.yaml"
+	const maxAttempts = 12
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		idx, etag, err := c.getIndexWithETag(ctx, key)
+		if err != nil {
+			return err
+		}
 
-	replaced := false
-	for i, m := range idx.Layers {
-		if m.ID == manifest.ID {
+		replaced := false
+		for i, m := range idx.Layers {
+			if m.ID == manifest.ID {
+				cp := *manifest
+				idx.Layers[i] = &cp
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
 			cp := *manifest
-			idx.Layers[i] = &cp
-			replaced = true
-			break
+			idx.Layers = append(idx.Layers, &cp)
+		}
+
+		data, err := yaml.Marshal(&idx)
+		if err != nil {
+			return fmt.Errorf("registry: marshaling layer index: %w", err)
+		}
+		put := &s3.PutObjectInput{
+			Bucket:      aws.String(c.bucket),
+			Key:         aws.String(key),
+			Body:        bytes.NewReader(data),
+			ContentType: aws.String("application/yaml"),
+		}
+		if etag == "" {
+			put.IfNoneMatch = aws.String("*") // create only; fail if it now exists
+		} else {
+			put.IfMatch = aws.String(etag) // update only; fail if it changed
+		}
+		if _, err = c.s3.PutObject(ctx, put); err == nil {
+			return nil
+		} else if !isConditionalWriteConflict(err) {
+			return fmt.Errorf("registry: writing layer index: %w", err)
+		}
+		// Another writer changed the index between our read and write; back off
+		// briefly and retry against the new state.
+		time.Sleep(time.Duration(40*(attempt+1)) * time.Millisecond)
+	}
+	return fmt.Errorf("registry: writing layer index: too much contention after %d attempts", maxAttempts)
+}
+
+// getIndexWithETag reads the layer index and its ETag, returning an empty index
+// and empty ETag when it does not yet exist.
+func (c *S3Client) getIndexWithETag(ctx context.Context, key string) (LayerIndex, string, error) {
+	var idx LayerIndex
+	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(c.bucket), Key: aws.String(key)})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return idx, "", nil
+		}
+		return idx, "", fmt.Errorf("registry: fetching layer index: %w", err)
+	}
+	defer out.Body.Close() //nolint:errcheck
+	data, err := io.ReadAll(io.LimitReader(out.Body, 1<<30))
+	if err != nil {
+		return idx, "", fmt.Errorf("registry: reading layer index: %w", err)
+	}
+	if err := yaml.Unmarshal(data, &idx); err != nil {
+		return idx, "", fmt.Errorf("registry: parsing layer index: %w", err)
+	}
+	return idx, aws.ToString(out.ETag), nil
+}
+
+// isConditionalWriteConflict reports whether err is an S3 conditional-write
+// failure (HTTP 412) — the signal that another writer won an optimistic upsert.
+func isConditionalWriteConflict(err error) bool {
+	var ae smithy.APIError
+	if errors.As(err, &ae) {
+		switch ae.ErrorCode() {
+		case "PreconditionFailed", "ConditionalRequestConflict":
+			return true
 		}
 	}
-	if !replaced {
-		cp := *manifest
-		idx.Layers = append(idx.Layers, &cp)
+	var re *awshttp.ResponseError
+	if errors.As(err, &re) {
+		return re.HTTPStatusCode() == 412 || re.HTTPStatusCode() == 409
 	}
-
-	data, err := yaml.Marshal(&idx)
-	if err != nil {
-		return fmt.Errorf("registry: marshaling layer index: %w", err)
-	}
-	_, err = c.s3.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(c.bucket),
-		Key:         aws.String("index/layers.yaml"),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String("application/yaml"),
-	})
-	if err != nil {
-		return fmt.Errorf("registry: writing layer index: %w", err)
-	}
-	return nil
+	return false
 }
 
 // FetchLayerSqfs downloads the squashfs file for manifest to cacheDir.

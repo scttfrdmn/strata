@@ -11,9 +11,9 @@ case "${ARCH}" in
   *) echo "Unsupported arch: ${ARCH}" >&2; exit 1 ;;
 esac
 
-URL="https://github.com/conda-forge/miniforge/releases/download/${VERSION}/Miniforge3-${VERSION}-Linux-${INSTALLER_ARCH}.sh"
 
-curl -fsSL -o miniforge_installer.sh "${URL}"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml, #68).
+cp "${STRATA_SOURCES}/miniforge_installer.sh" ./miniforge_installer.sh
 chmod +x miniforge_installer.sh
 
 # Install in batch mode to STRATA_PREFIX. -u allows install into a pre-existing directory

@@ -126,6 +126,21 @@ type RecipeSource struct {
 	// File is the staged filename under $STRATA_SOURCES. Optional; defaults to
 	// the last path element of URL.
 	File string `yaml:"file,omitempty"`
+
+	// Arch restricts this source to one target architecture ("x86_64" or
+	// "arm64"). Empty means it applies to every arch — correct for a source
+	// tarball compiled per arch, where one digest is valid everywhere. An
+	// arch-specific *binary* distribution declares one source per arch, each with
+	// the same File, so build.sh reads a consistent $STRATA_SOURCES path while the
+	// build stages only the source matching the arch it targets.
+	Arch string `yaml:"arch,omitempty"`
+}
+
+// matchesArch reports whether this source should be staged for a build targeting
+// arch: an arch-agnostic source (Arch == "") always applies; an arch-specific one
+// only when it names that arch.
+func (s RecipeSource) matchesArch(arch string) bool {
+	return s.Arch == "" || s.Arch == arch
 }
 
 // StagedFile returns the filename this source is staged as under
@@ -196,8 +211,8 @@ func (m *RecipeMeta) Validate() error {
 	// Every declared source must be pinned: a non-empty URL and a well-formed
 	// SHA256, so a recipe cannot declare a source it does not actually pin. File
 	// names, if given, must be plain (no path separators) so a source cannot be
-	// staged outside $STRATA_SOURCES.
-	seen := make(map[string]bool, len(m.Sources))
+	// staged outside $STRATA_SOURCES, and arch, if given, must be a known target.
+	knownArch := map[string]bool{"": true, "x86_64": true, "arm64": true}
 	for i, s := range m.Sources {
 		if s.URL == "" {
 			return fmt.Errorf("recipe meta: %q sources[%d] has empty url", m.Name, i)
@@ -208,9 +223,24 @@ func (m *RecipeMeta) Validate() error {
 		if strings.ContainsAny(s.File, "/\\") || s.File == ".." {
 			return fmt.Errorf("recipe meta: %q sources[%d] file %q must be a plain filename", m.Name, i, s.File)
 		}
-		if f := s.StagedFile(); seen[f] {
-			return fmt.Errorf("recipe meta: %q sources stage two artifacts as %q — set distinct file: names", m.Name, f)
-		} else {
+		if !knownArch[s.Arch] {
+			return fmt.Errorf("recipe meta: %q sources[%d] has unsupported arch %q — supported: x86_64, arm64 (or empty for all)", m.Name, i, s.Arch)
+		}
+	}
+	// No two sources may stage to the same filename for the same build arch: an
+	// arch-agnostic source and an arch-specific one that collide would race, but
+	// one source per arch under a shared File is exactly how arch-specific
+	// binaries are pinned, so the check is per concrete arch, not global.
+	for _, arch := range []string{"x86_64", "arm64"} {
+		seen := make(map[string]bool, len(m.Sources))
+		for _, s := range m.Sources {
+			if !s.matchesArch(arch) {
+				continue
+			}
+			f := s.StagedFile()
+			if seen[f] {
+				return fmt.Errorf("recipe meta: %q stages two sources as %q for arch %s — give them distinct file: names or arch: values", m.Name, f, arch)
+			}
 			seen[f] = true
 		}
 	}

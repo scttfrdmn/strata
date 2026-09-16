@@ -3,6 +3,9 @@ version: "1.17.0"
 tier: library
 description: "Unified Communication X 1.17.0 — high-performance networking transport for MPI."
 abi: linux-gnu-2.34
+sources:
+  - url: https://github.com/openucx/ucx/releases/download/v1.17.0/ucx-1.17.0.tar.gz
+    sha256: 34658e282f99f89ce7a991c542e9727552734ac6ad408c52f22b4c2653b04276
 user_selectable: false
 
 build_requires:

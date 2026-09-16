@@ -5,15 +5,14 @@
 set -euo pipefail
 
 LMOD_VERSION="8.7.37"
-URL="https://github.com/TACC/Lmod/archive/refs/tags/${LMOD_VERSION}.tar.gz"
 
 # Install system lua for the build. We will bundle a copy in the layer.
 dnf install -y tcl lua lua-posix lua-devel readline-devel
 
 # ── Build Lmod ────────────────────────────────────────────────────────────────
 cd /tmp
-curl -fsSL "$URL" -o "Lmod-${LMOD_VERSION}.tar.gz"
-tar xf "Lmod-${LMOD_VERSION}.tar.gz"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/8.7.37.tar.gz"
 cd "Lmod-${LMOD_VERSION}"
 
 ./configure \

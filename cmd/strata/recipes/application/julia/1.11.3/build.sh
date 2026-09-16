@@ -12,12 +12,10 @@ case "${STRATA_ARCH}" in
     *)       echo "Unsupported arch: ${STRATA_ARCH}"; exit 1 ;;
 esac
 
-TARBALL="julia-${VERSION}-${ARCH_TAG}.tar.gz"
-URL="https://julialang-s3.julialang.org/bin/linux/${URL_ARCH}/${MAJOR_MINOR}/${TARBALL}"
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/julia.tar.gz"
 
 # Install by copying the pre-built layout.
 cp -a "julia-${VERSION}/." "${STRATA_INSTALL_PREFIX}/"

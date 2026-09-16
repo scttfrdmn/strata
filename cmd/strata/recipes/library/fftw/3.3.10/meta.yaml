@@ -3,6 +3,9 @@ version: "3.3.10"
 tier: library
 description: "FFTW 3.3.10 — fast Fourier transform library required by GROMACS, WRF, NAMD, and numpy."
 abi: linux-gnu-2.34
+sources:
+  - url: http://www.fftw.org/fftw-3.3.10.tar.gz
+    sha256: 56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467
 
 build_requires:
   - name: gcc

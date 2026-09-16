@@ -5,11 +5,10 @@ set -euo pipefail
 
 VERSION="4.9.2"
 TARBALL="netcdf-c-${VERSION}.tar.gz"
-URL="https://github.com/Unidata/netcdf-c/archive/refs/tags/v${VERSION}.tar.gz"
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/v4.9.2.tar.gz"
 cd "netcdf-c-${VERSION}"
 
 ./configure \

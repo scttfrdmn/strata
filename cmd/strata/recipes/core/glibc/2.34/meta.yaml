@@ -7,6 +7,9 @@ description: >
   kernel-hardcoded path. Build is bootstrap (OS toolchain); no Strata build_requires.
   NOTE: this recipe requires bwrap/pivot_root support in the agent (v0.13.0+).
 abi: linux-gnu-2.34
+sources:
+  - url: https://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz
+    sha256: 44d26a1fe20b8853a48f470ead01e4279e869ac149b195dda4e44a195d981ab2
 install_layout: flat
 
 provides:

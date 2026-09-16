@@ -6,13 +6,12 @@ VERSION="1.14.4"
 # GitHub tag for latest 1.14.4.x patch; tarball dir is hdf5-hdf5_1.14.4.3
 TAG="hdf5_1.14.4.3"
 TARBALL="${TAG}.tar.gz"
-URL="https://github.com/HDFGroup/hdf5/archive/refs/tags/${TAG}.tar.gz"
 
 dnf install -y cmake gcc-c++ gcc-gfortran zlib-devel
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/hdf5_1.14.4.3.tar.gz"
 cd "hdf5-${TAG}"
 
 mkdir build && cd build

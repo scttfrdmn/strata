@@ -11,9 +11,9 @@ case "${ARCH}" in
   *) echo "Unsupported arch: ${ARCH}" >&2; exit 1 ;;
 esac
 
-URL="https://github.com/quarto-dev/quarto-cli/releases/download/v${VERSION}/quarto-${VERSION}-linux-${PKG_ARCH}.tar.gz"
 
-curl -fsSL "${URL}" | tar -xz
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/quarto.tar.gz"
 
 # Move extracted tree into STRATA_PREFIX.
 mv "quarto-${VERSION}" "${STRATA_PREFIX}/quarto"

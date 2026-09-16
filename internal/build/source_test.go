@@ -46,7 +46,7 @@ func TestStageSources_VerifiesAndStages(t *testing.T) {
 	dir := t.TempDir()
 
 	src := RecipeSource{URL: srv.URL + "/artifact", SHA256: sha256Hex(body), File: "pkg.tar"}
-	if err := StageSources(context.Background(), []RecipeSource{src}, dir, srv.Client()); err != nil {
+	if err := StageSources(context.Background(), []RecipeSource{src}, dir, "", srv.Client()); err != nil {
 		t.Fatalf("StageSources: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "pkg.tar"))
@@ -67,7 +67,7 @@ func TestStageSources_RejectsDigestMismatch(t *testing.T) {
 
 	// Pin a *different* content's digest — the drift/tamper case.
 	src := RecipeSource{URL: srv.URL + "/artifact", SHA256: sha256Hex([]byte("what the recipe author pinned")), File: "pkg.tar"}
-	err := StageSources(context.Background(), []RecipeSource{src}, dir, srv.Client())
+	err := StageSources(context.Background(), []RecipeSource{src}, dir, "", srv.Client())
 	if err == nil {
 		t.Fatal("StageSources accepted bytes that do not match the pinned digest")
 	}
@@ -90,7 +90,7 @@ func TestStageSources_RejectsFetchError(t *testing.T) {
 	srv, _ := sourceServer(t, []byte("x"))
 	dir := t.TempDir()
 	src := RecipeSource{URL: srv.URL + "/missing", SHA256: sha256Hex([]byte("x")), File: "pkg.tar"}
-	err := StageSources(context.Background(), []RecipeSource{src}, dir, srv.Client())
+	err := StageSources(context.Background(), []RecipeSource{src}, dir, "", srv.Client())
 	if err == nil {
 		t.Fatal("StageSources accepted a non-200 fetch")
 	}
@@ -116,7 +116,7 @@ func TestStagedFile_DefaultsToURLBasename(t *testing.T) {
 // dir, and a mismatch fails without leaking the directory.
 func TestStageSourcesForBuild(t *testing.T) {
 	t.Run("no sources returns empty dir", func(t *testing.T) {
-		dir, err := stageSourcesForBuild(context.Background(), nil)
+		dir, err := stageSourcesForBuild(context.Background(), nil, "x86_64")
 		if err != nil || dir != "" {
 			t.Fatalf("stageSourcesForBuild(nil) = %q, %v; want \"\", nil", dir, err)
 		}
@@ -128,7 +128,7 @@ func TestStageSourcesForBuild(t *testing.T) {
 		// stageSourcesForBuild uses the default HTTP client; an httptest server's
 		// loopback URL is reachable by it.
 		dir, err := stageSourcesForBuild(context.Background(),
-			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex(body), File: "t.tar"}})
+			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex(body), File: "t.tar"}}, "x86_64")
 		if err != nil {
 			t.Fatalf("stageSourcesForBuild: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestStageSourcesForBuild(t *testing.T) {
 		body := []byte("served")
 		srv, _ := sourceServer(t, body)
 		dir, err := stageSourcesForBuild(context.Background(),
-			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex([]byte("pinned")), File: "t.tar"}})
+			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex([]byte("pinned")), File: "t.tar"}}, "x86_64")
 		if err == nil {
 			t.Fatal("expected a digest-mismatch error")
 		}
@@ -165,6 +165,46 @@ func TestWithSourcesEnv(t *testing.T) {
 	got := withSourcesEnv(base, "/tmp/src")
 	if len(got) != 2 || got[1] != "STRATA_SOURCES=/tmp/src" {
 		t.Errorf("withSourcesEnv did not append STRATA_SOURCES: %v", got)
+	}
+}
+
+// TestStageSources_ArchFiltering: a build stages the arch-agnostic sources plus
+// the one matching its target arch, and skips sources pinned for another arch —
+// so an arch-specific binary distribution stages exactly the right artifact.
+func TestStageSources_ArchFiltering(t *testing.T) {
+	agnostic := []byte("agnostic tarball")
+	x86 := []byte("x86_64 binary")
+	arm := []byte("arm64 binary")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/common":
+			w.Write(agnostic) //nolint:errcheck
+		case "/x86":
+			w.Write(x86) //nolint:errcheck
+		case "/arm":
+			w.Write(arm) //nolint:errcheck
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	sources := []RecipeSource{
+		{URL: srv.URL + "/common", SHA256: sha256Hex(agnostic), File: "common.tar"},
+		{URL: srv.URL + "/x86", SHA256: sha256Hex(x86), File: "bin.tar", Arch: "x86_64"},
+		{URL: srv.URL + "/arm", SHA256: sha256Hex(arm), File: "bin.tar", Arch: "arm64"},
+	}
+
+	dir := t.TempDir()
+	if err := StageSources(context.Background(), sources, dir, "x86_64", srv.Client()); err != nil {
+		t.Fatalf("StageSources(x86_64): %v", err)
+	}
+	// common.tar (agnostic) + bin.tar (x86_64) staged; the arm64 source skipped.
+	if got, _ := os.ReadFile(filepath.Join(dir, "bin.tar")); string(got) != string(x86) {
+		t.Errorf("bin.tar is not the x86_64 artifact: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "common.tar")); err != nil {
+		t.Errorf("arch-agnostic source not staged: %v", err)
 	}
 }
 
@@ -192,10 +232,21 @@ func TestRecipeMeta_Validate_Sources(t *testing.T) {
 		{"missing digest", []RecipeSource{{URL: "https://x/a.tar", SHA256: ""}}, "sha256"},
 		{"malformed digest", []RecipeSource{{URL: "https://x/a.tar", SHA256: "not-a-digest"}}, "sha256"},
 		{"path in file", []RecipeSource{{URL: "https://x/a.tar", SHA256: good, File: "../evil"}}, "plain filename"},
-		{"duplicate staged name", []RecipeSource{
+		{"duplicate staged name (same arch)", []RecipeSource{
 			{URL: "https://x/a.tar", SHA256: good, File: "same.tar"},
 			{URL: "https://y/b.tar", SHA256: good, File: "same.tar"},
-		}, "stage two artifacts"},
+		}, "stages two sources"},
+		{"same file across arches is allowed", []RecipeSource{
+			{URL: "https://x/x86.tar", SHA256: good, File: "bin.tar", Arch: "x86_64"},
+			{URL: "https://x/arm.tar", SHA256: good, File: "bin.tar", Arch: "arm64"},
+		}, ""},
+		{"unsupported arch", []RecipeSource{
+			{URL: "https://x/a.tar", SHA256: good, Arch: "ppc64le"},
+		}, "unsupported arch"},
+		{"agnostic collides with arch-specific", []RecipeSource{
+			{URL: "https://x/a.tar", SHA256: good, File: "bin.tar"},
+			{URL: "https://x/x86.tar", SHA256: good, File: "bin.tar", Arch: "x86_64"},
+		}, "stages two sources"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

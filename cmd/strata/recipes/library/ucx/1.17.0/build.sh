@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="1.17.0"
-URL="https://github.com/openucx/ucx/releases/download/v${VERSION}/ucx-${VERSION}.tar.gz"
 
-curl -fsSL "${URL}" | tar -xz
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/ucx-1.17.0.tar.gz"
 cd "ucx-${VERSION}"
 
 ./configure \

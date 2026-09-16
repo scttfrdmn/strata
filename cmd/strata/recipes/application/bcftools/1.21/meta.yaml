@@ -3,6 +3,9 @@ version: "1.21"
 tier: application
 description: "BCFtools 1.21 — variant calling and manipulation of VCF/BCF files."
 abi: linux-gnu-2.34
+sources:
+  - url: https://github.com/samtools/bcftools/releases/download/1.21/bcftools-1.21.tar.bz2
+    sha256: 528a4cc1d3555368db75a700b22a3c95da893fd1827f6d304716dfd45ea4e282
 provides:
   - name: bcftools
     version: "1.21"

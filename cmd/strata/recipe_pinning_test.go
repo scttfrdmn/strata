@@ -22,40 +22,7 @@ import (
 // which point the guard below becomes "every fetching recipe is pinned". It is a
 // named-route list, not a silent gap: a new recipe that fetches without pinning
 // fails the guard until it is either pinned or consciously added here.
-var knownUnpinnedRecipes = []string{
-	"application/bcftools/1.21",
-	"application/julia/1.10.7",
-	"application/julia/1.11.3",
-	"application/miniforge/24.3.0",
-	"application/quarto/1.4.555",
-	"application/samtools/1.23",
-	"core/cuda/11.8.0",
-	"core/cuda/12.3.2",
-	"core/cuda/12.6.0",
-	"core/gcc/13.2.0",
-	"core/gcc/14.2.0",
-	"core/glibc/2.34",
-	"core/lmod/8.7.37",
-	"core/nodejs/20.19.0",
-	"core/nodejs/22.14.0",
-	"core/python/3.11.11",
-	"core/python/3.12.13",
-	"core/python/3.13.2",
-	"core/R/4.4.3",
-	"core/R/4.5.2",
-	"core/rust/1.82.0",
-	"library/fftw/3.3.10",
-	"library/hdf5/1.12.3",
-	"library/hdf5/1.14.4",
-	"library/hwloc/2.11.2",
-	"library/libfabric/1.22.0",
-	"library/netcdf-c/4.9.2",
-	"library/openblas/0.3.26",
-	"library/openblas/0.3.28",
-	"library/openmpi/5.0.10",
-	"library/pmix/5.0.3",
-	"library/ucx/1.17.0",
-}
+var knownUnpinnedRecipes = []string{}
 
 var recipeFetchRE = regexp.MustCompile(`(?m)\b(curl|wget)\b`)
 

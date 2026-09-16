@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="3.13.2"
-URL="https://www.python.org/ftp/python/${VERSION}/Python-${VERSION}.tgz"
 
-curl -fsSL "${URL}" | tar -xz
+# Source fetched + SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar -xzf "${STRATA_SOURCES}/Python-${VERSION}.tgz"
 cd "Python-${VERSION}"
 
 ./configure \

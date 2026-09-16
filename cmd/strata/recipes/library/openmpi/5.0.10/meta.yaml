@@ -3,6 +3,9 @@ version: "5.0.10"
 tier: library
 description: "Open MPI 5.0.10 — MPI-4.0 compliant message passing library."
 abi: linux-gnu-2.34
+sources:
+  - url: https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.bz2
+    sha256: 0acecc4fc218e5debdbcb8a41d182c6b0f1d29393015ed763b2a91d5d7374cc6
 
 build_requires:
   - name: gcc

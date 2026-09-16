@@ -20,9 +20,9 @@ case "${STRATA_ARCH:-x86_64}" in
         exit 1
         ;;
 esac
-CUDA_RUN_URL="https://developer.download.nvidia.com/compute/cuda/${VERSION}/local_installers/${RUNFILE}"
 
-curl -fsSL -o cuda_installer.run "${CUDA_RUN_URL}"
+# Installer SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml, #68).
+cp "${STRATA_SOURCES}/cuda_installer.run" cuda_installer.run
 chmod +x cuda_installer.run
 
 # Install toolkit-only components to STRATA_PREFIX.
