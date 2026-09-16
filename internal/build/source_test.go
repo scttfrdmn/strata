@@ -132,7 +132,7 @@ func TestStageSourcesForBuild(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stageSourcesForBuild: %v", err)
 		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
 		if dir == "" {
 			t.Fatal("expected a staging dir")
 		}
@@ -150,7 +150,7 @@ func TestStageSourcesForBuild(t *testing.T) {
 			t.Fatal("expected a digest-mismatch error")
 		}
 		if dir != "" {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 			t.Errorf("a staging dir was returned alongside an error: %q", dir)
 		}
 	})
