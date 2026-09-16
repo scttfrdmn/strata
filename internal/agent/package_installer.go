@@ -41,11 +41,11 @@ func (ExecPackageInstaller) Install(ctx context.Context, pkgs []spec.ResolvedPac
 		var err error
 		switch ps.Manager {
 		case spec.PackageManagerPip:
-			err = installPip(ctx, ps.Packages, pathEnv)
+			err = installPip(ctx, ps.Packages, pathEnv, runCmd)
 		case spec.PackageManagerConda:
-			err = installConda(ctx, ps.Packages, ps.Env, pathEnv)
+			err = installConda(ctx, ps.Packages, ps.Env, pathEnv, runCmd)
 		case spec.PackageManagerCRAN:
-			err = installCRAN(ctx, ps.Packages, pathEnv)
+			err = installCRAN(ctx, ps.Packages, pathEnv, runCmd)
 		default:
 			return fmt.Errorf("package installer: unsupported manager %q", ps.Manager)
 		}
@@ -55,6 +55,12 @@ func (ExecPackageInstaller) Install(ctx context.Context, pkgs []spec.ResolvedPac
 	}
 	return nil
 }
+
+// cmdRunner runs an installer command. It is a seam: Install passes runCmd,
+// which shells out; tests pass a fake that records the arguments, so the exact
+// pip/conda invocation — the pin and hash flags that make an install
+// reproducible — is asserted without pip or conda on PATH.
+type cmdRunner func(ctx context.Context, pathEnv, name string, args ...string) error
 
 // collectBinDirs returns all bin/ directories two levels under mergedPath.
 func collectBinDirs(mergedPath string) []string {
@@ -98,34 +104,52 @@ func runCmd(ctx context.Context, pathEnv string, name string, args ...string) er
 	return nil
 }
 
-func installPip(ctx context.Context, entries []spec.ResolvedPackageEntry, pathEnv string) error {
+func installPip(ctx context.Context, entries []spec.ResolvedPackageEntry, pathEnv string, run cmdRunner) error {
 	for _, e := range entries {
-		pkg := e.Name + "==" + e.Version
-		if err := runCmd(ctx, pathEnv, "pip", "install", "--quiet", pkg); err != nil {
+		if e.Version == "" {
+			return fmt.Errorf("pip package %q has no pinned version — refusing to install a floating package (the environment would not be reproducible)", e.Name)
+		}
+		req := e.Name + "==" + e.Version
+		args := []string{"install", "--quiet"}
+		if e.SHA256 != "" {
+			// Enforce the recorded wheel digest. --hash makes pip verify the
+			// downloaded artifact against it (and implies --require-hashes);
+			// --no-deps keeps the check to this exact artifact, so a dependency
+			// that has no recorded hash does not make --require-hashes fail —
+			// each dependency the environment needs is its own recorded entry.
+			args = append(args, "--no-deps", "--require-hashes", req, "--hash=sha256:"+e.SHA256)
+		} else {
+			// No recorded hash: the version is pinned but the bytes are not, so
+			// this install is not byte-reproducible. #139 surfaces that; here we
+			// at least do not let the version float.
+			args = append(args, req)
+		}
+		if err := run(ctx, pathEnv, "pip", args...); err != nil {
 			return fmt.Errorf("pip install %q: %w", e.Name, err)
 		}
 	}
 	return nil
 }
 
-func installConda(ctx context.Context, entries []spec.ResolvedPackageEntry, env string, pathEnv string) error {
-	args := []string{"install", "-y", "--quiet"}
+func installConda(ctx context.Context, entries []spec.ResolvedPackageEntry, env string, pathEnv string, run cmdRunner) error {
+	base := []string{"install", "-y", "--quiet"}
 	if env != "" {
-		args = append(args, "-n", env)
+		base = append(base, "-n", env)
 	}
 	for _, e := range entries {
-		pkg := e.Name
-		if e.Version != "latest" && e.Version != "" {
-			pkg = e.Name + "=" + e.Version
+		if e.Version == "latest" || e.Version == "" {
+			return fmt.Errorf("conda package %q has version %q — refusing to install a floating version; pin an exact version so the environment is reproducible", e.Name, e.Version)
 		}
-		if err := runCmd(ctx, pathEnv, "conda", append(args, pkg)...); err != nil {
+		// Fresh args per package so the shared base slice is never aliased.
+		args := append(append([]string{}, base...), e.Name+"="+e.Version)
+		if err := run(ctx, pathEnv, "conda", args...); err != nil {
 			return fmt.Errorf("conda install %q: %w", e.Name, err)
 		}
 	}
 	return nil
 }
 
-func installCRAN(ctx context.Context, entries []spec.ResolvedPackageEntry, pathEnv string) error {
+func installCRAN(ctx context.Context, entries []spec.ResolvedPackageEntry, pathEnv string, run cmdRunner) error {
 	for _, e := range entries {
 		if !cranNameRe.MatchString(e.Name) {
 			return fmt.Errorf("invalid CRAN package name %q", e.Name)
@@ -134,7 +158,7 @@ func installCRAN(ctx context.Context, entries []spec.ResolvedPackageEntry, pathE
 			`install.packages("%s", repos="https://cran.r-project.org", quiet=TRUE)`,
 			e.Name,
 		)
-		if err := runCmd(ctx, pathEnv, "Rscript", "-e", script); err != nil {
+		if err := run(ctx, pathEnv, "Rscript", "-e", script); err != nil {
 			return fmt.Errorf("rscript install %q: %w", e.Name, err)
 		}
 	}
