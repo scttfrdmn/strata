@@ -3,6 +3,9 @@ version: "3.13.2"
 tier: core
 description: "CPython interpreter version 3.13.2."
 abi: linux-gnu-2.34
+sources:
+  - url: https://www.python.org/ftp/python/3.13.2/Python-3.13.2.tgz
+    sha256: b8d79530e3b7c96a5cb2d40d431ddb512af4a563e863728d8713039aa50203f9
 provides:
   - name: python
     version: "3.13.2"

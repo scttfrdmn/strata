@@ -3,6 +3,9 @@ version: "4.5.2"
 tier: core
 description: "R statistical computing language version 4.5.2."
 abi: linux-gnu-2.34
+sources:
+  - url: https://cran.r-project.org/src/base/R-4/R-4.5.2.tar.gz
+    sha256: 0d71ff7106ec69cd7c67e1e95ed1a3cee355880931f2eb78c530014a9e379f20
 provides:
   - name: R
     version: "4.5.2"

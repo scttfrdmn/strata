@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="4.5.2"
-URL="https://cran.r-project.org/src/base/R-4/R-${VERSION}.tar.gz"
 
-curl -fsSL "${URL}" | tar -xz
+# Source fetched + SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar -xzf "${STRATA_SOURCES}/R-${VERSION}.tar.gz"
 cd "R-${VERSION}"
 
 ./configure \

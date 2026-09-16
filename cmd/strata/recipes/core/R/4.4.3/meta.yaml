@@ -3,6 +3,9 @@ version: "4.4.3"
 tier: core
 description: "R statistical computing language version 4.4.3."
 abi: linux-gnu-2.34
+sources:
+  - url: https://cran.r-project.org/src/base/R-4/R-4.4.3.tar.gz
+    sha256: 0d93d224442dea253c2b086f088db6d0d3cfd9b592cd5496e8cb2143e90fc9e8
 provides:
   - name: R
     version: "4.4.3"

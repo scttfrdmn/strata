@@ -5,11 +5,11 @@
 set -euo pipefail
 
 VERSION="2.34"
-URL="https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.xz"
 
 # glibc must be built outside its own source tree.
 mkdir -p build-glibc
-curl -fsSL "${URL}" | tar -xJ
+# Source fetched + SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar -xJf "${STRATA_SOURCES}/glibc-${VERSION}.tar.xz"
 cd build-glibc
 
 # Install to STRATA_INSTALL_PREFIX (= STRATA_PREFIX for flat layout).
