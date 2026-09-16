@@ -4,10 +4,10 @@
 set -euo pipefail
 
 VERSION="1.21"
-URL="https://github.com/samtools/bcftools/releases/download/${VERSION}/bcftools-${VERSION}.tar.bz2"
 
-curl -fsSL "$URL" -o bcftools.tar.bz2
-tar xf bcftools.tar.bz2
+# Source is fetched and SHA256-verified by the build pipeline into $STRATA_SOURCES
+# (pinned in meta.yaml), so the build is reproducible from the recipe (#68).
+tar xf "${STRATA_SOURCES}/bcftools-${VERSION}.tar.bz2"
 cd "bcftools-${VERSION}"
 
 # Disable optional GSL and Perl-filter dependencies to keep the build

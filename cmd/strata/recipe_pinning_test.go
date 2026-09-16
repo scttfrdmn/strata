@@ -23,7 +23,6 @@ import (
 // named-route list, not a silent gap: a new recipe that fetches without pinning
 // fails the guard until it is either pinned or consciously added here.
 var knownUnpinnedRecipes = []string{
-	"application/bcftools/1.21",
 	"application/julia/1.10.7",
 	"application/julia/1.11.3",
 	"application/miniforge/24.3.0",

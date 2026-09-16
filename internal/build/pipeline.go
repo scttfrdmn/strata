@@ -112,7 +112,7 @@ func Run(
 	// Stage pinned sources (if the recipe declares any) so build.sh reads
 	// verified bytes from $STRATA_SOURCES rather than fetching them itself. A
 	// digest mismatch fails here, before the recipe script runs (#68).
-	sourcesDir, err := stageSourcesForBuild(ctx, recipe.Meta.Sources)
+	sourcesDir, err := stageSourcesForBuild(ctx, recipe.Meta.Sources, arch)
 	if err != nil {
 		os.RemoveAll(outputDir) //nolint:errcheck
 		if buildEnvCleanup != nil {

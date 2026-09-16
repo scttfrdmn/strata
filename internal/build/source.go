@@ -24,17 +24,20 @@ import (
 //
 // client is a parameter so tests drive it against an httptest server; the build
 // pipeline passes nil for a default client with a generous timeout.
-func StageSources(ctx context.Context, sources []RecipeSource, destDir string, client *http.Client) error {
+func StageSources(ctx context.Context, sources []RecipeSource, destDir, arch string, client *http.Client) error {
 	if len(sources) == 0 {
 		return nil
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Minute}
+		client = &http.Client{Timeout: 30 * time.Minute}
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return fmt.Errorf("build: creating sources dir: %w", err)
 	}
 	for _, s := range sources {
+		if !s.matchesArch(arch) {
+			continue // a source pinned for a different arch
+		}
 		if err := fetchAndVerify(ctx, s, destDir, client); err != nil {
 			return err
 		}
@@ -47,7 +50,7 @@ func StageSources(ctx context.Context, sources []RecipeSource, destDir string, c
 // pipeline exposes as $STRATA_SOURCES. It returns "" and no error when the recipe
 // declares no sources. On any staging failure it removes the directory, so the
 // caller never sees a partially-populated sources dir.
-func stageSourcesForBuild(ctx context.Context, sources []RecipeSource) (string, error) {
+func stageSourcesForBuild(ctx context.Context, sources []RecipeSource, arch string) (string, error) {
 	if len(sources) == 0 {
 		return "", nil
 	}
@@ -55,7 +58,7 @@ func stageSourcesForBuild(ctx context.Context, sources []RecipeSource) (string, 
 	if err != nil {
 		return "", fmt.Errorf("build: creating sources dir: %w", err)
 	}
-	if err := StageSources(ctx, sources, dir, nil); err != nil {
+	if err := StageSources(ctx, sources, dir, arch, nil); err != nil {
 		os.RemoveAll(dir) //nolint:errcheck
 		return "", err
 	}
