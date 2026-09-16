@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="2.11.2"
-URL="https://download.open-mpi.org/release/hwloc/v2.11/hwloc-${VERSION}.tar.bz2"
 
-curl -fsSL "${URL}" | tar -xj
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/hwloc-2.11.2.tar.bz2"
 cd "hwloc-${VERSION}"
 
 ./configure \

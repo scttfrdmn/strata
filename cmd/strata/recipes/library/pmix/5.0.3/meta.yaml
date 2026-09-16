@@ -3,6 +3,9 @@ version: "5.0.3"
 tier: library
 description: "PMIx 5.0.3 — process management interface for MPI runtimes."
 abi: linux-gnu-2.34
+sources:
+  - url: https://github.com/pmix/pmix/releases/download/v5.0.3/pmix-5.0.3.tar.bz2
+    sha256: 474ebf5bbc420de442ab93f1b61542190ac3d39ca3b0528a19f586cf3f1cbd94
 user_selectable: false
 
 build_requires:

@@ -3,6 +3,9 @@ version: "4.9.2"
 tier: library
 description: "NetCDF-C 4.9.2 — self-describing data format for atmospheric and ocean sciences."
 abi: linux-gnu-2.34
+sources:
+  - url: https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.2.tar.gz
+    sha256: bc104d101278c68b303359b3dc4192f81592ae8640f1aee486921138f7f88cb7
 
 build_requires:
   - name: gcc

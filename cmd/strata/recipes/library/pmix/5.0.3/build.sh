@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="5.0.3"
-URL="https://github.com/pmix/pmix/releases/download/v${VERSION}/pmix-${VERSION}.tar.bz2"
 
-curl -fsSL "${URL}" | tar -xj
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/pmix-5.0.3.tar.bz2"
 cd "pmix-${VERSION}"
 
 ./configure \

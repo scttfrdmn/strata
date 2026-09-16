@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="13.2.0"
-URL="https://ftp.gnu.org/gnu/gcc/gcc-${VERSION}/gcc-${VERSION}.tar.xz"
 
-curl -fsSL "${URL}" | tar -xJ
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/gcc-13.2.0.tar.xz"
 cd "gcc-${VERSION}"
 
 # Download GCC prerequisites (GMP, MPFR, MPC).

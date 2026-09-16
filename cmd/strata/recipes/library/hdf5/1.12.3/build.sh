@@ -6,13 +6,12 @@ VERSION="1.12.3"
 TAG="hdf5-1_12_3"
 TARBALL="${TAG}.tar.gz"
 # HDF5 source is on GitHub; tag format for 1.12.x: hdf5-1_12_3
-URL="https://github.com/HDFGroup/hdf5/archive/refs/tags/${TAG}.tar.gz"
 
 dnf install -y cmake gcc-c++ gcc-gfortran zlib-devel
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/hdf5-1_12_3.tar.gz"
 cd "hdf5-${TAG}"
 
 mkdir build && cd build

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 VERSION="5.0.10"
-URL="https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${VERSION}.tar.bz2"
 
-curl -fsSL "${URL}" | tar -xj
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/openmpi-5.0.10.tar.bz2"
 cd "openmpi-${VERSION}"
 
 # .la files in build-env layers embed the build-machine's /tmp/strata-build-*/

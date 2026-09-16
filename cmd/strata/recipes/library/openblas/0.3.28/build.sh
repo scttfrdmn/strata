@@ -4,11 +4,10 @@ set -euo pipefail
 
 VERSION="0.3.28"
 TARBALL="OpenBLAS-${VERSION}.tar.gz"
-URL="https://github.com/OpenMathLib/OpenBLAS/releases/download/v${VERSION}/${TARBALL}"
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/OpenBLAS-0.3.28.tar.gz"
 cd "OpenBLAS-${VERSION}"
 
 # Use the detected number of CPUs and disable affinity for reproducible builds.
