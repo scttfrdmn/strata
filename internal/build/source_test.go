@@ -111,6 +111,63 @@ func TestStagedFile_DefaultsToURLBasename(t *testing.T) {
 	}
 }
 
+// TestStageSourcesForBuild covers the pipeline-side helper that Run uses: no
+// sources yields no directory, declared sources are staged into a fresh temp
+// dir, and a mismatch fails without leaking the directory.
+func TestStageSourcesForBuild(t *testing.T) {
+	t.Run("no sources returns empty dir", func(t *testing.T) {
+		dir, err := stageSourcesForBuild(context.Background(), nil)
+		if err != nil || dir != "" {
+			t.Fatalf("stageSourcesForBuild(nil) = %q, %v; want \"\", nil", dir, err)
+		}
+	})
+
+	t.Run("declared source is staged", func(t *testing.T) {
+		body := []byte("tarball")
+		srv, _ := sourceServer(t, body)
+		// stageSourcesForBuild uses the default HTTP client; an httptest server's
+		// loopback URL is reachable by it.
+		dir, err := stageSourcesForBuild(context.Background(),
+			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex(body), File: "t.tar"}})
+		if err != nil {
+			t.Fatalf("stageSourcesForBuild: %v", err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+		if dir == "" {
+			t.Fatal("expected a staging dir")
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "t.tar")); statErr != nil {
+			t.Errorf("source not staged: %v", statErr)
+		}
+	})
+
+	t.Run("mismatch fails and leaves no dir", func(t *testing.T) {
+		body := []byte("served")
+		srv, _ := sourceServer(t, body)
+		dir, err := stageSourcesForBuild(context.Background(),
+			[]RecipeSource{{URL: srv.URL + "/artifact", SHA256: sha256Hex([]byte("pinned")), File: "t.tar"}})
+		if err == nil {
+			t.Fatal("expected a digest-mismatch error")
+		}
+		if dir != "" {
+			os.RemoveAll(dir)
+			t.Errorf("a staging dir was returned alongside an error: %q", dir)
+		}
+	})
+}
+
+// TestWithSourcesEnv: STRATA_SOURCES is appended only when a dir was staged.
+func TestWithSourcesEnv(t *testing.T) {
+	base := []string{"A=1"}
+	if got := withSourcesEnv(base, ""); len(got) != 1 {
+		t.Errorf("withSourcesEnv(_, \"\") appended an entry: %v", got)
+	}
+	got := withSourcesEnv(base, "/tmp/src")
+	if len(got) != 2 || got[1] != "STRATA_SOURCES=/tmp/src" {
+		t.Errorf("withSourcesEnv did not append STRATA_SOURCES: %v", got)
+	}
+}
+
 // TestRecipeMeta_Validate_Sources drives the schema-level guard: a declared
 // source must be genuinely pinned (URL + well-formed sha256) and stage to a safe
 // plain filename, so a recipe cannot claim a source it does not pin.
