@@ -3,6 +3,15 @@ version: "1.82.0"
 tier: core
 description: "Rust 1.82.0 stable toolchain — rustc, cargo, rustfmt, clippy."
 abi: linux-gnu-2.34
+sources:
+  - url: https://static.rust-lang.org/dist/rust-1.82.0-x86_64-unknown-linux-gnu.tar.gz
+    sha256: 0265c08ae997c4de965048a244605fb1f24a600bbe35047b811c638b8fcf676b
+    file: rust.tar.gz
+    arch: x86_64
+  - url: https://static.rust-lang.org/dist/rust-1.82.0-aarch64-unknown-linux-gnu.tar.gz
+    sha256: d7db04fce65b5f73282941f3f1df5893be9810af17eb7c65b2e614461fe31a48
+    file: rust.tar.gz
+    arch: arm64
 provides:
   - name: rust
     version: "1.82.0"

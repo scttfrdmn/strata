@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Rust 1.82.0 build script for Strata.
-# Uses the official rustup installer to bootstrap a pinned stable toolchain.
-# rustup writes tool binaries to CARGO_HOME/bin and toolchain files to RUSTUP_HOME.
+# Installs the pinned official standalone toolchain (rustc + cargo + rust-std +
+# rustfmt + clippy) from the SHA256-verified tarball in $STRATA_SOURCES, replacing
+# the old unpinned `curl https://sh.rustup.rs | sh` bootstrap (#68). rustc, cargo
+# and friends land in $STRATA_INSTALL_PREFIX/bin via the tarball's install.sh.
 set -euo pipefail
 
 VERSION="1.82.0"
 
-# Point rustup and cargo at the layer install prefix so bin/rustc, bin/cargo,
-# etc. land at the expected squashfs paths.
-export CARGO_HOME="${STRATA_INSTALL_PREFIX}"
-export RUSTUP_HOME="${STRATA_INSTALL_PREFIX}/.rustup"
+case "${STRATA_ARCH}" in
+    x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
+    arm64)   TARGET="aarch64-unknown-linux-gnu" ;;
+    *)       echo "Unsupported arch: ${STRATA_ARCH}"; exit 1 ;;
+esac
 
-# Install rustup + the pinned stable toolchain.
-# --no-modify-path: skip modifying ~/.bashrc / ~/.profile (not needed on build instance).
-# --profile minimal: rustc + cargo + rust-std + rustfmt + clippy only.
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y \
-    --default-toolchain "${VERSION}" \
-    --profile minimal \
-    --no-modify-path
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml).
+tar xf "${STRATA_SOURCES}/rust.tar.gz"
+cd "rust-${VERSION}-${TARGET}"
+
+./install.sh --prefix="${STRATA_INSTALL_PREFIX}" --disable-ldconfig

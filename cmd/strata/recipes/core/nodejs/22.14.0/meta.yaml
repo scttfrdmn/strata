@@ -3,6 +3,15 @@ version: "22.14.0"
 tier: core
 description: "Node.js 22.14.0 LTS — JavaScript runtime for JupyterLab extensions and Quarto rendering."
 abi: linux-gnu-2.34
+sources:
+  - url: https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz
+    sha256: 69b09dba5c8dcb05c4e4273a4340db1005abeafe3927efda2bc5b249e80437ec
+    file: node.tar.xz
+    arch: x86_64
+  - url: https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-arm64.tar.xz
+    sha256: 08bfbf538bad0e8cbb0269f0173cca28d705874a67a22f60b57d99dc99e30050
+    file: node.tar.xz
+    arch: arm64
 provides:
   - name: nodejs
     version: "22.14.0"

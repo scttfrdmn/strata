@@ -11,12 +11,10 @@ case "${STRATA_ARCH}" in
     *)       echo "Unsupported arch: ${STRATA_ARCH}"; exit 1 ;;
 esac
 
-TARBALL="node-v${VERSION}-${ARCH_TAG}.tar.xz"
-URL="https://nodejs.org/dist/v${VERSION}/${TARBALL}"
 
 cd /tmp
-curl -fsSL "$URL" -o "$TARBALL"
-tar xf "$TARBALL"
+# Source SHA256-verified into $STRATA_SOURCES by the pipeline (per-arch, meta.yaml, #68).
+tar xf "${STRATA_SOURCES}/node.tar.xz"
 
 # Install by copying the pre-built layout into the install prefix.
 cp -a "node-v${VERSION}-${ARCH_TAG}/." "${STRATA_INSTALL_PREFIX}/"

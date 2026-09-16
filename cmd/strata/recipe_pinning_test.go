@@ -23,16 +23,9 @@ import (
 // named-route list, not a silent gap: a new recipe that fetches without pinning
 // fails the guard until it is either pinned or consciously added here.
 var knownUnpinnedRecipes = []string{
-	"application/julia/1.10.7",
-	"application/julia/1.11.3",
-	"application/miniforge/24.3.0",
-	"application/quarto/1.4.555",
 	"core/cuda/11.8.0",
 	"core/cuda/12.3.2",
 	"core/cuda/12.6.0",
-	"core/nodejs/20.19.0",
-	"core/nodejs/22.14.0",
-	"core/rust/1.82.0",
 }
 
 var recipeFetchRE = regexp.MustCompile(`(?m)\b(curl|wget)\b`)

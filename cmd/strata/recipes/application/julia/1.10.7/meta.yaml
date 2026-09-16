@@ -3,6 +3,15 @@ version: "1.10.7"
 tier: application
 description: "Julia 1.10.7 — high-performance scientific computing language with native MPI and GPU support."
 abi: linux-gnu-2.34
+sources:
+  - url: https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.7-linux-x86_64.tar.gz
+    sha256: 21b2c69806aacf191d7c81806c7d9918bddab30c7b5b8d4251389c3abe274334
+    file: julia.tar.gz
+    arch: x86_64
+  - url: https://julialang-s3.julialang.org/bin/linux/aarch64/1.10/julia-1.10.7-linux-aarch64.tar.gz
+    sha256: 93bf1b113f297c817310f77d1edce4ab9dcbf49432489cb8df09afbf93d1e5a0
+    file: julia.tar.gz
+    arch: arm64
 provides:
   - name: julia
     version: "1.10.7"
