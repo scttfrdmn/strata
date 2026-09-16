@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-16
+
+_"Freshness & rollback attestation": a signed lockfile now carries a
+tamper-resistant age. Rollback and freeze — serving an old but genuinely-signed
+environment in place of the current one — stop being silent: strata surfaces how
+far behind an environment is on every consumption path, and refuses a stale one
+where a bound is set. There is no default bound, because a cited, archived
+lockfile is meant to be re-runnable at any age; the fuller TUF-style
+timestamp/snapshot role remains future work._
+
 ### Added
 - **Lockfile freshness (rollback/freeze detection, #224, threat T8).**
   `resolved_at` is inside the signed payload, so a lockfile's age is
@@ -2112,7 +2122,8 @@ discharges for the identity cluster._
   `examples/pytorch-jupyter.yaml` with parse and round-trip smoke tests
 - Initial project structure, CI workflow, and tooling
 
-[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/scttfrdmn/strata/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/scttfrdmn/strata/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/scttfrdmn/strata/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/scttfrdmn/strata/compare/v0.24.0...v0.25.0
