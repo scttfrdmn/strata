@@ -108,6 +108,21 @@ func Run(
 		"STRATA_INSTALL_PREFIX="+installPrefix,
 		"STRATA_OUT="+outputDir,
 	)
+
+	// Stage pinned sources (if the recipe declares any) so build.sh reads
+	// verified bytes from $STRATA_SOURCES rather than fetching them itself. A
+	// digest mismatch fails here, before the recipe script runs (#68).
+	sourcesDir, err := stageSourcesForBuild(ctx, recipe.Meta.Sources)
+	if err != nil {
+		os.RemoveAll(outputDir) //nolint:errcheck
+		if buildEnvCleanup != nil {
+			buildEnvCleanup()
+		}
+		return nil, err
+	}
+	defer os.RemoveAll(sourcesDir) //nolint:errcheck // no-op when "" (no sources)
+	env = withSourcesEnv(env, sourcesDir)
+
 	if err := executor.Execute(ctx, recipe.BuildScriptPath, env, outputDir); err != nil {
 		os.RemoveAll(outputDir) //nolint:errcheck
 		if buildEnvCleanup != nil {
