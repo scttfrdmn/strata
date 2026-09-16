@@ -100,6 +100,45 @@ type RecipeMeta struct {
 	// auto-generated Lmod modulefile beyond the standard auto-detected ones
 	// (PATH, LD_LIBRARY_PATH, PKG_CONFIG_PATH, MANPATH, INFOPATH, CPATH).
 	ModulefileEnv []ModuleEnvVar `yaml:"modulefile_env,omitempty"`
+
+	// Sources lists the source artifacts the build fetches, each pinned by
+	// SHA256. The build stages every declared source into $STRATA_SOURCES,
+	// verifying its digest before build.sh runs, so a build is reproducible from
+	// its recipe and a tampered source fails the build (#68). A recipe with no
+	// Sources fetches nothing that is pinned — build.sh reading from the network
+	// is the reproducibility gap this field closes; see StagedFile.
+	Sources []RecipeSource `yaml:"sources,omitempty"`
+}
+
+// RecipeSource is one source artifact a recipe build depends on, pinned by
+// digest. The build fetches URL, verifies its SHA256, and stages it as File
+// under $STRATA_SOURCES; build.sh reads $STRATA_SOURCES/<File> rather than
+// fetching from the network itself, which is what makes the layer reproducible
+// from the recipe (#68).
+type RecipeSource struct {
+	// URL is where the artifact is fetched from.
+	URL string `yaml:"url"`
+
+	// SHA256 is the expected content digest (64 lowercase hex). A mismatch
+	// between this and the fetched bytes fails the build.
+	SHA256 string `yaml:"sha256"`
+
+	// File is the staged filename under $STRATA_SOURCES. Optional; defaults to
+	// the last path element of URL.
+	File string `yaml:"file,omitempty"`
+}
+
+// StagedFile returns the filename this source is staged as under
+// $STRATA_SOURCES: File if set, otherwise the last path element of URL.
+func (s RecipeSource) StagedFile() string {
+	if s.File != "" {
+		return s.File
+	}
+	base := s.URL
+	if i := strings.LastIndexAny(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	return base
 }
 
 // ModuleEnvVar declares a single environment variable entry for a generated
@@ -153,6 +192,27 @@ func (m *RecipeMeta) Validate() error {
 	// Core tier invariant: no build_requires (bootstrap build).
 	if m.Tier == "core" && len(m.BuildRequires) > 0 {
 		return fmt.Errorf("recipe meta: %q is tier core but has build_requires — core layers must use only the OS system compiler", m.Name)
+	}
+	// Every declared source must be pinned: a non-empty URL and a well-formed
+	// SHA256, so a recipe cannot declare a source it does not actually pin. File
+	// names, if given, must be plain (no path separators) so a source cannot be
+	// staged outside $STRATA_SOURCES.
+	seen := make(map[string]bool, len(m.Sources))
+	for i, s := range m.Sources {
+		if s.URL == "" {
+			return fmt.Errorf("recipe meta: %q sources[%d] has empty url", m.Name, i)
+		}
+		if err := spec.ValidateLayerDigest(s.SHA256); err != nil {
+			return fmt.Errorf("recipe meta: %q sources[%d] (%s): sha256 %w", m.Name, i, s.URL, err)
+		}
+		if strings.ContainsAny(s.File, "/\\") || s.File == ".." {
+			return fmt.Errorf("recipe meta: %q sources[%d] file %q must be a plain filename", m.Name, i, s.File)
+		}
+		if f := s.StagedFile(); seen[f] {
+			return fmt.Errorf("recipe meta: %q sources stage two artifacts as %q — set distinct file: names", m.Name, f)
+		} else {
+			seen[f] = true
+		}
 	}
 	return nil
 }

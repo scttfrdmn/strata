@@ -860,7 +860,7 @@ moves the status of every proposition it names; nothing else does.
 | T4 | `ec2runner` downloads the cosign binary with no checksum or signature | A3 | #63 | No |
 | P4, P1 | `strata freeze` cannot succeed — nothing populates `ami_sha256` | H1 | #64 | No |
 | P1 | `strata publish` accepts unsigned lockfiles and dirty mutable layers | H1 | #66 | No |
-| B2, B3 | Recipes fetch sources with no digest pinning; the recipe schema has no field for one | A3 | #68 | No |
+| B2, B3 | Recipes fetch sources with no digest pinning; the recipe schema has no field for one | A3 | #68 | No — **structural half addressed (v0.27)**: the schema now has the field the counterexample said was missing — `RecipeMeta.Sources` carries `{url, sha256}` per source, `RecipeMeta.Validate` requires every declared source be pinned (well-formed sha256, safe filename), and the build stages and verifies each into `$STRATA_SOURCES` before `build.sh` runs, failing on a digest mismatch (`internal/build/source.go` `StageSources`; tested in `internal/build/source_test.go`). Still live — **adoption**: 0 of 32 fetching recipes declare `Sources` yet, so builds remain unpinned in practice. The survey is recorded and guarded as `knownUnpinnedRecipes`/`TestRecipeSourcePinning_Guard` (`cmd/strata`), which fails if a new unpinned recipe is added or a listed one is pinned without updating the list. Pinning the catalog (and the rustup pipe) is #229; the row discharges when that reaches empty. |
 | X1, R7 | `OnReady` is specified, hashed into the identity, and never executed. Declared `spec/lockfile.go:42-43`, copied `internal/resolver/stages.go:437`, hashed `spec/lockfile_hash.go:23,53`, executed nowhere. It refutes **R7** as well as X1, and for the same reason read in the opposite direction: a command list that runs nowhere cannot change the assembled environment, so two lockfiles differing only in `on_ready` assemble the same environment and get different identities. R7's evidence cell has cited this row as its demonstrating instance since R7 was added; the row named only X1 until 2026-08-21 (§7), so the attribution existed in prose and not in the table that derives R7's status | H1 | #69 | No |
 | I3, I4, I5 | `strata-agent` fetcher builds a cache path from an unvalidated digest; `""` collides on `.sqfs` | A1 + A5 | #81 | Yes — **2026-09-14 (#81)**. `s3LayerFetcher.Fetch` now builds the cache path through `spec.LayerCachePath` (`cmd/strata-agent/s3_fetcher.go`), which calls `ValidateLayerDigest` (64 lowercase hex) before `filepath.Join`: a malformed digest (I3) or one that path-traverses (I4) is refused before it names a file, and an empty digest — the `""`-collides-on-`.sqfs` case (I5) — is rejected rather than mapping two distinct layers to one location. **Re-derived** at E1 (chosen/implementation): `cmd/strata-agent/agent_aws_test.go` `TestFetch_RejectsInvalidDigest` drives a too-short digest and a `../` traversal through a fetcher whose S3 mock *holds* the object, so a fetch would succeed without the check — the failure proves the digest validation and names the digest; the inverted `TestFetch_CacheHit`/`CacheMiss` now use 64-hex digests (the pre-#81 tests asserted success with `abc123`/`deadbeef`, which the user-authorized inherited-test exemption covers). This is the second of the two cache sites: #57 fixed `strata run`, and the fetcher was the one left. I3 and I5 leave `REFUTED`; I4 stays `REFUTED` on #58 and #97 |
 | I4 | `trust.VerifyLayers` builds squashfs paths from an unvalidated `layer.ID`; the comment claims `Join` prevents escape | A1 | #58 | No |
@@ -3168,3 +3168,27 @@ states the standard it violated and puts a cadence on finding the next.
     are unchanged; the movement is in the row.
 
     (2026-09-15, #99, v0.26.)
+
+96. **Recipe source pinning gains a schema and a mechanism (`B2`/`B3`,
+    structural half).** v0.27 opens on reproducible inputs. The survey the #68
+    issue asked for first was run and is decisive: **32 of 33 recipes fetch a
+    source over the network, 0 pin a digest** — the gap is catalog-wide, not the
+    two instances the review happened to read. `RecipeMeta` now carries
+    `Sources []{url, sha256}`; `Validate` requires every declared source be
+    genuinely pinned (well-formed sha256, plain staged filename, no duplicate
+    stage names); and the build stages each source into `$STRATA_SOURCES`,
+    verifying its digest before `build.sh` runs and failing on a mismatch with
+    both the pinned and the actual digest (`internal/build/source.go`).
+
+    The `B2`/`B3` row stays `No`, and the distinction is deliberate: the schema
+    *field* the counterexample named as missing now exists, but no recipe uses it,
+    so builds are still unpinned in practice. Discharging on the mechanism alone
+    would be marking the row done because the *tool* to fix it exists — the exact
+    apparatus-without-adoption move the register is meant to catch. The survey is
+    recorded as `knownUnpinnedRecipes` and guarded by `TestRecipeSourcePinning_Guard`
+    (verified to fail in both directions — a new unpinned recipe, and a listed one
+    that gets pinned), so the 32 are a named, tracked route, not a silent gap.
+    Adoption — pinning the catalog and replacing the rustup pipe, each validated by
+    a real EC2 build — is #229; the row discharges when the list reaches empty.
+
+    (2026-09-16, #68 #229, v0.27.)
