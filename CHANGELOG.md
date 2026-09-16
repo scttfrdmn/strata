@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_v0.26 "the signed trust chain" in progress, plus follow-ups to the v0.25.0
-adversarial trust-chain review._
+## [0.26.0] - 2026-09-16
+
+_"The signed trust chain": the lockfile is signed as a whole set, verified by
+default on every path that consumes it, and published in a form a third party can
+verify independently._
 
 ### Added
 - **Lockfile signing and verification — the whole layer set** (#60, #101). A
@@ -25,11 +28,24 @@ adversarial trust-chain review._
     verified to be the exact public half of the KMS signing key (#62).
   - `strata publish` verifies the lockfile's signature before minting a DOI —
     refusing a tampered set that the old presence check would have passed.
-  - The **EC2 agent** verifies the lockfile signature before fetching or mounting
-    (opt-in: a signed lockfile that fails verification stops the boot; an
-    unsigned one is not yet refused).
-  - Proven end-to-end against the live KMS key + Rekor. Still landing: a freshness
-    bound on the signed `resolved_at` and making verification mandatory (#101).
+  - The **EC2 agent** verifies the lockfile signature before fetching or mounting.
+  - Proven end-to-end against the live KMS key + Rekor.
+- **Verification is mandatory on every consumption path** (#101). `strata run`
+  verifies the set before mounting, `strata export` before packaging an image, and
+  `strata fold` before signing a merged layer — refusing an unsigned or
+  mix-and-match set by default. `--no-verify` (and fold's `--no-sign`/`--eject`,
+  which produce no trusted artifact) are the explicit, announced escapes. This
+  closes the opt-in gap and moves set integrity (T9) to enforced. A freshness bound
+  on the signed `resolved_at` is split to a later release (#224).
+- **The Zenodo deposit is a self-contained verification bundle** (#99). `strata
+  publish` deposits the cosign public key (`cosign.pub`, the embedded trust anchor)
+  and a `STRATA-VERIFY.md` manifest alongside the lockfile, so a third party with
+  only the DOI record can verify the environment was attested as a whole — the
+  digests are no longer unfalsifiable. Layer bytes are fetched from a registry with
+  the signed digests as the binding, stated on the record.
+- **`make verify-signing-key`** (#222) — a release gate asserting the embedded
+  public key is the public half of the KMS signing key, failing loudly (and
+  distinctly from an unreachable KMS) so a key rotation or a bad copy cannot ship.
 
 ### Security
 - **The EC2 agent and `pkg/strata` now validate the lockfile** before acting on
@@ -38,6 +54,11 @@ adversarial trust-chain review._
   `LockfileUserData` now validate too, so a structurally invalid lockfile
   (duplicate `mount_order`, malformed digest, unsafe layer id) cannot reach the
   boot path — the agent signals failure instead of mounting it.
+- **`VerifyLockFile` binds the lockfile's `rekor_entry` to the signed bundle**
+  (#220). The transparency-log pointer is excluded from the signed payload, so a
+  falsified `rekor_entry` (published as `lockfile_rekor_entry` in the provenance
+  record) previously verified; it is now checked against the bundle's own log
+  index, and signing refuses a bundle with no transparency-log entry.
 
 ### Changed
 - **Renamed the resolver verification label `attestation-present` →
@@ -54,12 +75,22 @@ adversarial trust-chain review._
   content into one, merging provenance as a sorted union, so the layer is mounted
   once and the lockfile is permutation-invariant — restoring R2 to `ENFORCED` over
   overlapping formations (found by the v0.25.0 review; refuted, then fixed).
+- **`dedupLayers` refuses an ID collision with different content** (#219). It
+  collapsed layers by the unauthenticated manifest ID, so a tampering registry
+  could stamp one ID on two separately-signed layers and drop one requested,
+  authenticated layer from the set the signer then signs. It now collapses only
+  when the SHA-256 also matches, and refuses an ID collision with differing
+  content (found by the v0.26 re-review).
 
 ### Fixed (register / evidence)
 - Added a route-drift guard for `VerificationPolicy`, strengthened T6's evidence
   to cite the stage-7 enforcement that makes the label meaningful, and added a
   test that the agent's production verifier uses the *embedded* key. Renamed the
   verification label (see Changed above).
+- Per-proposition register updates for the signing work: T9 → `ENFORCED E1`
+  (mandatory verification), P2 `No` → `Partially` (verifiable deposit), T2's
+  no-signer-identity-policy weakness promoted to a tracked counterexample (#225),
+  and #101's freshness bound split to #224. `ENFORCED E1` 10 → 12.
 
 ## [0.25.0] - 2026-09-14
 
@@ -2015,7 +2046,8 @@ discharges for the identity cluster._
   `examples/pytorch-jupyter.yaml` with parse and round-trip smoke tests
 - Initial project structure, CI workflow, and tooling
 
-[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/scttfrdmn/strata/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/scttfrdmn/strata/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/scttfrdmn/strata/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/scttfrdmn/strata/compare/v0.22.0...v0.23.0
