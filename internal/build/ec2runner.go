@@ -529,8 +529,12 @@ RECIPE_DIR="/opt/strata-recipe/{{.RecipeName}}/{{.RecipeVersion}}"
 mkdir -p "$RECIPE_DIR"
 aws s3 sync "s3://{{.Bucket}}/build/jobs/{{.JobID}}/recipe/" "$RECIPE_DIR/" || fail
 
-# Run build
+# Run build. TMPDIR points at the disk-backed root volume, not /tmp: AL2023
+# mounts /tmp as tmpfs (RAM-backed, ~half of RAM), which a large toolkit build
+# (e.g. CUDA, ~8 GiB installed) overflows with "no space left on device"
+# regardless of the EBS volume size. /var/tmp lives on the root volume.
 export COSIGN_PASSWORD=""
+export TMPDIR=/var/tmp
 if strata build "$RECIPE_DIR" --os {{.OS}} --arch {{.Arch}} \
     --registry '{{.RegistryURL}}'{{.KeyFlag}}; then
   # NOTE: the registry index is rebuilt out-of-band, not here. Concurrent builds
