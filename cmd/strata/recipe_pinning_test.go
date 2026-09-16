@@ -22,8 +22,7 @@ import (
 // which point the guard below becomes "every fetching recipe is pinned". It is a
 // named-route list, not a silent gap: a new recipe that fetches without pinning
 // fails the guard until it is either pinned or consciously added here.
-var knownUnpinnedRecipes = []string{
-}
+var knownUnpinnedRecipes = []string{}
 
 var recipeFetchRE = regexp.MustCompile(`(?m)\b(curl|wget)\b`)
 
