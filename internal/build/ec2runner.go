@@ -478,8 +478,10 @@ tag() {
 }
 tag "running"
 
-# On failure: tag + stop (keep instance so logs are accessible via SSM).
+# On failure: upload the build log to S3 (SSM run-command is not available in
+# every account, so the log must be retrievable without it), tag, and stop.
 fail() {
+  aws s3 cp "$LOG" "s3://{{.Bucket}}/build/logs/{{.JobID}}.log" --region "$REGION" || true
   tag "failed"
   aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
   exit 1
