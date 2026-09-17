@@ -345,6 +345,7 @@ func layerManifestRoutes() []fieldRoute {
 		metadata("BuiltWith"),
 		metadata("BootstrapBuild"),
 		metadata("BootstrapCompiler"),
+		metadata("BuildEnvironment"),
 		metadata("CaptureSource"),
 		metadata("FoldedFrom"),
 		metadata("OriginalPrefix"),

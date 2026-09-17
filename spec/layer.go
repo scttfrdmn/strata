@@ -66,6 +66,14 @@ type LayerManifest struct {
 	BootstrapBuild    bool       `yaml:"bootstrap_build,omitempty" json:"bootstrap_build,omitempty"`       // true = Tier 0, built with OS system compiler
 	BootstrapCompiler string     `yaml:"bootstrap_compiler,omitempty" json:"bootstrap_compiler,omitempty"` // exact system compiler package, e.g. "gcc-11.4.1-2.amzn2023.0.1.x86_64"
 
+	// BuildEnvironment names the pinned OS toolchain this layer was built against —
+	// the base AMI, the dnf releasever snapshot, and the exact NVR of every OS
+	// package the build installed — so every build input is named (B2, #234) and
+	// the toolchain is deterministic up to the AL2023 versioned repo and the fixed
+	// AMI (B3). It supersedes BootstrapCompiler's single-package record for
+	// OS-toolchain builds. nil = not recorded.
+	BuildEnvironment *BuildEnvironment `yaml:"build_environment,omitempty" json:"build_environment,omitempty"`
+
 	// CaptureSource records how this layer was created without a recipe.
 	// Values: "lmod", "conda", "filesystem", "fold". Empty for recipe-built layers.
 	CaptureSource string `yaml:"capture_source,omitempty" json:"capture_source,omitempty"`
