@@ -204,6 +204,12 @@ func Run(
 	manifest.BuiltAt = time.Now().UTC()
 	manifest.CosignVersion = trust.CosignToolVersion(ctx)
 
+	// Record the OS toolchain this build compiled against (#234): the AMI, the
+	// dnf releasever, and every installed package NVR, so every build input is
+	// named (B2). Best-effort — nil on a non-rpm host, which leaves the field
+	// unset rather than half-filled.
+	manifest.BuildEnvironment = captureBuildEnvironment(ctx, execRunner{}, imdsAMIID)
+
 	annotations := map[string]string{
 		"strata.layer.name":          recipe.Meta.Name,
 		"strata.layer.version":       recipe.Meta.Version,

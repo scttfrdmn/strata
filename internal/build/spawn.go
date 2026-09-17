@@ -24,7 +24,9 @@ import (
 // needed change as an issue on the spawn project.
 //
 // Provenance: spore.host/spawn CHANGELOG, latest release v0.110.0 (2026-09).
-const pinnedSpawnVersion = "v0.110.0"
+// Stored without the "v" because `spawn version` prints "0.110.0"; comparison
+// trims a leading "v" on both sides so either form matches (verifySpawnVersion).
+const pinnedSpawnVersion = "0.110.0"
 
 // spawnBinary is the spawn executable, resolved on PATH. strata shells out to
 // the CLI (rather than importing spawn as a library) so that what strata runs is
@@ -58,7 +60,9 @@ func verifySpawnVersion(ctx context.Context, runner commandRunner) error {
 	if got == "" {
 		return fmt.Errorf("build: could not parse a version from %q version output", spawnBinary)
 	}
-	if got != pinnedSpawnVersion {
+	// `spawn version` prints "0.110.0" while a git tag / CHANGELOG says "v0.110.0";
+	// trim a leading "v" on both sides so the pin matches regardless of form.
+	if strings.TrimPrefix(got, "v") != strings.TrimPrefix(pinnedSpawnVersion, "v") {
 		return fmt.Errorf("build: spawn %s is not the pinned %s — strata's launch contract is tested against the pinned version; install it or bump the pin deliberately", got, pinnedSpawnVersion)
 	}
 	return nil
