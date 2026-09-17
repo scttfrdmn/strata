@@ -524,12 +524,22 @@ fail() {
   exit 1
 }
 
+# Pin dnf to this AMI's own AL2023 releasever snapshot so the toolchain resolves
+# deterministically over time rather than tracking the moving repos (#234, B3).
+# The value is whatever this fixed AMI shipped with — captured, not guessed — and
+# strata build records it (with the installed NVRs) into the layer's
+# BuildEnvironment. If it cannot be determined, install unpinned rather than fail.
+RELEASEVER=$(rpm -E '%{?releasever}' 2>/dev/null || true)
+RELFLAG=""
+if [ -n "$RELEASEVER" ]; then RELFLAG="--releasever=$RELEASEVER"; fi
+echo "strata: pinning dnf to releasever=${RELEASEVER:-<unset>}"
+
 # Install build toolchain. "Development Tools" group provides gcc, g++, make,
 # binutils, glibc-devel, and other essentials needed to compile from source.
 # squashfs-tools: mksquashfs to package the build output.
 # The -devel packages cover common recipe build deps (Python, R, OpenMPI, etc.).
-dnf groupinstall -y "Development Tools" || fail
-dnf install -y \
+dnf $RELFLAG groupinstall -y "Development Tools" || fail
+dnf $RELFLAG install -y \
   squashfs-tools \
   openssl-devel zlib-devel bzip2-devel libffi-devel xz-devel \
   ncurses-devel readline-devel sqlite-devel \
