@@ -13,8 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package a build installed — the concrete "every build input is named" target for
   build reproducibility (B2), extending `BootstrapCompiler` from just gcc to the
   whole toolchain. The set is sorted/de-duplicated so a layer's provenance does
-  not depend on `rpm -qa` order. Populating it (user-data `--releasever` pin +
-  capture, pipeline ingest) lands with the layer rebuild.
+  not depend on `rpm -qa` order. The build user-data pins `dnf --releasever` to
+  the AMI's own AL2023 snapshot (deterministic toolchain, B3). **All 66 production
+  layers** (33 recipes × 2 arches) were rebuilt against fresh per-arch gcc, now
+  carry a populated `BuildEnvironment`, and were promoted to `s3://strata-registry`.
+  B2/B3 discharged (B3 deterministic up to the AL2023 versioned repo + fixed AMI).
 - **spawn-managed build instances (#236).** `strata build --ec2 --use-spawn
   [--ttl 4h]` launches the build instance through the pinned spore.host `spawn`
   CLI instead of the AWS SDK, so every instance auto-terminates on a TTL and on
@@ -28,8 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   capabilities — and log it to Rekor, the formation analog of the v0.26 lockfile
   set-signing. `strata sign-formation <formation.yaml>` produces a real
   `rekor_entry`/`bundle`, replacing the `pending-initial-build` placeholder a
-  formation carries. Signing the *shipped* formations (which reference production
-  layers) follows the layer promotion; this is the mechanism.
+  formation carries. **All six shipped formations are now signed** against the
+  promoted production layers (real Rekor entries), discharging the X1
+  `pending-initial-build` counterexample.
 
 ## [0.28.0] - 2026-09-16
 

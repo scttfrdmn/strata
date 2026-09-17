@@ -1,31 +1,23 @@
 name: hpc-mpi
 version: "2026.03"
-description: "GCC + Open MPI — HPC parallel computing baseline."
+description: GCC + Open MPI — HPC parallel computing baseline.
 layers:
-  - name: gcc
-    version: "14.2.0"
-  # openmpi's runtime_requires: ucx, hwloc, pmix, libfabric. Without these the
-  # formation fails stage 4 (UNSATISFIED_REQUIREMENT) against any registry (#108).
-  - name: ucx
-    version: "1.17.0"
-  - name: hwloc
-    version: "2.11.2"
-  - name: pmix
-    version: "5.0.3"
-  - name: libfabric
-    version: "1.22.0"
-  - name: openmpi
-    version: "5.0.10"
+    - gcc@14.2.0
+    - ucx@1.17.0
+    - hwloc@2.11.2
+    - pmix@5.0.3
+    - libfabric@1.22.0
+    - openmpi@5.0.10
 provides:
-  - name: gcc
-    version: "14.2.0"
-  - name: gfortran
-    version: "14.2.0"
-  - name: openmpi
-    version: "5.0.10"
-  - name: mpi
-    version: "4.0"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: gcc
+      version: 14.2.0
+    - name: gfortran
+      version: 14.2.0
+    - name: openmpi
+      version: 5.0.10
+    - name: mpi
+      version: "4.0"
+rekor_entry: "2879086218"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879086218","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662456","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiJiOWU5MTg4ZmI2M2RjYjJkYzc5ODg5YWU1N2FmN2NhN2RhMWU3MzllZTk0MDA1OTkxZjU4ZjE5N2MxYTVhYmI1In19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FVUNJRnNWTzdaRVVidURrZXg5Uit1K0NpTGIreElFekpkUFlGTlozZnJjWnJ4ZUFpRUFpRytUcThraVcrc2xZNStVRm82ejlFenBvWDRRbEkvRk92dnpQYlJkRFQ0PSIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEUCIQDrDMxQ8VO5HmvweEFKjfe0I4sf2+0YztYRaSva53YwegIgARFCUeKhRgaeflF3Ukwcc7homupaR77BGKjkC0XLSbQ="},"inclusionProof":{"logIndex":"2757181956","rootHash":"x2ERME+pS+LaIdy4ncH3gt249gPG8EgqsLO4yZRvfok=","treeSize":"2757181978","hashes":["TOUuYtCvShC9HUuq5rbxj9c9RKzAxAzfLbrieXV1n+0=","l7/4ZQAea7Eza3wwZZGizpMxOrhyvZKvJCKBgIWKv/o=","0eub7TkL/bimgcNYAQdcXaR2ub5n76nGiDL1khyt1ck=","+k4mqaWngBwYkNfsCuHEPJCepSX+zK22h12Gc3HCRqE=","8WxZuaZrDj8DHmgvEm7CTJPrDo5TwdeZHti0lEbgA3c=","Hb8l3CSOhIvwIfThaoadg/GayspzAcbKVzHqrnh2qnE=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757181978\nx2ERME+pS+LaIdy4ncH3gt249gPG8EgqsLO4yZRvfok=\n\n— rekor.sigstore.dev wNI9ajBFAiEA1R9Bd1ql35UwMUxkvjSziUQQmYKlj82lGUT9ZUH+KxMCIFCpJkjo+sEj6CZfISp2Em2Q5CRNxbp5yKRvOKMLeKru\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyDADAgEAMIICvwYJKoZIhvcNAQcCoIICsDCCAqwCAQMxDTALBglghkgBZQMEAgEwgbcGCyqGSIb3DQEJEAEEoIGnBIGkMIGhAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgDORxJQn+PX2l+H7l8v2hgBusgUBhTj+ybq5tpBDrsLICFAcvhj/HzZbfiPOOtSfZ6adJoPyBGA8yMDI2MDkxNzE2MjczNlowAwIBAaAypDAwLjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MRUwEwYDVQQDEwxzaWdzdG9yZS10c2GgADGCAdowggHWAgEBMFEwOTEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MSAwHgYDVQQDExdzaWdzdG9yZS10c2Etc2VsZnNpZ25lZAIUOhNULwyQYe68wUMvy4qOiyojiwwwCwYJYIZIAWUDBAIBoIH8MBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAcBgkqhkiG9w0BCQUxDxcNMjYwOTE3MTYyNzM2WjAvBgkqhkiG9w0BCQQxIgQgUtYg5UdzmTlQrK89R2ip/ONvU3N4QJMsqWdgQfJ0+MkwgY4GCyqGSIb3DQEJEAIvMX8wfTB7MHkEIIX5J7wHq2LKw7RDVsEO/IGyxog/2nq55thw2dE6zQW3MFUwPaQ7MDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAoGCCqGSM49BAMCBGYwZAIwJSbw2kX9qT265DvROuO7YisOjXvaJER007nXVMqHk696PIRRVVNQlEpLUnpQ4E17AjAmU0QBSJ8zaGzxuof66G82GLBXf1H+WLKPjxhpgiMO6fErBCo/gcmAIdPB/kxn/P4="}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"uekYj7Y9yy3HmImuV698p9oec57pQAWZH1jxl8Glq7U="},"signature":"MEUCIFsVO7ZEUbuDkex9R+u+CiLb+xIEzJdPYFNZ3frcZrxeAiEAiG+Tq8kiW+slY5+UFo6z9EzpoX4QlI/FOvvzPbRdDT4="}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z

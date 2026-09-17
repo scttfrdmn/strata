@@ -1,19 +1,17 @@
 name: genomics-python
 version: "2026.03"
-description: "Python + SAMtools — genomics and bioinformatics baseline."
+description: Python + SAMtools — genomics and bioinformatics baseline.
 layers:
-  - name: python
-    version: "3.13.2"
-  - name: samtools
-    version: "1.23"
+    - python@3.13.2
+    - samtools@1.23
 provides:
-  - name: python
-    version: "3.13.2"
-  - name: samtools
-    version: "1.23.0"
-  - name: htslib
-    version: "1.23.0"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: python
+      version: 3.13.2
+    - name: samtools
+      version: 1.23.0
+    - name: htslib
+      version: 1.23.0
+rekor_entry: "2879086085"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879086085","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662455","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiJhMWRjNDRiNDA5ODJiNTEyOTE1ZTY5ZGMyYjM1M2M1MWIzM2VkMjMwNDFkYjYyYzgzN2U2NDY1NGI2NGRkNTljIn19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FUUNJQ1RKR2Fsc21PMHBXSytETDIxRnJ6ZnFLTzlkdUFCNWcrdWdMcGo1UzhqeUFpQTZ0a0VRMjZoTDdjbkdjVERVR3IrODFoVGdmYXczUFRnMGViYnBIdXkrU3c9PSIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEUCIQDuAvo2Q+So5F+5ctouu5b0sWLm5xX/hFCI1S5ydcmnMQIgNyoj7D0qWaYnjZ20KUWGG37b2WAZ5YFVqglgJPa/VNo="},"inclusionProof":{"logIndex":"2757181823","rootHash":"gKN52EwbhGDkspqJZUKKqIZnnfmRjVfkbCj89ER20Mg=","treeSize":"2757181827","hashes":["ebtP6dn5MfqsQkPOXZdWSEefK5PCC0nNpA4ms+5oufo=","9U374vW+2XOnWQjZhkOq0vH6WZcrvEIZ2WVHGAcBzaQ=","J7V47qRKmV2Qqjz0fRpx7pqIirf6Ekf4mWNJGej5iE0=","BDRhsp31pvNWhZPTKnH2Gku2coQVYZv+5EpMqEjiM1c=","EfOXX7G/Dnvv+wWrZAPk910uY0fhEkM0OM+gKeYqIuU=","QLczZnaLN0nUuJgBRsj8xzTW7I/+16zFtsFIVEZcEIY=","7rN4vqyvfaNpl5Xrvb6QU4Zb/ZGtSmp+GX3P9ROs8LE=","YoiHXY48RIPjXDEEXvF0you8pI5JBOJjBvHW6XUL1s0=","Uv0GI/PzxTHcGNiF+0jOUAGZ7phPzxuDgy2JM6oE5js=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757181827\ngKN52EwbhGDkspqJZUKKqIZnnfmRjVfkbCj89ER20Mg=\n\n— rekor.sigstore.dev wNI9ajBFAiEA26kAr9CVx0fKwYstmtSfT6irNa0AC7DgClnMC6L8EHwCIBOjf5jSNXGEdEYpRrfpAci8gdyAhC15ot22k4RHMIgF\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyTADAgEAMIICwAYJKoZIhvcNAQcCoIICsTCCAq0CAQMxDTALBglghkgBZQMEAgEwgbgGCyqGSIb3DQEJEAEEoIGoBIGlMIGiAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgjA3x1BxKW6wBTm2GJWwtyyHlTeSZlChfbimyJu/b9jMCFQCnh2vWlWcZGn9Z+0yoGZH0n39ECRgPMjAyNjA5MTcxNjI3MzVaMAMCAQGgMqQwMC4xFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEVMBMGA1UEAxMMc2lnc3RvcmUtdHNhoAAxggHaMIIB1gIBATBRMDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAsGCWCGSAFlAwQCAaCB/DAaBgkqhkiG9w0BCQMxDQYLKoZIhvcNAQkQAQQwHAYJKoZIhvcNAQkFMQ8XDTI2MDkxNzE2MjczNVowLwYJKoZIhvcNAQkEMSIEICRk+b8h5BR7+t4XxXZTbkR1UFX86L3vFdrp86o915VPMIGOBgsqhkiG9w0BCRACLzF/MH0wezB5BCCF+Se8B6tiysO0Q1bBDvyBssaIP9p6uebYcNnROs0FtzBVMD2kOzA5MRUwEwYDVQQKEwxzaWdzdG9yZS5kZXYxIDAeBgNVBAMTF3NpZ3N0b3JlLXRzYS1zZWxmc2lnbmVkAhQ6E1QvDJBh7rzBQy/Lio6LKiOLDDAKBggqhkjOPQQDAgRmMGQCMFnfSz/PSCRJZcsPnyn+Wr6QD1FDS1sq9djx1XYxlmx4pCjjraA8Sh3N54+m3dMUXwIwNzZKMdGtWCJWa5qiMyvzsEYyCjMY8IR+BYInqysxtT/S9NVFaTza+Xksst0hER/s"}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"odxEtAmCtRKRXmncKzU8UbM+0jBB22LIN+ZGVLZN1Zw="},"signature":"MEQCICTJGalsmO0pWK+DL21FrzfqKO9duAB5g+ugLpj5S8jyAiA6tkEQ26hL7cnGcTDUGr+81hTgfaw3PTg0ebbpHuy+Sw=="}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z

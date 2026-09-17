@@ -1,19 +1,17 @@
 name: bio-seq
 version: "2026.03"
-description: "SAMtools + Python — sequence alignment and analysis."
+description: SAMtools + Python — sequence alignment and analysis.
 layers:
-  - name: samtools
-    version: "1.23"
-  - name: python
-    version: "3.13.2"
+    - samtools@1.23
+    - python@3.13.2
 provides:
-  - name: samtools
-    version: "1.23.0"
-  - name: htslib
-    version: "1.23.0"
-  - name: python
-    version: "3.13.2"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: samtools
+      version: 1.23.0
+    - name: htslib
+      version: 1.23.0
+    - name: python
+      version: 3.13.2
+rekor_entry: "2879085836"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879085836","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662453","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiIwZmQxMTczOWQzOWM1ZmU4ZjBjZDA1NGMwZWFiMDJmNTFiYTIwOGJkNTBjZWZkZjQzMmY3YWEwYzMzODhjMGE3In19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FUUNJRGNzemk4ZSsrdzh2eTNKdGpYVmJiay9QOVNwcjRMTG5vRTBUZ08rM3NsRUFpQWorZTI0WDdnQzUrUUtxTDA4K0xJM0xBZFFrMWxLM1BudHN3ME9UdHZvMUE9PSIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEUCIFRvWaKXjbmcDywJPaLzytcUptNLTR8c0PbnRMIk0biQAiEAxQz0jpq7yFCBX8KEkM2Mp0Lju7Kmw2hA4XRSsv03lG4="},"inclusionProof":{"logIndex":"2757181574","rootHash":"WJ2SKMdLMub93jmGitESGYrI/EX6f7N9R3oOkb4Q9Jg=","treeSize":"2757181582","hashes":["iv7z0OWcQfqjLWaOLTj23Govyfuml4LOsGm355DNIQ0=","IpiOvBxcNQh4MrknBPDI+zZMXeqlwngv9keol3AMxO4=","Lra3Qv1Zmehh1kMKwMs5DnyWHYp5N7RiCSiUWsMZr8E=","SqRc4GtMMGNgP8qQh+wyFRnCNvFACnK3XDHpwntEfXU=","T1H8OcGTHKzzkvZvE4W4SpO6yzPZ67aLFygsHP7VN6w=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757181582\nWJ2SKMdLMub93jmGitESGYrI/EX6f7N9R3oOkb4Q9Jg=\n\n— rekor.sigstore.dev wNI9ajBEAiBDq2nOS/jqT+1EEgwQf+O8ymE6Yc1uIRUZO1BO64hSgwIgbBDLy4FPM7OXl9uZggv2zaofj3jBL6JDJVcCrY2XWcI=\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyTADAgEAMIICwAYJKoZIhvcNAQcCoIICsTCCAq0CAQMxDTALBglghkgBZQMEAgEwgbcGCyqGSIb3DQEJEAEEoIGnBIGkMIGhAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgjQnLid8sj4RYAwLJ/c7t0upx2V9IU8dRSL5sRGVBybwCFCBKfPqneXX8iA5aEMsQjzSYVXL+GA8yMDI2MDkxNzE2MjczM1owAwIBAaAypDAwLjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MRUwEwYDVQQDEwxzaWdzdG9yZS10c2GgADGCAdswggHXAgEBMFEwOTEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MSAwHgYDVQQDExdzaWdzdG9yZS10c2Etc2VsZnNpZ25lZAIUOhNULwyQYe68wUMvy4qOiyojiwwwCwYJYIZIAWUDBAIBoIH8MBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAcBgkqhkiG9w0BCQUxDxcNMjYwOTE3MTYyNzMzWjAvBgkqhkiG9w0BCQQxIgQgGL174oWOdKyZUI79vZ/8/bq8k5J7/k7fiNebqpfRNOkwgY4GCyqGSIb3DQEJEAIvMX8wfTB7MHkEIIX5J7wHq2LKw7RDVsEO/IGyxog/2nq55thw2dE6zQW3MFUwPaQ7MDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAoGCCqGSM49BAMCBGcwZQIxAKTUSIOI+noKyOGUGa4Blz6cqJP90ksFhmjxgmBDrpBXHnVtP1Pqu1aiHJH6aLDm2gIwXty9w15kFVq/riZ8w4tn59XKFNh2y4RS05RUh/2TQT44b3TR5azdqEep/yKxOkhC"}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"D9EXOdOcX+jwzQVMDqsC9RuiCL1Qzv30MveqDDOIwKc="},"signature":"MEQCIDcszi8e++w8vy3JtjXVbbk/P9Spr4LLnoE0TgO+3slEAiAj+e24X7gC5+QKqL08+LI3LAdQk1lK3Pntsw0OTtvo1A=="}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z
