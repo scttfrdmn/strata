@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Build-environment provenance schema (#234).** `LayerManifest.BuildEnvironment`
+  records the base AMI, the pinned dnf `releasever`, and the exact NVR of every OS
+  package a build installed — the concrete "every build input is named" target for
+  build reproducibility (B2), extending `BootstrapCompiler` from just gcc to the
+  whole toolchain. The set is sorted/de-duplicated so a layer's provenance does
+  not depend on `rpm -qa` order. Populating it (user-data `--releasever` pin +
+  capture, pipeline ingest) lands with the layer rebuild.
 - **spawn-managed build instances (#236).** `strata build --ec2 --use-spawn
   [--ttl 4h]` launches the build instance through the pinned spore.host `spawn`
   CLI instead of the AWS SDK, so every instance auto-terminates on a TTL and on
