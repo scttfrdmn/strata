@@ -11,9 +11,8 @@ import (
 
 // rpmRunner fakes rpm: -qa returns qaOut, -E returns releasever, unless err set.
 type rpmRunner struct {
-	qaOut      string
-	releasever string
-	qaErr      error
+	qaOut string
+	qaErr error
 }
 
 func (r rpmRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -22,9 +21,6 @@ func (r rpmRunner) Run(_ context.Context, name string, args ...string) ([]byte, 
 			return nil, r.qaErr
 		}
 		return []byte(r.qaOut), nil
-	}
-	if name == "rpm" && len(args) > 0 && args[0] == "-E" {
-		return []byte(r.releasever + "\n"), nil
 	}
 	return nil, errors.New("unexpected command")
 }
@@ -36,10 +32,11 @@ func fixedAMI(id string) func(context.Context) string {
 func TestCaptureBuildEnvironment(t *testing.T) {
 	ctx := context.Background()
 
-	// A real rpm host: packages + releasever + AMI → a complete, sorted record.
+	// A real rpm host: packages + releasever (from STRATA_RELEASEVER, as the
+	// user-data exports it) + AMI → a complete, sorted record.
+	t.Setenv("STRATA_RELEASEVER", "2023.10.20260302")
 	env := captureBuildEnvironment(ctx, rpmRunner{
-		qaOut:      "zlib-1.2.11-x86_64\ngcc-11.4.1-2.amzn2023.x86_64\nglibc-2.34-x86_64\n",
-		releasever: "2023.10.20260302",
+		qaOut: "zlib-1.2.11-x86_64\ngcc-11.4.1-2.amzn2023.x86_64\nglibc-2.34-x86_64\n",
 	}, fixedAMI("ami-0c421724a94bba6d6"))
 	if !env.Recorded() {
 		t.Fatal("expected a recorded BuildEnvironment on an rpm host")

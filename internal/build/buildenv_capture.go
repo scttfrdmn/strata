@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -30,10 +31,11 @@ func captureBuildEnvironment(ctx context.Context, runner commandRunner, amiID fu
 	if len(packages) == 0 {
 		return nil
 	}
-	releasever := ""
-	if o, err := runner.Run(ctx, "rpm", "-E", "%{?releasever}"); err == nil {
-		releasever = strings.TrimSpace(string(o))
-	}
+	// The build user-data determines the AL2023 releasever once (dnf's own view of
+	// it), pins dnf to it, and exports it as STRATA_RELEASEVER — so recording reads
+	// the same value the toolchain was resolved against rather than re-deriving it
+	// with a command (rpm -E %{releasever} is empty on AL2023).
+	releasever := strings.TrimSpace(os.Getenv("STRATA_RELEASEVER"))
 	return spec.NewBuildEnvironment(amiID(ctx), releasever, packages)
 }
 

@@ -526,10 +526,14 @@ fail() {
 
 # Pin dnf to this AMI's own AL2023 releasever snapshot so the toolchain resolves
 # deterministically over time rather than tracking the moving repos (#234, B3).
-# The value is whatever this fixed AMI shipped with — captured, not guessed — and
-# strata build records it (with the installed NVRs) into the layer's
-# BuildEnvironment. If it cannot be determined, install unpinned rather than fail.
-RELEASEVER=$(rpm -E '%{?releasever}' 2>/dev/null || true)
+# dnf's own conf.releasever is the snapshot this fixed AMI shipped with (e.g.
+# 2023.10.20260302); rpm -E %{releasever} is empty on AL2023, so ask dnf via its
+# Python API, falling back to /etc/os-release VERSION_ID. Exported as
+# STRATA_RELEASEVER so strata build records the same value it pins to. If it
+# cannot be determined, install unpinned rather than fail.
+RELEASEVER=$(python3 -c 'import dnf,sys; sys.stdout.write(dnf.Base().conf.releasever or "")' 2>/dev/null || true)
+if [ -z "$RELEASEVER" ]; then RELEASEVER=$(. /etc/os-release 2>/dev/null; printf '%s' "${VERSION_ID:-}"); fi
+export STRATA_RELEASEVER="$RELEASEVER"
 RELFLAG=""
 if [ -n "$RELEASEVER" ]; then RELFLAG="--releasever=$RELEASEVER"; fi
 echo "strata: pinning dnf to releasever=${RELEASEVER:-<unset>}"
