@@ -63,6 +63,18 @@ type EC2Config struct {
 
 	// PollInterval is how often to poll for build completion. Default 30s.
 	PollInterval time.Duration
+
+	// UseSpawn launches the build instance through the pinned spore.host spawn
+	// CLI instead of the AWS SDK, so the instance gets spawn's TTL/auto-terminate
+	// lifecycle and cannot linger after a failed or hung build (#236). It is
+	// fire-and-forget: spawn owns the lifecycle, so it pairs with the no-wait
+	// launch path, not the tag-polling one.
+	UseSpawn bool
+
+	// TTL is the spawn auto-terminate window (e.g. "4h") when UseSpawn is set:
+	// the instance terminates after it regardless of build outcome — the hard
+	// cost ceiling. Empty lets spawn apply its default idle timeout.
+	TTL string
 }
 
 // ec2LaunchAPI is the subset of ec2.Client used by EC2Runner.
@@ -85,6 +97,9 @@ type EC2Runner struct {
 	cfg EC2Config
 	ec2 ec2LaunchAPI
 	s3  s3PutAPI
+	// spawn is non-nil when cfg.UseSpawn is set: the build instance is launched
+	// through the pinned spawn CLI rather than r.ec2.RunInstances (#236).
+	spawn *SpawnLauncher
 }
 
 // NewEC2Runner creates an EC2Runner backed by real AWS clients using the
@@ -103,11 +118,15 @@ func NewEC2Runner(cfg EC2Config) (*EC2Runner, error) {
 		return nil, fmt.Errorf("ec2runner: invalid bucket URL %q", cfg.BucketURL)
 	}
 	_ = bucket
-	return &EC2Runner{
+	r := &EC2Runner{
 		cfg: cfg,
 		ec2: ec2.NewFromConfig(awsCfg),
 		s3:  s3.NewFromConfig(awsCfg),
-	}, nil
+	}
+	if cfg.UseSpawn {
+		r.spawn = NewSpawnLauncher(cfg, cfg.TTL)
+	}
+	return r, nil
 }
 
 // newEC2RunnerWithAPIs constructs an EC2Runner with injected APIs for testing.
@@ -130,6 +149,11 @@ func (r *EC2Runner) rootVolumeGB() int32 {
 // returning the instance ID immediately without waiting for the build to complete.
 // The instance self-terminates on success or self-stops on failure (for log
 // retrieval). Monitor progress via the strata:build-status tag.
+//
+// When cfg.UseSpawn is set the instance is launched through the pinned spawn CLI
+// with a TTL and on-complete=terminate (#236), so a failed or hung build cannot
+// linger: spawn owns the lifecycle. The failure log is still uploaded to S3 by
+// the user-data before the instance stops, and spawn's TTL reaps it.
 func (r *EC2Runner) LaunchBuildEC2(ctx context.Context, jobID string, recipe *Recipe, job *Job) (instanceID string, err error) {
 	if err := r.uploadRecipe(ctx, jobID, recipe); err != nil {
 		return "", fmt.Errorf("ec2runner: uploading recipe: %w", err)
@@ -137,6 +161,13 @@ func (r *EC2Runner) LaunchBuildEC2(ctx context.Context, jobID string, recipe *Re
 	userData, err := r.buildUserData(jobID, recipe, job)
 	if err != nil {
 		return "", fmt.Errorf("ec2runner: generating user-data: %w", err)
+	}
+	if r.spawn != nil {
+		instanceID, err = r.spawn.Launch(ctx, buildInstanceName(recipe, r.cfg.BinaryArch), userData)
+		if err != nil {
+			return "", fmt.Errorf("ec2runner: launching instance via spawn: %w", err)
+		}
+		return instanceID, nil
 	}
 	instanceID, err = r.launchInstance(ctx, userData, recipe)
 	if err != nil {
@@ -322,7 +353,7 @@ func (r *EC2Runner) buildUserData(jobID string, recipe *Recipe, job *Job) (strin
 // launchInstance runs a new EC2 instance with the given user-data script.
 // The Name tag encodes the recipe so status queries are self-documenting.
 func (r *EC2Runner) launchInstance(ctx context.Context, userData string, recipe *Recipe) (string, error) {
-	name := fmt.Sprintf("strata-build-%s-%s-%s", recipe.Meta.Name, recipe.Meta.Version, r.cfg.BinaryArch)
+	name := buildInstanceName(recipe, r.cfg.BinaryArch)
 	input := &ec2.RunInstancesInput{
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
@@ -419,6 +450,12 @@ func (r *EC2Runner) getBuildStatus(ctx context.Context, instanceID string) (stri
 		}
 	}
 	return "unknown", nil
+}
+
+// buildInstanceName is the Name tag / spawn name for a build instance, shared by
+// the SDK and spawn launch paths so both identify the instance identically.
+func buildInstanceName(recipe *Recipe, binaryArch string) string {
+	return fmt.Sprintf("strata-build-%s-%s-%s", recipe.Meta.Name, recipe.Meta.Version, binaryArch)
 }
 
 // parseObjectURI splits an "s3://<bucket>/<key>" URI into bucket and key.
