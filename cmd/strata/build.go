@@ -18,9 +18,9 @@ import (
 )
 
 func newBuildCmd() *cobra.Command {
-	var osFlag, arch, reg, key, amiID, instanceType, cacheDir, securityGroupID string
+	var osFlag, arch, reg, key, amiID, instanceType, cacheDir, securityGroupID, ttl string
 	var rootVolumeGB int
-	var dryRun, ec2Flag, noWait bool
+	var dryRun, ec2Flag, noWait, useSpawn bool
 
 	cmd := &cobra.Command{
 		Use:   "build <recipe-dir>",
@@ -78,7 +78,7 @@ executing any build steps or requiring AWS credentials.`,
 
 			// EC2 mode: upload recipe, launch instance (poll if !noWait).
 			if ec2Flag && !dryRun {
-				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType, securityGroupID, int32(rootVolumeGB), noWait)
+				return runBuildEC2(context.Background(), job, recipe, reg, key, amiID, instanceType, securityGroupID, int32(rootVolumeGB), noWait, useSpawn, ttl)
 			}
 
 			var executor build.Executor
@@ -117,11 +117,13 @@ executing any build steps or requiring AWS credentials.`,
 	cmd.Flags().StringVar(&securityGroupID, "security-group", "", "with --ec2: security group ID (default: strata-account sg-0fca02f58fafcdad1)")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "local cache dir for downloaded build env layers (default: $TMPDIR/strata-build-cache)")
 	cmd.Flags().IntVar(&rootVolumeGB, "root-volume-gb", 0, "with --ec2: root EBS volume size in GiB (default: 60; use 100+ for DLAMIs)")
+	cmd.Flags().BoolVar(&useSpawn, "use-spawn", false, "with --ec2: launch via the pinned spore.host spawn CLI with a TTL, so the instance auto-terminates and never lingers after a failed or hung build (#236); fire-and-forget (implies no polling)")
+	cmd.Flags().StringVar(&ttl, "ttl", "4h", "with --use-spawn: auto-terminate window (e.g. 4h, 90m) — the hard cost ceiling regardless of build outcome")
 	return cmd
 }
 
 // runBuildEC2 orchestrates a build on an EC2 instance.
-func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType, securityGroupID string, rootVolumeGB int32, noWait bool) error {
+func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg, key, amiID, instanceType, securityGroupID string, rootVolumeGB int32, noWait, useSpawn bool, ttl string) error {
 	if amiID == "" {
 		return fmt.Errorf("--ami is required for --ec2 builds")
 	}
@@ -151,6 +153,8 @@ func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg,
 		BinaryArch:      build.ArchForEC2(normalizedArch),
 		KeyRef:          key,
 		RootVolumeGB:    rootVolumeGB,
+		UseSpawn:        useSpawn,
+		TTL:             ttl,
 	}
 
 	runner, err := build.NewEC2Runner(cfg)
@@ -161,6 +165,21 @@ func runBuildEC2(ctx context.Context, job *build.Job, recipe *build.Recipe, reg,
 	jobID := fmt.Sprintf("%s-%s-%s", recipe.Meta.Name, recipe.Meta.Version, normalizedArch)
 	fmt.Fprintf(os.Stderr, "ec2: launching build for %s@%s on %s (%s)\n",
 		recipe.Meta.Name, recipe.Meta.Version, amiID, instanceType)
+
+	// spawn owns the instance lifecycle (TTL + on-complete terminate), so the
+	// spawn path is always fire-and-forget: tag-polling for completion is
+	// incompatible with an instance spawn may terminate out from under it (#236).
+	if useSpawn {
+		instanceID, err := runner.LaunchBuildEC2(ctx, jobID, recipe, job)
+		if err != nil {
+			return fmt.Errorf("EC2 launch via spawn failed: %w", err)
+		}
+		fmt.Printf("launched via spawn: %s  recipe: %s@%s  arch: %s  ttl: %s\n",
+			instanceID, recipe.Meta.Name, recipe.Meta.Version, normalizedArch, ttl)
+		fmt.Printf("lifecycle: spawn auto-terminates this instance after %s or on completion — no manual cleanup\n", ttl)
+		fmt.Printf("verify:    run 'strata search %s' once the build completes to confirm the layer is in the registry\n", recipe.Meta.Name)
+		return nil
+	}
 
 	if noWait {
 		instanceID, err := runner.LaunchBuildEC2(ctx, jobID, recipe, job)

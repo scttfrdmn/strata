@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **spawn-managed build instances (#236).** `strata build --ec2 --use-spawn
+  [--ttl 4h]` launches the build instance through the pinned spore.host `spawn`
+  CLI instead of the AWS SDK, so every instance auto-terminates on a TTL and on
+  completion — a failed or hung build can no longer linger holding EBS (the
+  hand-rolled "stop on failure" path left orphans). strata shells out to `spawn`
+  (visible to the operator, no library coupling) and verifies its version is the
+  pinned one before launching, the same discipline as the pinned cosign binary.
+  Fire-and-forget: spawn owns the lifecycle. The default SDK path is unchanged.
 - **Formation signing (#237).** `trust.SignFormation`/`VerifyFormation` sign a
   formation as a unit — its name, version, ordered layer refs and provided
   capabilities — and log it to Rekor, the formation analog of the v0.26 lockfile
