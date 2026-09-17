@@ -1,21 +1,18 @@
 name: jupyter-gpu
 version: "2026.03"
-description: "CUDA + Python + JupyterLab — interactive GPU computing."
+description: CUDA + Python + JupyterLab — interactive GPU computing.
 layers:
-  - name: cuda
-    version: "12.6.0"
-  - name: python
-    version: "3.13.2"
-  - name: jupyterlab
-    version: "4.2.0"
+    - cuda@12.6.0
+    - python@3.13.2
+    - jupyterlab@4.2.0
 provides:
-  - name: cuda
-    version: "12.6.0"
-  - name: python
-    version: "3.13.2"
-  - name: jupyterlab
-    version: "4.2.0"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: cuda
+      version: 12.6.0
+    - name: python
+      version: 3.13.2
+    - name: jupyterlab
+      version: 4.2.0
+rekor_entry: "2879086361"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879086361","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662457","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiI4NDE4NWQyNGMxNmNkZjZlNWM2Zjg3ZjNkMzk4NmQ0NjY0ZDQ2ZTMwYWU2OWQ2YmFhMDgzYmI5MGE1MWJhNzA2In19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FWUNJUUNOTytWck92NXk4eHRpeXFEczBqd0lLUkR5R2pTZ05IbHRPRDcwTG9CYXBBSWhBS25RQWhicVJQdkVmU05mSHVodVNTdXlGQ3k3VlU3SW1wTzNhQVlzekxSeSIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEYCIQCp8q/wvA/7ogfk17kpPI2ojEBiKT4GVhXqTENEfvbedAIhAJU0hHPCllaINZP4VMYbkb9MmFVUGrI5OcRULFUjJvcx"},"inclusionProof":{"logIndex":"2757182099","rootHash":"tg5yEv6mIMFh9oUUAInqbaoUmV0Vk3Ydk6GOPB5xI+Y=","treeSize":"2757182113","hashes":["/tXf2yl0ClgFmodpvixMWcMa4D1dFvldQj2ZPzua2mE=","8B+q0+rZt0ix+SNEvHMNcmKf1MrfKaAcq5KmJhjDlco=","8b2MARrqzJCuBxa9vK0mpxXKTXxMAxZtVAoDy9y6I70=","gP/FtUs+hJ4bcd7yvLcFp6igWLftQ90ygGwk0wvHDNo=","D+1W9Y0FWzS4lMzKGWZv4heCOykcUfPMyyvO22gUjDg=","m197Un2ly5oaHSjPAY3U3YAmOBc51eAcmU3nXl7O+SA=","SjUks3hjMriE3p24dQrqsOubraecfXkBQT5ygirq59k=","Hb8l3CSOhIvwIfThaoadg/GayspzAcbKVzHqrnh2qnE=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757182113\ntg5yEv6mIMFh9oUUAInqbaoUmV0Vk3Ydk6GOPB5xI+Y=\n\n— rekor.sigstore.dev wNI9ajBGAiEAllaG0ofvMuOwxfkPBLqiKYJSO+Kfkg89Dmkbs7gpPSACIQC+Z8OfSRTaqxDvWJ6/c48bmTbY+YwF8dxas2OsnVKkoA==\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyjADAgEAMIICwQYJKoZIhvcNAQcCoIICsjCCAq4CAQMxDTALBglghkgBZQMEAgEwgbgGCyqGSIb3DQEJEAEEoIGoBIGlMIGiAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgG2CoAk52xPQAonI+FQKI8Zz7HogQKVVelPExII/lc3MCFQCMiMtdpiQ4SQvSH4SHVaggk/NpixgPMjAyNjA5MTcxNjI3MzdaMAMCAQGgMqQwMC4xFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEVMBMGA1UEAxMMc2lnc3RvcmUtdHNhoAAxggHbMIIB1wIBATBRMDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAsGCWCGSAFlAwQCAaCB/DAaBgkqhkiG9w0BCQMxDQYLKoZIhvcNAQkQAQQwHAYJKoZIhvcNAQkFMQ8XDTI2MDkxNzE2MjczN1owLwYJKoZIhvcNAQkEMSIEIMFzjGAT/4yfDWjIlPKObY2c0XAMuTAr6I9CSHfwPDb5MIGOBgsqhkiG9w0BCRACLzF/MH0wezB5BCCF+Se8B6tiysO0Q1bBDvyBssaIP9p6uebYcNnROs0FtzBVMD2kOzA5MRUwEwYDVQQKEwxzaWdzdG9yZS5kZXYxIDAeBgNVBAMTF3NpZ3N0b3JlLXRzYS1zZWxmc2lnbmVkAhQ6E1QvDJBh7rzBQy/Lio6LKiOLDDAKBggqhkjOPQQDAgRnMGUCMHDRNtaphTxIPRMJ4wSkcK7sjr+iYGKV0c3ttE4HpyM7qCwnIm1Y2GXAvRLkUUGNxQIxAJDgTAp9Tu5yCK0EJLAB55T8LENrK802c6KPLEdKrLR6HNlmITP2h3cNe/Dp93CPuA=="}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"hBhdJMFs325cb4fz05htRmTUbjCuada6oIO7kKUbpwY="},"signature":"MEYCIQCNO+VrOv5y8xtiyqDs0jwIKRDyGjSgNHltOD70LoBapAIhAKnQAhbqRPvEfSNfHuhuSSuyFCy7VU7ImpO3aAYszLRy"}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z

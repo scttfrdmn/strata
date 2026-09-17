@@ -1,17 +1,15 @@
 name: cuda-python-ml
 version: "2026.03"
-description: "CUDA + Python — GPU ML baseline."
+description: CUDA + Python — GPU ML baseline.
 layers:
-  - name: cuda
-    version: "12.6.0"
-  - name: python
-    version: "3.13.2"
+    - cuda@12.6.0
+    - python@3.13.2
 provides:
-  - name: cuda
-    version: "12.6.0"
-  - name: python
-    version: "3.13.2"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: cuda
+      version: 12.6.0
+    - name: python
+      version: 3.13.2
+rekor_entry: "2879085944"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879085944","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662454","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiJjNGQ4MjA0OTNhYjA4YmQ2NWFjODNkNDFiYWNhMzllZGVjM2RiMTc2NWJjZjZhNmFlMDhlZDE0YjU5NDQyN2EzIn19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FWUNJUUNMVWQ3N2tzWG5SeU05Qk1IT205QmMzTVJFQW12dG4zRXRjcERRc0dwclRnSWhBTG16c29KK0RXckxNZWRkUVNrNXNtRW4wYWltV09wTWlFMnBTNXJOWXpVNyIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEUCIQCLo6FfBLwKEAmNR3YwGWkarQsfsbxPF1i87Bo1HYrReQIgKtbNt9GCPt2mYvHe256WdTDGh6D2b0hyb9yGwCKvmM8="},"inclusionProof":{"logIndex":"2757181682","rootHash":"A+5yPJ+anp0QJ6NHwq1H6jvJQpRqu8e1omugRjUTY1w=","treeSize":"2757181702","hashes":["k3r5Ex2UTM+C47tgMZMW0a8dWPpoJSuJXrFdNFGZsg0=","PftqI/prcgcgdGU/ZYZ1hoJBpteatrzNkhKNmh2tHec=","clWJkP1EAgHNSyOWD2pnq+nRdAuKGFWo9q1TRMRDeKw=","BW1o9byS3yUVsnCauvEzQk9NIHiTvJdohbWy9Fx921Q=","zDmeU8RK7I2vT+NTX79bNFvE1BjAMAvy7xd/DJEQ23Q=","x6bIRZ7vAxeWEGcEsqJ1eujtfjZ8ARfCb6pj16dHQ6g=","HygvxaYrghSWMpUGVS1RI63rP/PB3+XGUzxmaUeFQjQ=","T1H8OcGTHKzzkvZvE4W4SpO6yzPZ67aLFygsHP7VN6w=","mDrGrxYyX3A6fKlMEQOqvP7tMJJ1Pq1Bk0OrvDmPEXI=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757181702\nA+5yPJ+anp0QJ6NHwq1H6jvJQpRqu8e1omugRjUTY1w=\n\n— rekor.sigstore.dev wNI9ajBGAiEA/mHSrWjcMjQfkzeeBE3zbsRXc+g17B648xb5gWXrArACIQCitnVGj5r3K4qWJpGScpsPl84wv7leAsl7o6Ij9pMj7g==\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyTADAgEAMIICwAYJKoZIhvcNAQcCoIICsTCCAq0CAQMxDTALBglghkgBZQMEAgEwgbcGCyqGSIb3DQEJEAEEoIGnBIGkMIGhAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgKdvPg78WqMNWBHaR4pKHCVULkLro/FChwF+ZyBu5JdMCFGqX6MN+3ZwVgxTyUuBCkmVRMZSPGA8yMDI2MDkxNzE2MjczNFowAwIBAaAypDAwLjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MRUwEwYDVQQDEwxzaWdzdG9yZS10c2GgADGCAdswggHXAgEBMFEwOTEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MSAwHgYDVQQDExdzaWdzdG9yZS10c2Etc2VsZnNpZ25lZAIUOhNULwyQYe68wUMvy4qOiyojiwwwCwYJYIZIAWUDBAIBoIH8MBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAcBgkqhkiG9w0BCQUxDxcNMjYwOTE3MTYyNzM0WjAvBgkqhkiG9w0BCQQxIgQgdbsYN7NnAzphI7a1I1WY4cgndkomSv6ND+Sf1C1/swswgY4GCyqGSIb3DQEJEAIvMX8wfTB7MHkEIIX5J7wHq2LKw7RDVsEO/IGyxog/2nq55thw2dE6zQW3MFUwPaQ7MDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAoGCCqGSM49BAMCBGcwZQIxAJpMIuyYD6AlW+GHSZF9RhDJxR2Fnlj6C6DFE9xozk1D/y6gSS354Xvc8rWSUEilmQIwJHkoWFMMKCcu/LB9ZtK7BbmRRvnWLZkp19NOE6kYawLhoXNrxjoOkSqZ8KFAT21B"}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"xNggSTqwi9ZayD1Buso57ew9sXZbz2pq4I7RS1lEJ6M="},"signature":"MEYCIQCLUd77ksXnRyM9BMHOm9Bc3MREAmvtn3EtcpDQsGprTgIhALmzsoJ+DWrLMeddQSk5smEn0aimWOpMiE2pS5rNYzU7"}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z

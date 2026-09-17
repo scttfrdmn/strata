@@ -1,17 +1,15 @@
 name: r-research
 version: "2026.03"
-description: "R + Quarto — reproducible research and scientific publishing."
+description: R + Quarto — reproducible research and scientific publishing.
 layers:
-  - name: R
-    version: "4.5.2"
-  - name: quarto
-    version: "1.4.555"
+    - R@4.5.2
+    - quarto@1.4.555
 provides:
-  - name: R
-    version: "4.5.2"
-  - name: quarto
-    version: "1.4.555"
-rekor_entry: "pending-initial-build"
-bundle: "pending-initial-build"
-signed_by: "strata-maintainer@strata.dev"
+    - name: R
+      version: 4.5.2
+    - name: quarto
+      version: 1.4.555
+rekor_entry: "2879086457"
+bundle: '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","verificationMaterial":{"publicKey":{"hint":"A+nTJc04yVnEmnirEGRRzqcw3I+23fcKyf/Qmnb54rE="},"tlogEntries":[{"logIndex":"2879086457","logId":{"keyId":"wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="},"kindVersion":{"kind":"hashedrekord","version":"0.0.1"},"integratedTime":"1789662458","canonicalizedBody":"eyJhcGlWZXJzaW9uIjoiMC4wLjEiLCJraW5kIjoiaGFzaGVkcmVrb3JkIiwic3BlYyI6eyJkYXRhIjp7Imhhc2giOnsiYWxnb3JpdGhtIjoic2hhMjU2IiwidmFsdWUiOiJhZTczNGU4ZDU5Y2Y1MTQ1OTZmMTZlOThiNTRiYTgxYWRiZjI0ZTM0NGI5MjliYmNmMDM0NWExNTc2NGM4NWQyIn19LCJzaWduYXR1cmUiOnsiY29udGVudCI6Ik1FUUNJQ0N4TGFkdmN3K1ZCZklmMlQ5dFpIZ0hoRnpIWHc0RDFpckk4bVczMExwOEFpQmVLSkRIZ1dHZys0Y0U0ZlN0Y0tuRWI2RmI4dkVGSjZmeVY2cnZNdnNmSkE9PSIsInB1YmxpY0tleSI6eyJjb250ZW50IjoiTFMwdExTMUNSVWRKVGlCUVZVSk1TVU1nUzBWWkxTMHRMUzBLVFVacmQwVjNXVWhMYjFwSmVtb3dRMEZSV1VsTGIxcEplbW93UkVGUlkwUlJaMEZGZUVaUVJtRjVTbGRuVlZGMGEzRnRORlEyYWlzeFlYbGFSazFJUXdwMVF6Y3laV0kwVGtObWREbERNMlV4TUdSRGMzbzJOVUZJTTNRM0wwUlZOalZyUzA1RVRWQllOR1I1YW5CcFNVbDZaRWRFTVRWdWJrWjNQVDBLTFMwdExTMUZUa1FnVUZWQ1RFbERJRXRGV1MwdExTMHRDZz09In19fX0=","inclusionPromise":{"signedEntryTimestamp":"MEYCIQDZ+cwEY6gP2sUXKZI8/gieRUX0WvAN4uyqjPhG+bc44AIhAIP9KEVk9iX3wEDvMz82Hp50aFqkNN6W0vIiu9wYR5+z"},"inclusionProof":{"logIndex":"2757182195","rootHash":"bqE3toBHB7f1wdb293Fyy6LiO1qea5DgEoB8+Bxw4w0=","treeSize":"2757182202","hashes":["FidBLNeulu08sDIz36b3XqfyR5vAqhZWPDbc2RLopxw=","Q2V/tN3Udmgrhfeo1p1l9cC4qQsFO0rz356K0Ow2bJk=","GN6qAw+NjAzSK4JSyqO37XfreSSB7z0Zv8MmrF3/C54=","BLgScrbq+2/a9pyy4qlh3HUMFgcQUu3w9V+FtLIvMiU=","TmVk5hjsf1txFGpRkt4SaZ+FQinm/wJqDABoc2HiRJw=","hp7PHyR9BnV+bwznfIpN9+UXnFs8//zX0nMBp4LInbA=","To4327vl1Dy85fG8WJCAe/xVdnxmOrZVyMwCvw5JyGA=","SjUks3hjMriE3p24dQrqsOubraecfXkBQT5ygirq59k=","Hb8l3CSOhIvwIfThaoadg/GayspzAcbKVzHqrnh2qnE=","3iJMBwphVUWr2yIEpzy4FM9g/kBBtQAqNx3uIJkz13Y=","6FT4aHHLhtq9QpBaCUqjyBgOwp6NSDF8SnpYpXQeXJE=","7dyZJcTHqzL3FdxR2G1PC0kkOg8wGcV88PourU6rKcc=","PspiYmT4g+cMx39ki3uov+BF3wnMNrsotPdAGyrh7/U=","dGak2sjsKk1jIod5mElMh8JkFfYHDEKASdFbixN8Fto=","9/zE+6t02HH7XhmcD58QVOf6pEzX8FSJGVDgcxxw20o=","mfWjSdNaEfNXxDww6AAOw/NoK9e6z1yKaZm5xvmMabs=","qxzHanAzz57SDdmJe0B7bJK72NTIBbwEMGBBKvDOROw=","xH/DCseLHr9eKoYT8qsORZK7zVdEGYWHuVtsVrD95wY="],"checkpoint":{"envelope":"rekor.sigstore.dev - 1193050959916656506\n2757182202\nbqE3toBHB7f1wdb293Fyy6LiO1qea5DgEoB8+Bxw4w0=\n\n— rekor.sigstore.dev wNI9ajBEAiAf366cz24eHYy2qM6mTkIYyEcqq2yeRZvmC+tKEfbqiQIgYRW/gLRwRIMCPnLnN0254wzt+2bmKMqkbkpjDA0BQr0=\n"}}}],"timestampVerificationData":{"rfc3161Timestamps":[{"signedTimestamp":"MIICyTADAgEAMIICwAYJKoZIhvcNAQcCoIICsTCCAq0CAQMxDTALBglghkgBZQMEAgEwgbcGCyqGSIb3DQEJEAEEoIGnBIGkMIGhAgEBBgkrBgEEAYO/MAIwMTANBglghkgBZQMEAgEFAAQgg+SycCVVsgi6JoGDaKqAs/U0hff0GyNxI4NoIgYOPR4CFEicgUTAcK1aOoNaoV0VsPjiqxJJGA8yMDI2MDkxNzE2MjczOFowAwIBAaAypDAwLjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MRUwEwYDVQQDEwxzaWdzdG9yZS10c2GgADGCAdswggHXAgEBMFEwOTEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MSAwHgYDVQQDExdzaWdzdG9yZS10c2Etc2VsZnNpZ25lZAIUOhNULwyQYe68wUMvy4qOiyojiwwwCwYJYIZIAWUDBAIBoIH8MBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAcBgkqhkiG9w0BCQUxDxcNMjYwOTE3MTYyNzM4WjAvBgkqhkiG9w0BCQQxIgQghWPEqa7OR6sNdyFveNl9IwmkptLhZlhOVbxhpO4KDTYwgY4GCyqGSIb3DQEJEAIvMX8wfTB7MHkEIIX5J7wHq2LKw7RDVsEO/IGyxog/2nq55thw2dE6zQW3MFUwPaQ7MDkxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEgMB4GA1UEAxMXc2lnc3RvcmUtdHNhLXNlbGZzaWduZWQCFDoTVC8MkGHuvMFDL8uKjosqI4sMMAoGCCqGSM49BAMCBGcwZQIwRCDsgILLjYGK/qijdvNis2Nfk/nCZa/94Keq0dcZ9L6kreOdh/aFVvKljlKNvfnXAjEA7xXIzg3uUh4QCmaBCWb1E59pKd7CksB1IJHNkImK0X+DRNO00Nb8gap2LNB82FVh"}]}},"messageSignature":{"messageDigest":{"algorithm":"SHA2_256","digest":"rnNOjVnPUUWW8W6YtUuoGtvyTjRLkpu88DRaFXZMhdI="},"signature":"MEQCICCxLadvcw+VBfIf2T9tZHgHhFzHXw4D1irI8mW30Lp8AiBeKJDHgWGg+4cE4fStcKnEb6Fb8vEFJ6fyV6rvMvsfJA=="}}'
+signed_by: awskms:///alias/strata-signing-key
 built_at: 2026-03-27T00:00:00Z
