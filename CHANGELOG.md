@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-17
+
+_"Reproducible in production": the reproducible-inputs work reaches the
+production registry. Every build now names its environment — the base AMI, the
+pinned dnf `releasever`, and the exact NVR of every OS package — and pins the
+toolchain to the AMI's own AL2023 snapshot, so the same recipe resolves the same
+compiler over time. All 66 production layers were rebuilt against fresh per-arch
+gcc, provenance-stamped, and promoted; and the six shipped formations are signed
+to Rekor rather than carrying `pending-initial-build` placeholders. Build
+instances can be launched through the pinned spore.host `spawn` CLI with a TTL.
+B2/B3 leave REFUTED; the X1 placeholder counterexample is discharged._
+
 ### Added
 - **Build-environment provenance schema (#234).** `LayerManifest.BuildEnvironment`
   records the base AMI, the pinned dnf `releasever`, and the exact NVR of every OS
@@ -2150,7 +2162,8 @@ discharges for the identity cluster._
   `examples/pytorch-jupyter.yaml` with parse and round-trip smoke tests
 - Initial project structure, CI workflow, and tooling
 
-[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/scttfrdmn/strata/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/scttfrdmn/strata/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/scttfrdmn/strata/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/scttfrdmn/strata/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/scttfrdmn/strata/compare/v0.25.0...v0.26.0
